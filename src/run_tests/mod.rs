@@ -18,6 +18,7 @@ use super::inject_message;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Config {
     runtime_path: PathBuf,
+    is_runtime_print: bool,
     tests: Vec<Test>,
 }
 
@@ -112,13 +113,15 @@ fn cleanup_node(node: &mut NodeInfo) {
     }
 }
 
-fn compile_runtime(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+fn compile_runtime(path: &Path, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
     println!("Compiling Uqbar runtime...");
 
-    Command::new("cargo")
+    build::run_command(Command::new("cargo")
         .args(&["+nightly", "build", "--release", "--features", "simulation-mode"])
         .current_dir(path)
-        .output()?;  // Use output() to capture and ignore the output
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+    )?;
 
     Ok(())
 }
@@ -257,7 +260,7 @@ pub async fn execute(config_path: &str) -> Result<(), Box<dyn std::error::Error>
     println!("{:?}", config);
 
     // Compile the runtime binary
-    compile_runtime(Path::new(config.runtime_path.to_str().unwrap()))?;
+    compile_runtime(Path::new(config.runtime_path.to_str().unwrap()), config.is_runtime_print)?;
 
     for test in config.tests {
         for test_process_path in &test.test_process_paths {

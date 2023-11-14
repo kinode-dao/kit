@@ -3,19 +3,14 @@ use std::io;
 use std::path::Path;
 use std::process::Command;
 
-// fn with_changed_dir<F, T>(destination: &Path, f: F) -> io::Result<T>
-// where
-//     F: FnOnce() -> io::Result<T>,
-// {
-//     let original_dir = env::current_dir()?;
-//     env::set_current_dir(destination)?;
-//
-//     let result = f();
-//
-//     env::set_current_dir(original_dir)?;
-//
-//     result
-// }
+pub fn run_command(cmd: &mut Command) -> io::Result<()> {
+    let status = cmd.status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(io::Error::new(io::ErrorKind::Other, "Command failed"))
+    }
+}
 
 pub fn compile_process(process_dir: &Path) -> io::Result<()> {
     println!("{:?}", process_dir);
@@ -52,13 +47,13 @@ pub fn compile_wasm_project(project_dir: &Path) -> io::Result<()> {
     fs::create_dir_all(&bindings_dir)?;
 
     // Create target.wasm (compiled .wit) & world
-    Command::new("wasm-tools")
+    run_command(Command::new("wasm-tools")
         .args(&["component", "wit",
             wit_dir.to_str().unwrap(),
             "-o", &bindings_dir.join("target.wasm").to_str().unwrap(),
             "--wasm",
         ])
-        .status()?;
+    )?;
 
     // Copy wit directory to bindings
     fs::create_dir_all(&bindings_dir.join("wit"))?;
@@ -71,14 +66,14 @@ pub fn compile_wasm_project(project_dir: &Path) -> io::Result<()> {
     File::create(bindings_dir.join("world"))?;
 
     // Build the module using Cargo
-    Command::new("cargo")
+    run_command(Command::new("cargo")
         .args(&["+nightly", "build",
             "--release",
             "--no-default-features",
             "--target", "wasm32-wasi",
         ])
         .current_dir(project_dir)
-        .status()?;
+    )?;
 
     // Adapt the module using wasm-tools
 
@@ -96,17 +91,17 @@ pub fn compile_wasm_project(project_dir: &Path) -> io::Result<()> {
 
     let wasi_snapshot_file = Path::new("wasi_snapshot_preview1.wasm");
 
-    Command::new("wasm-tools")
+    run_command(Command::new("wasm-tools")
         .args(&["component", "new",
             wasm_file.to_str().unwrap(),
             "-o", adapted_wasm_file.to_str().unwrap(),
             "--adapt", wasi_snapshot_file.to_str().unwrap(),
         ])
         .current_dir(project_dir)
-        .status()?;
+    )?;
 
     // Embed "wit" into the component and place it in the expected location
-    Command::new("wasm-tools")
+    run_command(Command::new("wasm-tools")
         .args(&["component", "embed",
             wit_dir.strip_prefix(project_dir).unwrap().to_str().unwrap(),
             "--world", "process",
@@ -114,7 +109,7 @@ pub fn compile_wasm_project(project_dir: &Path) -> io::Result<()> {
             "-o", wasm_path.to_str().unwrap(),
         ])
         .current_dir(project_dir)
-        .status()?;
+    )?;
 
     Ok(())
 }
