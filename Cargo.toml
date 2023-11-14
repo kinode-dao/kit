@@ -9,6 +9,7 @@ edition = "2021"
 anyhow = "1.0"
 base64 = "0.21"
 clap = { version = "4.4", features = ["cargo", "string"] }
+dirs = "5.0.1"
 nix = { version = "0.27", features = ["term"] }
 reqwest = { version = "0.11", features = ["json"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -17,3 +18,7 @@ tokio = { version = "1.28", features = ["fs", "macros", "rt-multi-thread", "sync
 toml = "0.8"
 walkdir = "2.4"
 zip = "0.6"
+
+[[bin]]
+name = "uqdev"
+path = "src/main.rs"

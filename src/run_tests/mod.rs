@@ -1,13 +1,13 @@
 use std::cell::RefCell;
 use std::error::Error;
 use std::{fs, thread, time};
-use std::net::{TcpListener, Ipv4Addr};
 use std::os::fd::AsRawFd;
-use std::os::unix::io::{FromRawFd, IntoRawFd, OwnedFd};
+use std::os::unix::io::{FromRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::rc::Rc;
 
+use dirs::home_dir;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use toml;
@@ -23,7 +23,7 @@ struct Config {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Test {
-    test_process_paths: Vec<String>,
+    test_process_paths: Vec<PathBuf>,
     nodes: Vec<Node>,
 }
 
@@ -36,8 +36,6 @@ struct Node {
     is_runtime_print: bool,
 }
 
-// #[derive(Clone, Debug, Serialize, Deserialize)]
-// #[derive(Clone, Debug)]
 #[derive(Debug)]
 struct NodeInfo {
     process_handle: Child,
@@ -64,32 +62,44 @@ impl Drop for CleanupContext {
     }
 }
 
-// struct CleanupContext<'a> {
-//     nodes: &'a [NodeInfo],
-// }
-//
-// impl<'a> CleanupContext<'a> {
-//     fn new(nodes: &'a [NodeInfo]) -> Self {
-//         CleanupContext { nodes }
-//     }
-// }
-//
-// impl<'a> Drop for CleanupContext<'a> {
-//     fn drop(&mut self) {
-//         for node in self.nodes {
-//             cleanup_node(&node);
-//         }
-//     }
-// }
-
 fn get_basename(file_path: &Path) -> Option<&str> {
     file_path
         .file_name()
         .and_then(|file_name| file_name.to_str())
 }
 
-// fn cleanup_node(node: std::cell::RefMut<NodeInfo>) {
-// fn cleanup_node(node: &mut NodeInfo) {
+fn expand_home_path_string(path: &str) -> Option<String> {
+    if path.starts_with("~/") {
+        if let Some(home_path) = home_dir() {
+            return Some(path.replacen("~", &home_path.to_string_lossy(), 1));
+        }
+    }
+    None
+}
+
+fn expand_home_path(path: &PathBuf) -> Option<PathBuf> {
+    path.as_os_str()
+        .to_str()
+        .and_then(|s| expand_home_path_string(s))
+        .and_then(|s| Some(Path::new(&s).to_path_buf()))
+}
+
+impl Config {
+    fn expand_home_paths(mut self: Config) -> Config {
+        self.runtime_path = expand_home_path(&self.runtime_path).unwrap_or(self.runtime_path);
+        for test in self.tests.iter_mut() {
+            test.test_process_paths = test.test_process_paths
+                .iter()
+                .map(|tpp| expand_home_path(&tpp).unwrap_or_else(|| tpp.clone()))
+                .collect();
+            for node in test.nodes.iter_mut() {
+                node.home = expand_home_path(&node.home).unwrap_or_else(|| node.home.clone());
+            }
+        }
+        self
+    }
+}
+
 fn cleanup_node(node: &mut NodeInfo) {
     // Assuming Node is a struct that contains process_handle, master_fd, and home
     // Send Ctrl-C to the process
@@ -100,15 +110,6 @@ fn cleanup_node(node: &mut NodeInfo) {
     if home_fs.exists() {
         fs::remove_dir_all(home_fs).unwrap();
     }
-}
-
-fn find_open_port(starting_port: u16) -> Result<u16, Box<dyn std::error::Error>> {
-    for port in starting_port..65535 {
-        if TcpListener::bind((Ipv4Addr::LOCALHOST, port)).is_ok() {
-            return Ok(port);
-        }
-    }
-    Err("No open port found".into())
 }
 
 fn compile_runtime(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -183,11 +184,8 @@ async fn wait_until_booted(port: u16, max_port_diff: u16, max_waits: u16) -> Res
     Ok(None)
 }
 
-// async fn load_tests(test_paths: &[&Path], port: u16) -> Result<(), Box<dyn Error>> {
-async fn load_tests(test_paths: &Vec<String>, port: u16) -> Result<(), Box<dyn Error>> {
+async fn load_tests(test_paths: &Vec<PathBuf>, port: u16) -> Result<(), Box<dyn Error>> {
     for test_path in test_paths {
-        // let basename = test_path.file_name().unwrap().to_str().unwrap();
-        let test_path = Path::new(&test_path);
         let basename = get_basename(&test_path).unwrap();
         let request = inject_message::make_message(
             "vfs:sys:uqbar",
@@ -220,7 +218,6 @@ async fn run_tests(test_batch: &str, port: u16) -> Result<(), Box<dyn Error>> {
     let request = inject_message::make_message(
         "tester:tester:uqbar",
         "{\"Run\":null}",
-        // &serde_json::json!({"Run": None}).to_string(),
         None,
         None,
         None,
@@ -254,9 +251,8 @@ async fn run_tests(test_batch: &str, port: u16) -> Result<(), Box<dyn Error>> {
 }
 
 pub async fn execute(config_path: &str) -> Result<(), Box<dyn std::error::Error>> {
-// pub async fn execute(config_path: String) -> Result<(), Box<dyn std::error::Error>> {
     let config_content = fs::read_to_string(config_path)?;
-    let config: Config = toml::from_str(&config_content)?;
+    let config = toml::from_str::<Config>(&config_content)?.expand_home_paths();
 
     println!("{:?}", config);
 
@@ -265,13 +261,11 @@ pub async fn execute(config_path: &str) -> Result<(), Box<dyn std::error::Error>
 
     for test in config.tests {
         for test_process_path in &test.test_process_paths {
-            build::compile_process(Path::new(&test_process_path))?;
+            build::compile_process(&test_process_path)?;
         }
 
         // Initialize variables for master node and nodes list
         let mut master_node_port = None;
-        // let mut nodes = Vec::new();
-        // let nodes: Rc<RefCell<Vec<NodeInfo>>> = Rc::new(RefCell::new(Vec::new()));
         let nodes = Rc::new(RefCell::new(Vec::new()));
 
         // Cleanup, boot check, test loading, and running
@@ -303,15 +297,10 @@ pub async fn execute(config_path: &str) -> Result<(), Box<dyn std::error::Error>
             if master_node_port.is_none() {
                 master_node_port = Some(node_info.port.clone());
             }
-            // let nodes_mut = Rc::get_mut(&mut nodes).unwrap();
-            // nodes_mut.push(node_info);
             nodes.borrow_mut().push(node_info);
         }
 
-        // // Cleanup, boot check, test loading, and running
-        // let _cleanup_context = CleanupContext::new(&nodes);
-        // let nodes_mut = Rc::get_mut(&mut nodes).unwrap();
-        // for node in nodes_mut {
+        // Cleanup, boot check, test loading, and running
         for node in nodes.borrow_mut().iter_mut() {
             node.port = wait_until_booted(node.port, 5, 5).await?.unwrap();
         }
