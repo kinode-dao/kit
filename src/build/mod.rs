@@ -1,7 +1,7 @@
 use std::fs::{self, File};
 use std::io;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 pub fn run_command(cmd: &mut Command) -> io::Result<()> {
     let status = cmd.status()?;
@@ -12,20 +12,18 @@ pub fn run_command(cmd: &mut Command) -> io::Result<()> {
     }
 }
 
-pub fn compile_process(process_dir: &Path) -> io::Result<()> {
-    println!("{:?}", process_dir);
-
+pub fn compile_process(process_dir: &Path, verbose: bool) -> io::Result<()> {
     // Check if `Cargo.toml` exists in the directory
     let cargo_file = process_dir.join("Cargo.toml");
     if cargo_file.exists() {
-        compile_wasm_project(process_dir)?;
+        compile_wasm_project(process_dir, verbose)?;
     } else {
         // If `Cargo.toml` is not found, look for subdirectories containing `Cargo.toml`
         for entry in process_dir.read_dir()? {
             let entry = entry?;
             let path = entry.path();
             if path.is_dir() && path.join("Cargo.toml").exists() {
-                compile_wasm_project(&path)?;
+                compile_wasm_project(&path, verbose)?;
             }
         }
     }
@@ -33,8 +31,8 @@ pub fn compile_process(process_dir: &Path) -> io::Result<()> {
     Ok(())
 }
 
-pub fn compile_wasm_project(project_dir: &Path) -> io::Result<()> {
-    println!("Compiling WASM project in {:?}", project_dir);
+pub fn compile_wasm_project(project_dir: &Path, verbose: bool) -> io::Result<()> {
+    println!("Compiling WASM project in {:?}...", project_dir);
 
     // Paths
     let bindings_dir = project_dir
@@ -53,6 +51,8 @@ pub fn compile_wasm_project(project_dir: &Path) -> io::Result<()> {
             "-o", &bindings_dir.join("target.wasm").to_str().unwrap(),
             "--wasm",
         ])
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
     // Copy wit directory to bindings
@@ -73,6 +73,8 @@ pub fn compile_wasm_project(project_dir: &Path) -> io::Result<()> {
             "--target", "wasm32-wasi",
         ])
         .current_dir(project_dir)
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
     // Adapt the module using wasm-tools
@@ -98,6 +100,8 @@ pub fn compile_wasm_project(project_dir: &Path) -> io::Result<()> {
             "--adapt", wasi_snapshot_file.to_str().unwrap(),
         ])
         .current_dir(project_dir)
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
     // Embed "wit" into the component and place it in the expected location
@@ -109,7 +113,10 @@ pub fn compile_wasm_project(project_dir: &Path) -> io::Result<()> {
             "-o", wasm_path.to_str().unwrap(),
         ])
         .current_dir(project_dir)
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
+    println!("Done compiling WASM project in {:?}.", project_dir);
     Ok(())
 }

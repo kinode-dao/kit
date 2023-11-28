@@ -86,7 +86,7 @@ fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn execute(pkg_dir: &str, url: &str, node: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn execute(pkg_dir: &str, url: &str, node: Option<&str>) -> anyhow::Result<()> {
     let pkg_dir = Path::new(&pkg_dir).canonicalize()?;
     let metadata: serde_json::Value = serde_json::from_reader(fs::File::open(pkg_dir
         .join("metadata.json")
@@ -112,8 +112,6 @@ pub async fn execute(pkg_dir: &str, url: &str, node: Option<&str>) -> Result<(),
     )?;
     let response = inject_message::send_request(
         url,
-        // host,
-        // port,
         new_pkg_request,
     ).await?;
     if response.status() != 200 {
@@ -124,8 +122,6 @@ pub async fn execute(pkg_dir: &str, url: &str, node: Option<&str>) -> Result<(),
     let install_pkg_request = install_package(node, package_name, publisher)?;
     let response = inject_message::send_request(
         url,
-        // host,
-        // port,
         install_pkg_request,
     ).await?;
     if response.status() != 200 {

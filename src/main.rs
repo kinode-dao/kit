@@ -26,6 +26,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .help("The project directory to build")
                 .required(true)
             )
+            .arg(Arg::new("quiet")
+                .action(ArgAction::SetTrue)
+                .short('q')
+                .long("quiet")
+                .required(false)
+                .help("If set, do not print `cargo` stdout/stderr"))
         )
         .subcommand(Command::new("inject-message")
             .about("Inject a message to a running Uqbar node")
@@ -95,7 +101,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     match matches {
         Some(("build", build_matches)) => {
             let project_dir = PathBuf::from(build_matches.get_one::<String>("project_dir").unwrap());
-            build::compile_process(&project_dir)?;
+            let verbose = !build_matches.get_one::<bool>("quiet").unwrap();
+            build::compile_process(&project_dir, verbose)?;
         },
         Some(("inject-message", inject_message_matches)) => {
             let url: &String = inject_message_matches.get_one("url").unwrap();

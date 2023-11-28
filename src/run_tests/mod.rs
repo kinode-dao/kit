@@ -15,16 +15,20 @@ use toml;
 use super::build;
 use super::inject_message;
 
+mod tester_types;
+use tester_types as tt;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Config {
     runtime_path: PathBuf,
-    is_runtime_print: bool,
+    runtime_build_verbose: bool,
     tests: Vec<Test>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Test {
     test_process_paths: Vec<PathBuf>,
+    test_build_verbose: bool,
     nodes: Vec<Node>,
 }
 
@@ -34,7 +38,7 @@ struct Node {
     home: PathBuf,
     password: String,
     rpc: String,
-    is_runtime_print: bool,
+    runtime_verbose: bool,
 }
 
 #[derive(Debug)]
@@ -113,7 +117,7 @@ fn cleanup_node(node: &mut NodeInfo) {
     }
 }
 
-fn compile_runtime(path: &Path, verbose: bool) -> Result<(), Box<dyn std::error::Error>> {
+fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
     println!("Compiling Uqbar runtime...");
 
     build::run_command(Command::new("cargo")
@@ -123,6 +127,7 @@ fn compile_runtime(path: &Path, verbose: bool) -> Result<(), Box<dyn std::error:
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
+    println!("Done compiling Uqbar runtime.");
     Ok(())
 }
 
@@ -132,7 +137,7 @@ fn run_runtime(
     port: u16,
     args: &[&str],
     verbose: bool,
-) -> Result<(Child, OwnedFd), Box<dyn std::error::Error>> {
+) -> anyhow::Result<(Child, OwnedFd)> {
     let port = format!("{}", port);
     let mut full_args = vec![
         "+nightly", "run", "--release",
@@ -157,7 +162,7 @@ fn run_runtime(
     Ok((process, fds.master))
 }
 
-async fn wait_until_booted(port: u16, max_port_diff: u16, max_waits: u16) -> Result<Option<u16>, Box<dyn Error>> {
+async fn wait_until_booted(port: u16, max_port_diff: u16, max_waits: u16) -> anyhow::Result<Option<u16>> {
     for _ in 0..max_waits {
         for port_scan in port..port + max_port_diff {
             let request = inject_message::make_message(
@@ -187,7 +192,8 @@ async fn wait_until_booted(port: u16, max_port_diff: u16, max_waits: u16) -> Res
     Ok(None)
 }
 
-async fn load_tests(test_paths: &Vec<PathBuf>, port: u16) -> Result<(), Box<dyn Error>> {
+async fn load_tests(test_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> {
+    println!("Loading tests...");
     for test_path in test_paths {
         let basename = get_basename(&test_path).unwrap();
         let request = inject_message::make_message(
@@ -214,10 +220,12 @@ async fn load_tests(test_paths: &Vec<PathBuf>, port: u16) -> Result<(), Box<dyn 
             _ => ()
         }
     }
+    println!("Done loading tests.");
     Ok(())
 }
 
-async fn run_tests(test_batch: &str, port: u16) -> Result<(), Box<dyn Error>> {
+async fn run_tests(test_batch: &str, port: u16) -> anyhow::Result<()> {
+    println!("Running tests...");
     let request = inject_message::make_message(
         "tester:tester:uqbar",
         "{\"Run\":null}",
@@ -230,41 +238,56 @@ async fn run_tests(test_batch: &str, port: u16) -> Result<(), Box<dyn Error>> {
         request,
     ).await?;
 
-    if response.status() == 200 {
+    if response.status() != 200 {
+        println!("Failed with status code: {}", response.status());
+    } else {
         let content: String = response.text().await?;
+
         let mut data: Option<Value> = serde_json::from_str(&content).ok();
 
-        if let Some(ref mut data_map) = data {
-            if let Some(ipc_str) = data_map["ipc"].as_str() {
-                let ipc_json: Value = serde_json::from_str(ipc_str).unwrap_or(Value::Null);
-                data_map["ipc"] = ipc_json;
-            }
+        println!("Done running tests ({}):", test_batch);
 
-            if let Some(payload_str) = data_map["payload"].as_str() {
-                let payload_json: Value = serde_json::from_str(payload_str).unwrap_or(Value::Null);
-                data_map["bytes"] = payload_json;
+        if let Some(ref mut data_map) = data {
+            if let Some(serde_json::Value::Array(ipc_bytes_val)) = data_map.get("ipc") {
+                let ipc_bytes: Vec<u8> = ipc_bytes_val.iter().map(|n| n.as_u64().unwrap() as u8).collect();
+                let ipc_string: String = String::from_utf8(ipc_bytes)?;
+                match serde_json::from_str(&ipc_string)? {
+                    tt::TesterResponse::Pass => println!("PASS"),
+                    tt::TesterResponse::Fail { test, file, line, column } => {
+                        let s = format!("FAIL: {} {}:{}:{}", test, file, line, column);
+                        println!("{}", s);
+                        return Err(anyhow::anyhow!(s));
+                    },
+                    tt::TesterResponse::GetFullMessage(_) => {
+                        let s = "FAIL: Unexpected Response";
+                        println!("{}", s);
+                        return Err(anyhow::anyhow!(s))
+                    },
+                }
+            } else {
+                println!("Test FAIL: unexpected Response: {:?}", data);
             }
         }
-        println!("{} {:?}", test_batch, content);
-    } else {
-        println!("Failed with status code: {}", response.status());
     }
 
     Ok(())
 }
 
-pub async fn execute(config_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn execute(config_path: &str) -> anyhow::Result<()> {
     let config_content = fs::read_to_string(config_path)?;
     let config = toml::from_str::<Config>(&config_content)?.expand_home_paths();
 
-    println!("{:?}", config);
+    // println!("{:?}", config);
 
     // Compile the runtime binary
-    compile_runtime(Path::new(config.runtime_path.to_str().unwrap()), config.is_runtime_print)?;
+    compile_runtime(
+        Path::new(config.runtime_path.to_str().unwrap()),
+        config.runtime_build_verbose,
+    )?;
 
     for test in config.tests {
         for test_process_path in &test.test_process_paths {
-            build::compile_process(&test_process_path)?;
+            build::compile_process(&test_process_path, test.test_build_verbose)?;
         }
 
         // Initialize variables for master node and nodes list
@@ -287,7 +310,7 @@ pub async fn execute(config_path: &str) -> Result<(), Box<dyn std::error::Error>
                 node.home.to_str().unwrap(),
                 node.port,
                 &["--password", &node.password, "--rpc", &node.rpc],
-                node.is_runtime_print,
+                node.runtime_verbose,
             )?;
 
             let node_info = NodeInfo {
@@ -305,7 +328,9 @@ pub async fn execute(config_path: &str) -> Result<(), Box<dyn std::error::Error>
 
         // Cleanup, boot check, test loading, and running
         for node in nodes.borrow_mut().iter_mut() {
+            println!("Setting up node {:?}...", node.home);
             node.port = wait_until_booted(node.port, 5, 5).await?.unwrap();
+            println!("Done setting up node {:?} on port {}.", node.home, node.port);
         }
 
         load_tests(&test.test_process_paths, master_node_port.unwrap().clone()).await?;

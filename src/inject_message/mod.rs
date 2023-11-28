@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 pub async fn send_request(
     url: &str,
     json_data: Value,
-) -> Result<reqwest::Response, Box<dyn Error>> {
+) -> anyhow::Result<reqwest::Response> {
     let endpoint = "/rpc:sys:uqbar/message";
     let mut url = url.to_string();
     let url =
@@ -74,7 +74,7 @@ pub async fn execute(
     ipc: &str,
     node: Option<&str>,
     bytes_path: Option<&str>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> anyhow::Result<()> {
     let request = make_message(process, ipc, node, None, bytes_path)?;
     let response = send_request(url, request).await?;
 
