@@ -14,6 +14,7 @@ use toml;
 
 use super::build;
 use super::inject_message;
+use super::start_package;
 
 mod tester_types;
 use tester_types as tt;
@@ -27,8 +28,9 @@ struct Config {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct Test {
-    test_process_paths: Vec<PathBuf>,
-    test_build_verbose: bool,
+    setup_package_paths: Vec<PathBuf>,
+    test_package_paths: Vec<PathBuf>,
+    package_build_verbose: bool,
     nodes: Vec<Node>,
 }
 
@@ -89,11 +91,30 @@ fn expand_home_path(path: &PathBuf) -> Option<PathBuf> {
         .and_then(|s| Some(Path::new(&s).to_path_buf()))
 }
 
+fn make_node_names(nodes: Vec<Node>) -> anyhow::Result<Vec<String>> {
+    nodes
+        .iter()
+        .map(|node| get_basename(&node.home)
+            .and_then(|base| Some(base.to_string()))
+            .and_then(|mut base| {
+                if !base.ends_with(".uq") {
+                    base.push_str(".uq");
+                }
+                Some(base)
+            })
+            .ok_or(anyhow::anyhow!(
+                "run_tests:make_node_names: did not find basename for {:?}",
+                node.home,
+            ))
+        )
+        .collect()
+}
+
 impl Config {
     fn expand_home_paths(mut self: Config) -> Config {
         self.runtime_path = expand_home_path(&self.runtime_path).unwrap_or(self.runtime_path);
         for test in self.tests.iter_mut() {
-            test.test_process_paths = test.test_process_paths
+            test.test_package_paths = test.test_package_paths
                 .iter()
                 .map(|tpp| expand_home_path(&tpp).unwrap_or_else(|| tpp.clone()))
                 .collect();
@@ -192,6 +213,21 @@ async fn wait_until_booted(port: u16, max_port_diff: u16, max_waits: u16) -> any
     Ok(None)
 }
 
+async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> {
+    println!("Loading setup packages...");
+
+    for setup_path in setup_paths {
+        start_package::execute(
+            setup_path.join("pkg").to_str().unwrap(),
+            &format!("http://localhost:{}", port),
+            None,
+        ).await?;
+    }
+
+    println!("Done loading setup packages.");
+    Ok(())
+}
+
 async fn load_tests(test_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> {
     println!("Loading tests...");
     for test_path in test_paths {
@@ -224,22 +260,48 @@ async fn load_tests(test_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> 
     Ok(())
 }
 
-async fn run_tests(test_batch: &str, port: u16) -> anyhow::Result<()> {
+async fn run_tests(test_batch: &str, mut ports: Vec<u16>, node_names: Vec<String>) -> anyhow::Result<()> {
+    let master_port = ports.remove(0);
+
+    // Set up non-master nodes.
+    for port in ports {
+        let request = inject_message::make_message(
+            "tester:tester:uqbar",
+            &serde_json::to_string(&serde_json::json!({"Run": node_names})).unwrap(),
+            // "{\"Run\":null}",
+            None,
+            None,
+            None,
+        )?;
+        let response = inject_message::send_request(
+            &format!("http://localhost:{}", port),
+            request,
+        ).await?;
+
+        if response.status() != 200 {
+            println!("Failed with status code: {}", response.status());
+            return Err(anyhow::anyhow!("Failed with status code: {}", response.status()))
+        }
+    }
+
+    // Set up master node & start tests.
     println!("Running tests...");
     let request = inject_message::make_message(
         "tester:tester:uqbar",
-        "{\"Run\":null}",
+        &serde_json::to_string(&serde_json::json!({"Run": node_names})).unwrap(),
+        // "{\"Run\":null}",
         None,
         None,
         None,
     )?;
     let response = inject_message::send_request(
-        &format!("http://localhost:{}", port),
+        &format!("http://localhost:{}", master_port),
         request,
     ).await?;
 
     if response.status() != 200 {
         println!("Failed with status code: {}", response.status());
+        return Err(anyhow::anyhow!("Failed with status code: {}", response.status()))
     } else {
         let content: String = response.text().await?;
 
@@ -286,8 +348,11 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
     )?;
 
     for test in config.tests {
-        for test_process_path in &test.test_process_paths {
-            build::compile_process(&test_process_path, test.test_build_verbose)?;
+        for setup_package_path in &test.setup_package_paths {
+            build::compile_package(&setup_package_path, test.package_build_verbose)?;
+        }
+        for test_package_path in &test.test_package_paths {
+            build::compile_package(&test_package_path, test.package_build_verbose)?;
         }
 
         // Initialize variables for master node and nodes list
@@ -298,7 +363,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
         let _cleanup_context = CleanupContext::new(Rc::clone(&nodes));
 
         // Process each node
-        for node in test.nodes {
+        for node in &test.nodes {
             let home_fs = Path::new(node.home.to_str().unwrap())
                 .join("fs");
             if home_fs.exists() {
@@ -317,7 +382,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                 process_handle: runtime_process,
                 master_fd,
                 port: node.port,
-                home: node.home,
+                home: node.home.clone(),
             };
 
             if master_node_port.is_none() {
@@ -326,17 +391,31 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
             nodes.borrow_mut().push(node_info);
         }
 
+        let mut ports = Vec::new();
+
         // Cleanup, boot check, test loading, and running
         for node in nodes.borrow_mut().iter_mut() {
             println!("Setting up node {:?}...", node.home);
             node.port = wait_until_booted(node.port, 5, 5).await?.unwrap();
+            ports.push(node.port);
             println!("Done setting up node {:?} on port {}.", node.home, node.port);
         }
 
-        load_tests(&test.test_process_paths, master_node_port.unwrap().clone()).await?;
+        for port in &ports {
+            load_setups(&test.setup_package_paths, port.clone()).await?;
+        }
+        load_tests(&test.test_package_paths, master_node_port.unwrap().clone()).await?;
+
+        // TODO: remove this unreliable abomination
+        // It is here because indirect nodes require at least 3s
+        //  to set up routing, so networked tests will fail until
+        //  that routing is set up
+        tokio::time::sleep(tokio::time::Duration::from_millis(7500)).await;
+
         run_tests(
-            &format!("{:?}", test.test_process_paths),
-            master_node_port.unwrap(),
+            &format!("{:?}", test.test_package_paths),
+            ports,
+            make_node_names(test.nodes)?,
         ).await?;
     }
 

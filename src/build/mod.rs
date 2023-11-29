@@ -12,14 +12,14 @@ pub fn run_command(cmd: &mut Command) -> io::Result<()> {
     }
 }
 
-pub fn compile_process(process_dir: &Path, verbose: bool) -> io::Result<()> {
+pub fn compile_package(package_dir: &Path, verbose: bool) -> io::Result<()> {
     // Check if `Cargo.toml` exists in the directory
-    let cargo_file = process_dir.join("Cargo.toml");
+    let cargo_file = package_dir.join("Cargo.toml");
     if cargo_file.exists() {
-        compile_wasm_project(process_dir, verbose)?;
+        compile_wasm_project(package_dir, verbose)?;
     } else {
         // If `Cargo.toml` is not found, look for subdirectories containing `Cargo.toml`
-        for entry in process_dir.read_dir()? {
+        for entry in package_dir.read_dir()? {
             let entry = entry?;
             let path = entry.path();
             if path.is_dir() && path.join("Cargo.toml").exists() {

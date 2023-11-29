@@ -102,7 +102,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(("build", build_matches)) => {
             let project_dir = PathBuf::from(build_matches.get_one::<String>("project_dir").unwrap());
             let verbose = !build_matches.get_one::<bool>("quiet").unwrap();
-            build::compile_process(&project_dir, verbose)?;
+            build::compile_package(&project_dir, verbose)?;
         },
         Some(("inject-message", inject_message_matches)) => {
             let url: &String = inject_message_matches.get_one("url").unwrap();
