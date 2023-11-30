@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::error::Error;
 use std::{fs, thread, time};
 use std::os::fd::AsRawFd;
 use std::os::unix::io::{FromRawFd, OwnedFd};
@@ -8,7 +7,6 @@ use std::process::{Child, Command, Stdio};
 use std::rc::Rc;
 
 use dirs::home_dir;
-use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use toml;
 
@@ -16,58 +14,11 @@ use super::build;
 use super::inject_message;
 use super::start_package;
 
+mod network_router;
+mod types;
+use types::*;
 mod tester_types;
 use tester_types as tt;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Config {
-    runtime_path: PathBuf,
-    runtime_build_verbose: bool,
-    tests: Vec<Test>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Test {
-    setup_package_paths: Vec<PathBuf>,
-    test_package_paths: Vec<PathBuf>,
-    package_build_verbose: bool,
-    nodes: Vec<Node>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Node {
-    port: u16,
-    home: PathBuf,
-    password: String,
-    rpc: String,
-    runtime_verbose: bool,
-}
-
-#[derive(Debug)]
-struct NodeInfo {
-    process_handle: Child,
-    master_fd: OwnedFd,
-    port: u16,
-    home: PathBuf,
-}
-
-struct CleanupContext {
-    nodes: Rc<RefCell<Vec<NodeInfo>>>,
-}
-
-impl CleanupContext {
-    fn new(nodes: Rc<RefCell<Vec<NodeInfo>>>) -> Self {
-        CleanupContext { nodes }
-    }
-}
-
-impl Drop for CleanupContext {
-    fn drop(&mut self) {
-        for node in self.nodes.borrow_mut().iter_mut() {
-            cleanup_node(node);
-        }
-    }
-}
 
 fn get_basename(file_path: &Path) -> Option<&str> {
     file_path
@@ -126,18 +77,6 @@ impl Config {
     }
 }
 
-fn cleanup_node(node: &mut NodeInfo) {
-    // Assuming Node is a struct that contains process_handle, master_fd, and home
-    // Send Ctrl-C to the process
-    nix::unistd::write(node.master_fd.as_raw_fd(), b"\x03").unwrap();
-    node.process_handle.wait().unwrap();
-
-    let home_fs = Path::new(&node.home).join("fs");
-    if home_fs.exists() {
-        fs::remove_dir_all(home_fs).unwrap();
-    }
-}
-
 fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
     println!("Compiling Uqbar runtime...");
 
@@ -156,14 +95,17 @@ fn run_runtime(
     path: &Path,
     home: &str,
     port: u16,
+    network_router_port: u16,
     args: &[&str],
     verbose: bool,
 ) -> anyhow::Result<(Child, OwnedFd)> {
     let port = format!("{}", port);
+    let network_router_port = format!("{}", network_router_port);
     let mut full_args = vec![
         "+nightly", "run", "--release",
         "--features", "simulation-mode", "--",
         "--port", port.as_str(), "--home", home,
+        "--network-router-port", network_router_port.as_str(),
     ];
 
     if !args.is_empty() {
@@ -374,6 +316,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                 Path::new(config.runtime_path.to_str().unwrap()),
                 node.home.to_str().unwrap(),
                 node.port,
+                test.network_router.port,
                 &["--password", &node.password, "--rpc", &node.rpc],
                 node.runtime_verbose,
             )?;
@@ -391,6 +334,13 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
             nodes.borrow_mut().push(node_info);
         }
 
+        let (send_to_kill_router, recv_kill_in_router) = tokio::sync::mpsc::channel(1);
+        tokio::task::spawn(network_router::execute(
+            test.network_router.port.clone(),
+            test.network_router.defects.clone(),
+            recv_kill_in_router,
+        ));
+
         let mut ports = Vec::new();
 
         // Cleanup, boot check, test loading, and running
@@ -406,17 +356,13 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
         }
         load_tests(&test.test_package_paths, master_node_port.unwrap().clone()).await?;
 
-        // TODO: remove this unreliable abomination
-        // It is here because indirect nodes require at least 3s
-        //  to set up routing, so networked tests will fail until
-        //  that routing is set up
-        tokio::time::sleep(tokio::time::Duration::from_millis(7500)).await;
-
         run_tests(
             &format!("{:?}", test.test_package_paths),
             ports,
             make_node_names(test.nodes)?,
         ).await?;
+
+        let _ = send_to_kill_router.send(true).await;
     }
 
     Ok(())
