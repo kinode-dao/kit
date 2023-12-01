@@ -42,7 +42,7 @@ pub struct Node {
     pub home: PathBuf,
     pub fake_node_name: Option<String>,
     pub password: Option<String>,
-    pub rpc: String,
+    pub rpc: Option<String>,
     pub runtime_verbose: bool,
 }
 

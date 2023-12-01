@@ -314,7 +314,10 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                 fs::remove_dir_all(home_fs).unwrap();
             }
 
-            let mut args = vec!["--rpc", &node.rpc];
+            let mut args = vec![];
+            if let Some(ref rpc) = node.rpc {
+                args.extend_from_slice(&["--rpc", rpc]);
+            };
             if let Some(ref fake_node_name) = node.fake_node_name {
                 args.extend_from_slice(&["--fake-node-name", fake_node_name]);
             };
