@@ -306,18 +306,28 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
 
         // Process each node
         for node in &test.nodes {
-            let home_fs = Path::new(node.home.to_str().unwrap())
+            fs::create_dir_all(&node.home)?;
+            let node_home = fs::canonicalize(&node.home)?;
+            let home_fs = Path::new(node_home.to_str().unwrap())
                 .join("fs");
             if home_fs.exists() {
                 fs::remove_dir_all(home_fs).unwrap();
             }
 
+            let mut args = vec!["--rpc", &node.rpc];
+            if let Some(ref fake_node_name) = node.fake_node_name {
+                args.extend_from_slice(&["--fake-node-name", fake_node_name]);
+            };
+            if let Some(ref password) = node.password {
+                args.extend_from_slice(&["--password", password]);
+            };
+
             let (runtime_process, master_fd) = run_runtime(
                 Path::new(config.runtime_path.to_str().unwrap()),
-                node.home.to_str().unwrap(),
+                node_home.to_str().unwrap(),
                 node.port,
                 test.network_router.port,
-                &["--password", &node.password, "--rpc", &node.rpc],
+                &args[..],
                 node.runtime_verbose,
             )?;
 
@@ -325,7 +335,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                 process_handle: runtime_process,
                 master_fd,
                 port: node.port,
-                home: node.home.clone(),
+                home: node_home.clone(),
             };
 
             if master_node_port.is_none() {
@@ -345,10 +355,11 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
 
         // Cleanup, boot check, test loading, and running
         for node in nodes.borrow_mut().iter_mut() {
-            println!("Setting up node {:?}...", node.home);
+            let node_home = fs::canonicalize(&node.home)?;
+            println!("Setting up node {:?}...", node_home);
             node.port = wait_until_booted(node.port, 5, 5).await?.unwrap();
             ports.push(node.port);
-            println!("Done setting up node {:?} on port {}.", node.home, node.port);
+            println!("Done setting up node {:?} on port {}.", node_home, node.port);
         }
 
         for port in &ports {

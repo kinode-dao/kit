@@ -40,7 +40,8 @@ pub enum NetworkRouterDefects {
 pub struct Node {
     pub port: u16,
     pub home: PathBuf,
-    pub password: String,
+    pub fake_node_name: Option<String>,
+    pub password: Option<String>,
     pub rpc: String,
     pub runtime_verbose: bool,
 }
@@ -74,6 +75,7 @@ impl Drop for CleanupContext {
 fn cleanup_node(node: &mut NodeInfo) {
     // Assuming Node is a struct that contains process_handle, master_fd, and home
     // Send Ctrl-C to the process
+    println!("Cleaning up {:?}...", node.home);
     nix::unistd::write(node.master_fd.as_raw_fd(), b"\x03").unwrap();
     node.process_handle.wait().unwrap();
 
@@ -81,4 +83,5 @@ fn cleanup_node(node: &mut NodeInfo) {
     if home_fs.exists() {
         fs::remove_dir_all(home_fs).unwrap();
     }
+    println!("Done cleaning up {:?}.", node.home);
 }

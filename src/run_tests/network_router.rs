@@ -81,6 +81,8 @@ pub async fn execute(
         .await
         .expect("Failed to bind");
 
+    println!("network_router: online at {}\r", port);
+
     loop {
         tokio::select! {
             Ok((stream, _)) = listener.accept() => {
