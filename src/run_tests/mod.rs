@@ -104,7 +104,7 @@ fn run_runtime(
     let mut full_args = vec![
         "+nightly", "run", "--release",
         "--features", "simulation-mode", "--",
-        "--port", port.as_str(), "--home", home,
+        home, "--port", port.as_str(),
         "--network-router-port", network_router_port.as_str(),
     ];
 
