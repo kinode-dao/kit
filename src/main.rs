@@ -4,11 +4,12 @@ use std::path::PathBuf;
 
 mod build;
 mod inject_message;
-mod start_package;
+mod new;
 mod run_tests;
+mod start_package;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> anyhow::Result<()> {
     let current_dir = env::current_dir()?.into_os_string();
     // let current_dir = env::current_dir()?.as_os_str();
     // let current_dir: String = env::current_dir()?.to_str().unwrap_or("").to_string();
@@ -65,12 +66,38 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .required(false)
                 .help("Send bytes from path on Unix system"))
         )
+        .subcommand(Command::new("new")
+            .about("Create an Uqbar template project")
+            .arg(Arg::new("directory")
+                .action(ArgAction::Set)
+                .short('d')
+                .long("dir")
+                .help("Path to create template directory at")
+                .required(true)
+            )
+            .arg(Arg::new("package_name")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("package-name")
+                .help("Name of the package")
+            )
+        )
+        .subcommand(Command::new("run-tests")
+            .about("Run Uqbar tests")
+            .arg(Arg::new("config")
+                .action(ArgAction::Set)
+                .short('c')
+                .long("config")
+                .help("Path to tests configuration file")
+                .default_value("tests.toml")
+            )
+        )
         .subcommand(Command::new("start-package")
             .about("Start a built Uqbar process")
             .arg(Arg::new("pkg_dir")
                 .action(ArgAction::Set)
                 .short('p')
-                .long("pkg_dir")
+                .long("pkg-dir")
                 .required(true))
             .arg(Arg::new("url")
                 .action(ArgAction::Set)
@@ -82,16 +109,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .short('n')
                 .long("node")
                 .required(false))
-        )
-        .subcommand(Command::new("run-tests")
-            .about("Run Uqbar tests")
-            .arg(Arg::new("config")
-                .action(ArgAction::Set)
-                .short('c')
-                .long("config")
-                .help("Path to tests configuration file")
-                .default_value("tests.toml")
-            )
         );
 
     let usage = app.render_usage();
@@ -116,13 +133,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .and_then(|s: &String| Some(s.as_str()));
             inject_message::execute(url, process, ipc, node, bytes).await?;
         },
-        Some(("start-package", start_package_matches)) => {
-            let pkg_dir: &String = start_package_matches.get_one("pkg_dir").unwrap();
-            let url: &String = start_package_matches.get_one("url").unwrap();
-            let node: Option<&str> = start_package_matches
-                .get_one("node")
-                .and_then(|s: &String| Some(s.as_str()));
-            start_package::execute(pkg_dir, url, node).await?;
+        Some(("new", new_matches)) => {
+            let new_dir = PathBuf::from(new_matches.get_one::<String>("directory").unwrap());
+            let package_name = new_matches.get_one::<String>("package_name");
+
+            new::execute(new_dir, package_name.map(|s| s.clone()))?;
         },
         Some(("run-tests", run_tests_matches)) => {
             let config_path = match run_tests_matches.get_one::<String>("config") {
@@ -131,10 +146,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             if !config_path.exists() {
-                return Err(format!("Configuration file not found: {:?}", config_path).into());
+                let error = format!(
+                    "Configuration file not found: {:?}\nUsage:\n{}",
+                    config_path,
+                    usage,
+                );
+                println!("{}", error);
+                return Err(anyhow::anyhow!(error));
             }
 
             run_tests::execute(config_path.to_str().unwrap()).await?;
+        },
+        Some(("start-package", start_package_matches)) => {
+            let pkg_dir: &String = start_package_matches.get_one("pkg_dir").unwrap();
+            let url: &String = start_package_matches.get_one("url").unwrap();
+            let node: Option<&str> = start_package_matches
+                .get_one("node")
+                .and_then(|s: &String| Some(s.as_str()));
+            start_package::execute(pkg_dir, url, node).await?;
         },
         _ => println!("Invalid subcommand. Usage:\n{}", usage),
     }
