@@ -160,7 +160,7 @@ async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()
 
     for setup_path in setup_paths {
         start_package::execute(
-            setup_path.join("pkg").to_str().unwrap(),
+            setup_path.clone(),
             &format!("http://localhost:{}", port),
             None,
         ).await?;
@@ -291,10 +291,10 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
 
     for test in config.tests {
         for setup_package_path in &test.setup_package_paths {
-            build::compile_package(&setup_package_path, test.package_build_verbose)?;
+            build::compile_package(&setup_package_path, test.package_build_verbose).await?;
         }
         for test_package_path in &test.test_package_paths {
-            build::compile_package(&test_package_path, test.package_build_verbose)?;
+            build::compile_package(&test_package_path, test.package_build_verbose).await?;
         }
 
         // Initialize variables for master node and nodes list

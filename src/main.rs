@@ -4,11 +4,12 @@ use std::path::PathBuf;
 
 mod build;
 mod inject_message;
-mod start_package;
+mod new;
 mod run_tests;
+mod start_package;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> anyhow::Result<()> {
     let current_dir = env::current_dir()?.into_os_string();
     // let current_dir = env::current_dir()?.as_os_str();
     // let current_dir: String = env::current_dir()?.to_str().unwrap_or("").to_string();
@@ -22,16 +23,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .about("Build an Uqbar process")
             .arg(Arg::new("project_dir")
                 .action(ArgAction::Set)
-                .default_value(&current_dir)
                 .help("The project directory to build")
-                .required(true)
+                .default_value(&current_dir)
             )
             .arg(Arg::new("quiet")
                 .action(ArgAction::SetTrue)
                 .short('q')
                 .long("quiet")
+                .help("If set, do not print `cargo` stdout/stderr")
                 .required(false)
-                .help("If set, do not print `cargo` stdout/stderr"))
+            )
         )
         .subcommand(Command::new("inject-message")
             .about("Inject a message to a running Uqbar node")
@@ -39,58 +40,78 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
-                .required(true))
+                .required(true)
+            )
             .arg(Arg::new("process")
                 .action(ArgAction::Set)
                 .short('p')
                 .long("process")
+                .help("Process to send message to")
                 .required(true)
-                .help("Process to send message to"))
+            )
             .arg(Arg::new("ipc")
                 .action(ArgAction::Set)
                 .short('i')
                 .long("ipc")
+                .help("IPC in JSON format")
                 .required(true)
-                .help("IPC in JSON format"))
+            )
             .arg(Arg::new("node")
                 .action(ArgAction::Set)
                 .short('n')
                 .long("node")
+                .help("Node ID (default: our)")
                 .required(false)
-                .help("Node ID (default: our)"))
+            )
             .arg(Arg::new("bytes")
                 .action(ArgAction::Set)
                 .short('b')
                 .long("bytes")
+                .help("Send bytes from path on Unix system")
                 .required(false)
-                .help("Send bytes from path on Unix system"))
+            )
         )
-        .subcommand(Command::new("start-package")
-            .about("Start a built Uqbar process")
-            .arg(Arg::new("pkg_dir")
+        .subcommand(Command::new("new")
+            .about("Create an Uqbar template project")
+            .arg(Arg::new("directory")
+                .action(ArgAction::Set)
+                .help("Path to create template directory at")
+                .required(true)
+            )
+            .arg(Arg::new("package_name")
                 .action(ArgAction::Set)
                 .short('p')
-                .long("pkg_dir")
-                .required(true))
-            .arg(Arg::new("url")
-                .action(ArgAction::Set)
-                .short('u')
-                .long("url")
-                .required(true))
-            .arg(Arg::new("node")
-                .action(ArgAction::Set)
-                .short('n')
-                .long("node")
-                .required(false))
+                .long("package")
+                .help("Name of the package")
+                .required(false)
+            )
         )
         .subcommand(Command::new("run-tests")
             .about("Run Uqbar tests")
             .arg(Arg::new("config")
                 .action(ArgAction::Set)
-                .short('c')
-                .long("config")
                 .help("Path to tests configuration file")
                 .default_value("tests.toml")
+            )
+        )
+        .subcommand(Command::new("start-package")
+            .about("Start a built Uqbar process")
+            .arg(Arg::new("project_dir")
+                .action(ArgAction::Set)
+                .help("The project directory to build")
+                .default_value(&current_dir)
+            )
+            .arg(Arg::new("url")
+                .action(ArgAction::Set)
+                .short('u')
+                .long("url")
+                .required(true)
+            )
+            .arg(Arg::new("node")
+                .action(ArgAction::Set)
+                .short('n')
+                .long("node")
+                .required(false)
             )
         );
 
@@ -102,7 +123,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some(("build", build_matches)) => {
             let project_dir = PathBuf::from(build_matches.get_one::<String>("project_dir").unwrap());
             let verbose = !build_matches.get_one::<bool>("quiet").unwrap();
-            build::compile_package(&project_dir, verbose)?;
+            build::compile_package(&project_dir, verbose).await?;
         },
         Some(("inject-message", inject_message_matches)) => {
             let url: &String = inject_message_matches.get_one("url").unwrap();
@@ -116,13 +137,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .and_then(|s: &String| Some(s.as_str()));
             inject_message::execute(url, process, ipc, node, bytes).await?;
         },
-        Some(("start-package", start_package_matches)) => {
-            let pkg_dir: &String = start_package_matches.get_one("pkg_dir").unwrap();
-            let url: &String = start_package_matches.get_one("url").unwrap();
-            let node: Option<&str> = start_package_matches
-                .get_one("node")
-                .and_then(|s: &String| Some(s.as_str()));
-            start_package::execute(pkg_dir, url, node).await?;
+        Some(("new", new_matches)) => {
+            let new_dir = PathBuf::from(new_matches.get_one::<String>("directory").unwrap());
+            let package_name = new_matches.get_one::<String>("package_name");
+
+            new::execute(new_dir, package_name.map(|s| s.clone()))?;
         },
         Some(("run-tests", run_tests_matches)) => {
             let config_path = match run_tests_matches.get_one::<String>("config") {
@@ -131,10 +150,24 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
 
             if !config_path.exists() {
-                return Err(format!("Configuration file not found: {:?}", config_path).into());
+                let error = format!(
+                    "Configuration file not found: {:?}\nUsage:\n{}",
+                    config_path,
+                    usage,
+                );
+                println!("{}", error);
+                return Err(anyhow::anyhow!(error));
             }
 
             run_tests::execute(config_path.to_str().unwrap()).await?;
+        },
+        Some(("start-package", start_package_matches)) => {
+            let project_dir = PathBuf::from(start_package_matches.get_one::<String>("project_dir").unwrap());
+            let url: &String = start_package_matches.get_one("url").unwrap();
+            let node: Option<&str> = start_package_matches
+                .get_one("node")
+                .and_then(|s: &String| Some(s.as_str()));
+            start_package::execute(project_dir, url, node).await?;
         },
         _ => println!("Invalid subcommand. Usage:\n{}", usage),
     }

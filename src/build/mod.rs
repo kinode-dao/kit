@@ -3,6 +3,8 @@ use std::io;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
+use reqwest;
+
 pub fn run_command(cmd: &mut Command) -> io::Result<()> {
     let status = cmd.status()?;
     if status.success() {
@@ -12,18 +14,26 @@ pub fn run_command(cmd: &mut Command) -> io::Result<()> {
     }
 }
 
-pub fn compile_package(package_dir: &Path, verbose: bool) -> io::Result<()> {
+async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
+    let response = reqwest::get(url).await?;
+    let content = response.bytes().await?;
+
+    fs::write(path, &content)?;
+    Ok(())
+}
+
+pub async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
     // Check if `Cargo.toml` exists in the directory
     let cargo_file = package_dir.join("Cargo.toml");
     if cargo_file.exists() {
-        compile_wasm_project(package_dir, verbose)?;
+        compile_wasm_project(package_dir, verbose).await?;
     } else {
         // If `Cargo.toml` is not found, look for subdirectories containing `Cargo.toml`
         for entry in package_dir.read_dir()? {
             let entry = entry?;
             let path = entry.path();
             if path.is_dir() && path.join("Cargo.toml").exists() {
-                compile_wasm_project(&path, verbose)?;
+                compile_wasm_project(&path, verbose).await?;
             }
         }
     }
@@ -31,7 +41,7 @@ pub fn compile_package(package_dir: &Path, verbose: bool) -> io::Result<()> {
     Ok(())
 }
 
-pub fn compile_wasm_project(project_dir: &Path, verbose: bool) -> io::Result<()> {
+pub async fn compile_wasm_project(project_dir: &Path, verbose: bool) -> anyhow::Result<()> {
     println!("Compiling WASM project in {:?}...", project_dir);
 
     // Paths
@@ -43,6 +53,24 @@ pub fn compile_wasm_project(project_dir: &Path, verbose: bool) -> io::Result<()>
 
     // Ensure the bindings directory exists
     fs::create_dir_all(&bindings_dir)?;
+
+    // Check and download uqbar.wit if wit_dir does not exist
+    if !wit_dir.exists() {
+        fs::create_dir_all(&wit_dir)?;
+        let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/uqbar.wit";
+        download_file(uqbar_wit_url, &wit_dir.join("uqbar.wit")).await?;
+    }
+
+    // Check and download wasi_snapshot_preview1.wasm if it does not exist
+    let wasi_snapshot_file = project_dir.join("wasi_snapshot_preview1.wasm");
+    if !wasi_snapshot_file.exists() {
+        let wasi_version = "14.0.4";  // TODO: un-hardcode
+        let wasi_snapshot_url = format!(
+            "https://github.com/bytecodealliance/wasmtime/releases/download/v{}/wasi_snapshot_preview1.reactor.wasm",
+            wasi_version,
+        );
+        download_file(&wasi_snapshot_url, &wasi_snapshot_file).await?;
+    }
 
     // Create target.wasm (compiled .wit) & world
     run_command(Command::new("wasm-tools")
