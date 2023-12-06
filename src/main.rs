@@ -78,12 +78,12 @@ async fn main() -> anyhow::Result<()> {
                 .help("Path to create template directory at")
                 .required(true)
             )
-            .arg(Arg::new("package_name")
+            .arg(Arg::new("package-name")
                 .action(ArgAction::Set)
                 .short('p')
                 .long("package")
                 .help("Name of the package")
-                .required(false)
+                .required(true)
             )
         )
         .subcommand(Command::new("run-tests")
@@ -139,9 +139,9 @@ async fn main() -> anyhow::Result<()> {
         },
         Some(("new", new_matches)) => {
             let new_dir = PathBuf::from(new_matches.get_one::<String>("directory").unwrap());
-            let package_name = new_matches.get_one::<String>("package_name");
+            let package_name = new_matches.get_one::<String>("package-name").unwrap();
 
-            new::execute(new_dir, package_name.map(|s| s.clone()))?;
+            new::execute(new_dir, package_name.clone())?;
         },
         Some(("run-tests", run_tests_matches)) => {
             let config_path = match run_tests_matches.get_one::<String>("config") {

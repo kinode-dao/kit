@@ -8,7 +8,7 @@ const PATH_TO_CONTENT: &[(&str, &str)] = &[
     ("src/lib.rs",        include_str!("templates/src/lib.rs")),
 ];
 
-pub fn execute(new_dir: PathBuf, package_name: Option<String>) -> anyhow::Result<()> {
+pub fn execute(new_dir: PathBuf, package_name: String) -> anyhow::Result<()> {
     // Check if the directory already exists
     if new_dir.exists() {
         let error = format!(
@@ -18,8 +18,6 @@ pub fn execute(new_dir: PathBuf, package_name: Option<String>) -> anyhow::Result
         println!("{}", error);
         return Err(anyhow::anyhow!(error));
     }
-
-    let package_name = package_name.unwrap_or("template".into());
 
     let mut path_to_content: HashMap<String, String> = PATH_TO_CONTENT
         .iter()
