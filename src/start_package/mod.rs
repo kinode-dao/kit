@@ -1,10 +1,9 @@
 use std::fs;
 use std::io;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process;
 
-use reqwest::Url;
 use serde_json::json;
 use walkdir::WalkDir;
 use zip::write::FileOptions;
@@ -86,8 +85,8 @@ fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn execute(pkg_dir: &str, url: &str, node: Option<&str>) -> anyhow::Result<()> {
-    let pkg_dir = Path::new(&pkg_dir).canonicalize()?;
+pub async fn execute(project_dir: PathBuf, url: &str, node: Option<&str>) -> anyhow::Result<()> {
+    let pkg_dir = project_dir.join("pkg").canonicalize()?;
     let metadata: serde_json::Value = serde_json::from_reader(fs::File::open(pkg_dir
         .join("metadata.json")
     )?)?;

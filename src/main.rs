@@ -23,16 +23,16 @@ async fn main() -> anyhow::Result<()> {
             .about("Build an Uqbar process")
             .arg(Arg::new("project_dir")
                 .action(ArgAction::Set)
-                .default_value(&current_dir)
                 .help("The project directory to build")
-                .required(true)
+                .default_value(&current_dir)
             )
             .arg(Arg::new("quiet")
                 .action(ArgAction::SetTrue)
                 .short('q')
                 .long("quiet")
+                .help("If set, do not print `cargo` stdout/stderr")
                 .required(false)
-                .help("If set, do not print `cargo` stdout/stderr"))
+            )
         )
         .subcommand(Command::new("inject-message")
             .about("Inject a message to a running Uqbar node")
@@ -40,75 +40,79 @@ async fn main() -> anyhow::Result<()> {
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
-                .required(true))
+                .required(true)
+            )
             .arg(Arg::new("process")
                 .action(ArgAction::Set)
                 .short('p')
                 .long("process")
+                .help("Process to send message to")
                 .required(true)
-                .help("Process to send message to"))
+            )
             .arg(Arg::new("ipc")
                 .action(ArgAction::Set)
                 .short('i')
                 .long("ipc")
+                .help("IPC in JSON format")
                 .required(true)
-                .help("IPC in JSON format"))
+            )
             .arg(Arg::new("node")
                 .action(ArgAction::Set)
                 .short('n')
                 .long("node")
+                .help("Node ID (default: our)")
                 .required(false)
-                .help("Node ID (default: our)"))
+            )
             .arg(Arg::new("bytes")
                 .action(ArgAction::Set)
                 .short('b')
                 .long("bytes")
+                .help("Send bytes from path on Unix system")
                 .required(false)
-                .help("Send bytes from path on Unix system"))
+            )
         )
         .subcommand(Command::new("new")
             .about("Create an Uqbar template project")
             .arg(Arg::new("directory")
                 .action(ArgAction::Set)
-                .short('d')
-                .long("dir")
                 .help("Path to create template directory at")
                 .required(true)
             )
             .arg(Arg::new("package_name")
                 .action(ArgAction::Set)
                 .short('p')
-                .long("package-name")
+                .long("package")
                 .help("Name of the package")
+                .required(false)
             )
         )
         .subcommand(Command::new("run-tests")
             .about("Run Uqbar tests")
             .arg(Arg::new("config")
                 .action(ArgAction::Set)
-                .short('c')
-                .long("config")
                 .help("Path to tests configuration file")
                 .default_value("tests.toml")
             )
         )
         .subcommand(Command::new("start-package")
             .about("Start a built Uqbar process")
-            .arg(Arg::new("pkg_dir")
+            .arg(Arg::new("project_dir")
                 .action(ArgAction::Set)
-                .short('p')
-                .long("pkg-dir")
-                .required(true))
+                .help("The project directory to build")
+                .default_value(&current_dir)
+            )
             .arg(Arg::new("url")
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
-                .required(true))
+                .required(true)
+            )
             .arg(Arg::new("node")
                 .action(ArgAction::Set)
                 .short('n')
                 .long("node")
-                .required(false))
+                .required(false)
+            )
         );
 
     let usage = app.render_usage();
@@ -119,7 +123,7 @@ async fn main() -> anyhow::Result<()> {
         Some(("build", build_matches)) => {
             let project_dir = PathBuf::from(build_matches.get_one::<String>("project_dir").unwrap());
             let verbose = !build_matches.get_one::<bool>("quiet").unwrap();
-            build::compile_package(&project_dir, verbose)?;
+            build::compile_package(&project_dir, verbose).await?;
         },
         Some(("inject-message", inject_message_matches)) => {
             let url: &String = inject_message_matches.get_one("url").unwrap();
@@ -158,12 +162,12 @@ async fn main() -> anyhow::Result<()> {
             run_tests::execute(config_path.to_str().unwrap()).await?;
         },
         Some(("start-package", start_package_matches)) => {
-            let pkg_dir: &String = start_package_matches.get_one("pkg_dir").unwrap();
+            let project_dir = PathBuf::from(start_package_matches.get_one::<String>("project_dir").unwrap());
             let url: &String = start_package_matches.get_one("url").unwrap();
             let node: Option<&str> = start_package_matches
                 .get_one("node")
                 .and_then(|s: &String| Some(s.as_str()));
-            start_package::execute(pkg_dir, url, node).await?;
+            start_package::execute(project_dir, url, node).await?;
         },
         _ => println!("Invalid subcommand. Usage:\n{}", usage),
     }
