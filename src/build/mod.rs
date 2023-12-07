@@ -16,6 +16,12 @@ pub fn run_command(cmd: &mut Command) -> io::Result<()> {
 
 async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
     let response = reqwest::get(url).await?;
+
+    // Check if response status is 200 (OK)
+    if response.status() != reqwest::StatusCode::OK {
+        return Err(anyhow::anyhow!("Failed to download file: HTTP Status {}", response.status()));
+    }
+
     let content = response.bytes().await?;
 
     fs::write(path, &content)?;
