@@ -14,7 +14,7 @@ pub fn run_command(cmd: &mut Command) -> io::Result<()> {
     }
 }
 
-async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
+pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
     let response = reqwest::get(url).await?;
 
     // Check if response status is 200 (OK)

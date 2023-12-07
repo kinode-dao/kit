@@ -56,11 +56,15 @@ pub struct NodeInfo {
 
 pub struct CleanupContext {
     pub nodes: Rc<RefCell<Vec<NodeInfo>>>,
+    pub send_to_kill_router: tokio::sync::mpsc::UnboundedSender<bool>,
 }
 
 impl CleanupContext {
-    pub fn new(nodes: Rc<RefCell<Vec<NodeInfo>>>) -> Self {
-        CleanupContext { nodes }
+    pub fn new(
+        nodes: Rc<RefCell<Vec<NodeInfo>>>,
+        send_to_kill_router: tokio::sync::mpsc::UnboundedSender<bool>,
+) -> Self {
+        CleanupContext { nodes, send_to_kill_router }
     }
 }
 
@@ -69,6 +73,8 @@ impl Drop for CleanupContext {
         for node in self.nodes.borrow_mut().iter_mut() {
             cleanup_node(node);
         }
+        let _ = self.send_to_kill_router.send(true);
+
     }
 }
 
@@ -79,7 +85,7 @@ fn cleanup_node(node: &mut NodeInfo) {
     nix::unistd::write(node.master_fd.as_raw_fd(), b"\x03").unwrap();
     node.process_handle.wait().unwrap();
 
-    let home_fs = Path::new(&node.home).join("fs");
+    let home_fs = &node.home.join("fs");
     if home_fs.exists() {
         fs::remove_dir_all(home_fs).unwrap();
     }
