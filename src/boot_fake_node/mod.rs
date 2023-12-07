@@ -51,7 +51,6 @@ pub fn run_runtime(
     verbose: bool,
     detached: bool,
 ) -> anyhow::Result<(Child, OwnedFd)> {
-    println!("a");
     let port = format!("{}", port);
     let network_router_port = format!("{}", network_router_port);
     let mut full_args = vec![
@@ -65,7 +64,6 @@ pub fn run_runtime(
 
     let fds = nix::pty::openpty(None, None)?;
 
-    println!("{:?} {:?} {:?} {:?}", path, path.parent(), path.file_name(), full_args);
     let process = Command::new(path)
         .args(&full_args)
         .current_dir(path.parent().unwrap())
@@ -73,7 +71,6 @@ pub fn run_runtime(
         .stdout(if verbose { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
         .stderr(if verbose { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
         .spawn()?;
-    println!("c");
 
     Ok((process, fds.master))
 }
@@ -148,7 +145,6 @@ pub async fn execute(
     args.extend_from_slice(&["--fake-node-name", fake_node_name]);
     args.extend_from_slice(&["--password", password]);
 
-    println!("{:?}", runtime_path);
     let (runtime_process, master_fd) = run_runtime(
         &runtime_path,
         &node_home,
@@ -158,7 +154,6 @@ pub async fn execute(
         true,
         false,
     )?;
-    println!("we running");
 
     let node_info = NodeInfo {
         process_handle: runtime_process,
