@@ -4,12 +4,10 @@ Tools for developing on Uqbar
 
 ## Installing
 
-Clone this repo, and then install with cargo:
+Install with cargo:
 
 ```
-git clone https://github.com/uqbar-dao/uqdev
-cd uqdev
-cargo install --path .
+cargo install --git https://github.com/uqbar-dao/uqdev
 ```
 
 ## Usage
@@ -46,9 +44,3 @@ uqdev run-tests --help
 
 UqDev also contains tools for running tests.
 For details and examples, please see https://github.com/uqbar-dao/core_tests
-
-
-## TODO
-
-1. Update README Installing section when repo goes public: `cargo install --git https://github.com/uqbar-dao/uqdev`
-2. Put crate on crates.io
