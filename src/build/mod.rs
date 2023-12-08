@@ -32,14 +32,14 @@ pub async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Resul
     // Check if `Cargo.toml` exists in the directory
     let cargo_file = package_dir.join("Cargo.toml");
     if cargo_file.exists() {
-        compile_wasm_project(package_dir, verbose).await?;
+        compile_wasm_project(package_dir, false, verbose).await?;
     } else {
         // If `Cargo.toml` is not found, look for subdirectories containing `Cargo.toml`
         for entry in package_dir.read_dir()? {
             let entry = entry?;
             let path = entry.path();
             if path.is_dir() && path.join("Cargo.toml").exists() {
-                compile_wasm_project(&path, verbose).await?;
+                compile_wasm_project(&path, true, verbose).await?;
             }
         }
     }
@@ -47,15 +47,15 @@ pub async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Resul
     Ok(())
 }
 
-pub async fn compile_wasm_project(project_dir: &Path, verbose: bool) -> anyhow::Result<()> {
-    println!("Compiling WASM project in {:?}...", project_dir);
+pub async fn compile_wasm_project(process_dir: &Path, is_subdir: bool, verbose: bool) -> anyhow::Result<()> {
+    println!("Compiling WASM project in {:?}...", process_dir);
 
     // Paths
-    let bindings_dir = project_dir
+    let bindings_dir = process_dir
         .join("target")
         .join("bindings")
-        .join(project_dir.file_name().unwrap());
-    let wit_dir = project_dir.join("wit");
+        .join(process_dir.file_name().unwrap());
+    let wit_dir = process_dir.join("wit");
 
     // Ensure the bindings directory exists
     fs::create_dir_all(&bindings_dir)?;
@@ -68,7 +68,7 @@ pub async fn compile_wasm_project(project_dir: &Path, verbose: bool) -> anyhow::
     }
 
     // Check and download wasi_snapshot_preview1.wasm if it does not exist
-    let wasi_snapshot_file = project_dir.join("wasi_snapshot_preview1.wasm");
+    let wasi_snapshot_file = process_dir.join("wasi_snapshot_preview1.wasm");
     if !wasi_snapshot_file.exists() {
         let wasi_version = "14.0.4";  // TODO: un-hardcode
         let wasi_snapshot_url = format!(
@@ -106,24 +106,21 @@ pub async fn compile_wasm_project(project_dir: &Path, verbose: bool) -> anyhow::
             "--no-default-features",
             "--target", "wasm32-wasi",
         ])
-        .current_dir(project_dir)
+        .current_dir(process_dir)
         .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
     // Adapt the module using wasm-tools
 
-    // For use inside of project_dir
+    // For use inside of process_dir
     let wasm_file_prefix = Path::new("target/wasm32-wasi/release");
     let wasm_file = wasm_file_prefix
         .clone()
-        .join(&format!("{}.wasm", project_dir.file_name().unwrap().to_str().unwrap()));
+        .join(&format!("{}.wasm", process_dir.file_name().unwrap().to_str().unwrap()));
     let adapted_wasm_file = wasm_file_prefix
         .clone()
-        .join(&format!("{}_adapted.wasm", project_dir.file_name().unwrap().to_str().unwrap()));
-
-    let wasm_path = format!("pkg/{}.wasm", project_dir.file_name().unwrap().to_str().unwrap());
-    let wasm_path = Path::new(&wasm_path);
+        .join(&format!("{}_adapted.wasm", process_dir.file_name().unwrap().to_str().unwrap()));
 
     let wasi_snapshot_file = Path::new("wasi_snapshot_preview1.wasm");
 
@@ -133,24 +130,32 @@ pub async fn compile_wasm_project(project_dir: &Path, verbose: bool) -> anyhow::
             "-o", adapted_wasm_file.to_str().unwrap(),
             "--adapt", wasi_snapshot_file.to_str().unwrap(),
         ])
-        .current_dir(project_dir)
+        .current_dir(process_dir)
         .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    // Embed "wit" into the component and place it in the expected location
+    let wasm_path =
+        if is_subdir {
+            format!("../pkg/{}.wasm", process_dir.file_name().unwrap().to_str().unwrap())
+        } else {
+            format!("pkg/{}.wasm", process_dir.file_name().unwrap().to_str().unwrap())
+        };
+    let wasm_path = Path::new(&wasm_path);
+
+    // Embed wit into the component and place it in the expected location
     run_command(Command::new("wasm-tools")
         .args(&["component", "embed",
-            wit_dir.strip_prefix(project_dir).unwrap().to_str().unwrap(),
+            wit_dir.strip_prefix(process_dir).unwrap().to_str().unwrap(),
             "--world", "process",
             adapted_wasm_file.to_str().unwrap(),
             "-o", wasm_path.to_str().unwrap(),
         ])
-        .current_dir(project_dir)
+        .current_dir(process_dir)
         .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling WASM project in {:?}.", project_dir);
+    println!("Done compiling WASM project in {:?}.", process_dir);
     Ok(())
 }

@@ -73,7 +73,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .subcommand(Command::new("build")
             .about("Build an Uqbar process")
-            .arg(Arg::new("project_dir")
+            .arg(Arg::new("project-dir")
                 .action(ArgAction::Set)
                 .help("The project directory to build")
                 .default_value(&current_dir)
@@ -148,7 +148,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .subcommand(Command::new("start-package")
             .about("Start a built Uqbar process")
-            .arg(Arg::new("project_dir")
+            .arg(Arg::new("project-dir")
                 .action(ArgAction::Set)
                 .help("The project directory to build")
                 .default_value(&current_dir)
@@ -193,7 +193,7 @@ async fn main() -> anyhow::Result<()> {
             ).await?;
         },
         Some(("build", build_matches)) => {
-            let project_dir = PathBuf::from(build_matches.get_one::<String>("project_dir").unwrap());
+            let project_dir = PathBuf::from(build_matches.get_one::<String>("project-dir").unwrap());
             let verbose = !build_matches.get_one::<bool>("quiet").unwrap();
             build::compile_package(&project_dir, verbose).await?;
         },
@@ -234,7 +234,7 @@ async fn main() -> anyhow::Result<()> {
             run_tests::execute(config_path.to_str().unwrap()).await?;
         },
         Some(("start-package", start_package_matches)) => {
-            let project_dir = PathBuf::from(start_package_matches.get_one::<String>("project_dir").unwrap());
+            let project_dir = PathBuf::from(start_package_matches.get_one::<String>("project-dir").unwrap());
             let url: &String = start_package_matches.get_one("url").unwrap();
             let node: Option<&str> = start_package_matches
                 .get_one("node")
