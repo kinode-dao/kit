@@ -1,5 +1,3 @@
-use reqwest::Url;
-use std::error::Error;
 use std::fs;
 use std::io::{self, Read};
 

@@ -9,6 +9,87 @@ mod new;
 mod run_tests;
 mod start_package;
 
+async fn execute(
+    usage: clap::builder::StyledStr,
+    matches: Option<(&str, &clap::ArgMatches)>,
+) -> anyhow::Result<()> {
+    match matches {
+        Some(("boot-fake-node", boot_matches)) => {
+            let version = boot_matches.get_one::<String>("version").unwrap();
+            let node_home = PathBuf::from(boot_matches.get_one::<String>("node-home").unwrap());
+            let node_port = boot_matches.get_one::<u16>("node-port").unwrap();
+            let network_router_port = boot_matches.get_one::<u16>("network-router-port").unwrap();
+            let rpc = boot_matches.get_one::<String>("rpc").and_then(|s| Some(s.as_str()));
+            let fake_node_name = boot_matches.get_one::<String>("fake-node-name").unwrap();
+            let password = boot_matches.get_one::<String>("password").unwrap();
+
+            boot_fake_node::execute(
+                version.clone(),
+                node_home,
+                *node_port,
+                *network_router_port,
+                rpc,
+                fake_node_name,
+                password,
+                vec![],
+            ).await
+        },
+        Some(("build", build_matches)) => {
+            let project_dir = PathBuf::from(build_matches.get_one::<String>("project-dir").unwrap());
+            let verbose = !build_matches.get_one::<bool>("quiet").unwrap();
+            build::compile_package(&project_dir, verbose).await
+        },
+        Some(("inject-message", inject_message_matches)) => {
+            let url: &String = inject_message_matches.get_one("url").unwrap();
+            let process: &String = inject_message_matches.get_one("process").unwrap();
+            let ipc: &String = inject_message_matches.get_one("ipc").unwrap();
+            let node: Option<&str> = inject_message_matches
+                .get_one("node")
+                .and_then(|s: &String| Some(s.as_str()));
+            let bytes: Option<&str> = inject_message_matches
+                .get_one("bytes")
+                .and_then(|s: &String| Some(s.as_str()));
+            inject_message::execute(url, process, ipc, node, bytes).await
+        },
+        Some(("new", new_matches)) => {
+            let new_dir = PathBuf::from(new_matches.get_one::<String>("directory").unwrap());
+            let package_name = new_matches.get_one::<String>("package-name").unwrap();
+
+            new::execute(new_dir, package_name.clone())
+        },
+        Some(("run-tests", run_tests_matches)) => {
+            let config_path = match run_tests_matches.get_one::<String>("config") {
+                Some(path) => PathBuf::from(path),
+                None => std::env::current_dir()?.join("tests.toml"),
+            };
+
+            if !config_path.exists() {
+                let error = format!(
+                    "Configuration file not found: {:?}\nUsage:\n{}",
+                    config_path,
+                    usage,
+                );
+                println!("{}", error);
+                return Err(anyhow::anyhow!(error));
+            }
+
+            run_tests::execute(config_path.to_str().unwrap()).await
+        },
+        Some(("start-package", start_package_matches)) => {
+            let project_dir = PathBuf::from(start_package_matches.get_one::<String>("project-dir").unwrap());
+            let url: &String = start_package_matches.get_one("url").unwrap();
+            let node: Option<&str> = start_package_matches
+                .get_one("node")
+                .and_then(|s: &String| Some(s.as_str()));
+            start_package::execute(project_dir, url, node).await
+        },
+        _ => {
+            println!("Invalid subcommand. Usage:\n{}", usage);
+            Ok(())
+        },
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let current_dir = env::current_dir()?.into_os_string();
@@ -171,78 +252,20 @@ async fn main() -> anyhow::Result<()> {
     let matches = app.get_matches();
     let matches = matches.subcommand();
 
-    match matches {
-        Some(("boot-fake-node", boot_matches)) => {
-            let version = boot_matches.get_one::<String>("version").unwrap();
-            let node_home = PathBuf::from(boot_matches.get_one::<String>("node-home").unwrap());
-            let node_port = boot_matches.get_one::<u16>("node-port").unwrap();
-            let network_router_port = boot_matches.get_one::<u16>("network-router-port").unwrap();
-            let rpc = boot_matches.get_one::<String>("rpc").and_then(|s| Some(s.as_str()));
-            let fake_node_name = boot_matches.get_one::<String>("fake-node-name").unwrap();
-            let password = boot_matches.get_one::<String>("password").unwrap();
-
-            boot_fake_node::execute(
-                version.clone(),
-                node_home,
-                *node_port,
-                *network_router_port,
-                rpc,
-                fake_node_name,
-                password,
-                vec![],
-            ).await?;
-        },
-        Some(("build", build_matches)) => {
-            let project_dir = PathBuf::from(build_matches.get_one::<String>("project-dir").unwrap());
-            let verbose = !build_matches.get_one::<bool>("quiet").unwrap();
-            build::compile_package(&project_dir, verbose).await?;
-        },
-        Some(("inject-message", inject_message_matches)) => {
-            let url: &String = inject_message_matches.get_one("url").unwrap();
-            let process: &String = inject_message_matches.get_one("process").unwrap();
-            let ipc: &String = inject_message_matches.get_one("ipc").unwrap();
-            let node: Option<&str> = inject_message_matches
-                .get_one("node")
-                .and_then(|s: &String| Some(s.as_str()));
-            let bytes: Option<&str> = inject_message_matches
-                .get_one("bytes")
-                .and_then(|s: &String| Some(s.as_str()));
-            inject_message::execute(url, process, ipc, node, bytes).await?;
-        },
-        Some(("new", new_matches)) => {
-            let new_dir = PathBuf::from(new_matches.get_one::<String>("directory").unwrap());
-            let package_name = new_matches.get_one::<String>("package-name").unwrap();
-
-            new::execute(new_dir, package_name.clone())?;
-        },
-        Some(("run-tests", run_tests_matches)) => {
-            let config_path = match run_tests_matches.get_one::<String>("config") {
-                Some(path) => PathBuf::from(path),
-                None => std::env::current_dir()?.join("tests.toml"),
-            };
-
-            if !config_path.exists() {
-                let error = format!(
-                    "Configuration file not found: {:?}\nUsage:\n{}",
-                    config_path,
-                    usage,
-                );
-                println!("{}", error);
-                return Err(anyhow::anyhow!(error));
+    match execute(usage, matches).await {
+        Ok(()) => Ok(()),
+        Err(e) => {
+            // TODO: add more non-"nerdview" error messages here
+            match e.downcast_ref::<reqwest::Error>() {
+                None => {},
+                Some(e) => {
+                    if e.is_connect() {
+                        println!("uqdev: error connecting; is Uqbar node running?");
+                        return Ok(());
+                    }
+                },
             }
-
-            run_tests::execute(config_path.to_str().unwrap()).await?;
+            Err(e)
         },
-        Some(("start-package", start_package_matches)) => {
-            let project_dir = PathBuf::from(start_package_matches.get_one::<String>("project-dir").unwrap());
-            let url: &String = start_package_matches.get_one("url").unwrap();
-            let node: Option<&str> = start_package_matches
-                .get_one("node")
-                .and_then(|s: &String| Some(s.as_str()));
-            start_package::execute(project_dir, url, node).await?;
-        },
-        _ => println!("Invalid subcommand. Usage:\n{}", usage),
     }
-
-    Ok(())
 }
