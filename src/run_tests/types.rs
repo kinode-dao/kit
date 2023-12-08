@@ -10,9 +10,15 @@ use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
-    pub runtime_path: PathBuf,
+    pub runtime: Runtime,
     pub runtime_build_verbose: bool,
     pub tests: Vec<Test>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Runtime {
+    FetchVersion(String),
+    RepoPath(PathBuf),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

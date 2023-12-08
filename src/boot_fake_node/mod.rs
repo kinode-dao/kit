@@ -42,6 +42,48 @@ fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
+    let uname = Command::new("uname").output()?;
+    if !uname.status.success() {
+        panic!("uqdev: Could not determine OS.");
+    }
+    let os_name = std::str::from_utf8(&uname.stdout)?.trim();
+
+    let uname_p = Command::new("uname").arg("-p").output()?;
+    if !uname_p.status.success() {
+        panic!("uqdev: Could not determine architecture.");
+    }
+    let architecture_name = std::str::from_utf8(&uname_p.stdout)?.trim();
+
+    // TODO: update when have binaries
+    let binary_suffix = match (os_name, architecture_name) {
+        ("Linux", "x86_64") => "x86_64-unknown-linux-gnu",
+        // ("Darwin", "x86_64") => "x86_64-darwin",
+        // ("Darwin", "arm") => "arm-darwin",
+        _ => panic!("OS/Architecture {}/{} not supported.", os_name, architecture_name),
+    };
+
+    let binary = format!("uqbar-{}", binary_suffix);
+    let url = format!("https://github.com/uqbar-dao/uqbin/raw/master/{version}/{binary}.zip");
+
+    let runtime_dir = PathBuf::from(format!("/tmp/uqbar-{}", version));
+    let runtime_zip_path = runtime_dir.join(format!("{}.zip", binary));
+    let runtime_path = runtime_dir.join(binary).join("uqbar");
+    if !runtime_path.exists() {
+        fs::create_dir_all(&runtime_dir)?;
+        build::download_file(&url, &runtime_zip_path).await?;
+        extract_zip(&runtime_zip_path)?;
+
+        // Add execute permission
+        let metadata = fs::metadata(&runtime_path)?;
+        let mut permissions = metadata.permissions();
+        permissions.set_mode(permissions.mode() | 0o111);
+        fs::set_permissions(&runtime_path, permissions)?;
+    }
+
+    Ok(runtime_path)
+}
+
 pub fn run_runtime(
     path: &Path,
     home: &Path,
@@ -86,46 +128,7 @@ pub async fn execute(
     mut args: Vec<&str>,
     //verbose: bool,
 ) -> anyhow::Result<()> {
-    let uname = Command::new("uname").output()?;
-    if !uname.status.success() {
-        panic!("foo"); // TODO
-    }
-    let os_name = std::str::from_utf8(&uname.stdout)?.trim();
-
-    let uname_p = Command::new("uname").arg("-p").output()?;
-    if !uname_p.status.success() {
-        panic!("bar"); // TODO
-    }
-    let architecture_name = std::str::from_utf8(&uname_p.stdout)?.trim();
-
-    // TODO: update when have binaries
-    let binary_suffix = match (os_name, architecture_name) {
-        ("Linux", "x86_64") => "x86_64-unknown-linux-gnu",
-        // ("Darwin", "x86_64") => "x86_64-darwin",
-        // ("Darwin", "arm") => "arm-darwin",
-        _ => panic!("OS/Architecture {}/{} not supported.", os_name, architecture_name),
-    };
-
-    let binary = format!("uqbar-{}", binary_suffix);
-    let url = format!("https://github.com/uqbar-dao/uqbin/raw/master/{version}/{binary}.zip");
-
-    // TODO: check if already exists
-    let runtime_dir = PathBuf::from(format!("/tmp/uqbar-{}", version));
-    let runtime_zip_path = runtime_dir.join(format!("{}.zip", binary));
-    let runtime_path = runtime_dir.join(binary).join("uqbar");
-    if !runtime_path.exists() {
-        fs::create_dir_all(&runtime_dir)?;
-        build::download_file(&url, &runtime_zip_path).await?;
-
-        // Extract
-        extract_zip(&runtime_zip_path)?;
-
-        // Add execute permission
-        let metadata = fs::metadata(&runtime_path)?;
-        let mut permissions = metadata.permissions();
-        permissions.set_mode(permissions.mode() | 0o111);
-        fs::set_permissions(&runtime_path, permissions)?;
-    }
+    let runtime_path = get_runtime_binary(&version).await?;
 
     let (send_to_kill_router, recv_kill_in_router) = tokio::sync::mpsc::unbounded_channel();
     tokio::task::spawn(network_router::execute(

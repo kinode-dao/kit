@@ -10,7 +10,7 @@ use dirs::home_dir;
 use serde_json::Value;
 use toml;
 
-use super::boot_fake_node::run_runtime;
+use super::boot_fake_node::{get_runtime_binary, run_runtime};
 use super::build;
 use super::inject_message;
 use super::start_package;
@@ -64,7 +64,12 @@ fn make_node_names(nodes: Vec<Node>) -> anyhow::Result<Vec<String>> {
 
 impl Config {
     fn expand_home_paths(mut self: Config) -> Config {
-        self.runtime_path = expand_home_path(&self.runtime_path).unwrap_or(self.runtime_path);
+        self.runtime = match self.runtime {
+            Runtime::FetchVersion(version) => Runtime::FetchVersion(version),
+            Runtime::RepoPath(runtime_path) => {
+                Runtime::RepoPath(expand_home_path(&runtime_path).unwrap_or(runtime_path))
+            },
+        };
         for test in self.tests.iter_mut() {
             test.test_package_paths = test.test_package_paths
                 .iter()
@@ -91,41 +96,6 @@ fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
     println!("Done compiling Uqbar runtime.");
     Ok(())
 }
-
-// fn run_runtime(
-//     path: &Path,
-//     home: &str,
-//     port: u16,
-//     network_router_port: u16,
-//     args: &[&str],
-//     verbose: bool,
-// ) -> anyhow::Result<(Child, OwnedFd)> {
-//     let port = format!("{}", port);
-//     let network_router_port = format!("{}", network_router_port);
-//     let mut full_args = vec![
-//         "+nightly", "run", "--release",
-//         "--features", "simulation-mode", "--",
-//         home, "--port", port.as_str(),
-//         "--network-router-port", network_router_port.as_str(),
-//     ];
-//
-//     if !args.is_empty() {
-//         full_args.extend_from_slice(args);
-//     }
-//
-//     let fds = nix::pty::openpty(None, None)?;
-//
-//     let process = Command::new("cargo")
-//         .args(&full_args)
-//         .current_dir(path)
-//         .stdin(unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) })
-//         .stdout(if verbose { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
-//         .stderr(if verbose { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
-//         .spawn()?;
-//
-//     Ok((process, fds.master))
-// }
-
 async fn wait_until_booted(port: u16, max_port_diff: u16, max_waits: u16) -> anyhow::Result<Option<u16>> {
     for _ in 0..max_waits {
         for port_scan in port..port + max_port_diff {
@@ -280,23 +250,27 @@ async fn run_tests(test_batch: &str, mut ports: Vec<u16>, node_names: Vec<String
 
 pub async fn execute(config_path: &str) -> anyhow::Result<()> {
     let config_content = fs::read_to_string(config_path)?;
-    let mut config = toml::from_str::<Config>(&config_content)?.expand_home_paths();
+    let config = toml::from_str::<Config>(&config_content)?.expand_home_paths();
 
     // println!("{:?}", config);
 
-    if config.runtime_path.is_dir() {
-        // Compile the runtime binary
-        compile_runtime(
-            &config.runtime_path,
-            config.runtime_build_verbose,
-        )?;
-        config.runtime_path = config.runtime_path.join("/target/release/uqbar");
-    } else if config.runtime_path.is_file() {
-        // Pass
-    } else {
-        panic!("rt"); // TODO
-    }
-
+    let runtime_path = match config.runtime {
+        Runtime::FetchVersion(ref version) => get_runtime_binary(version).await?,
+        Runtime::RepoPath(runtime_path) => {
+            if runtime_path.is_file() {
+                runtime_path
+            } else if runtime_path.is_dir() {
+                // Compile the runtime binary
+                compile_runtime(
+                    &runtime_path,
+                    config.runtime_build_verbose,
+                )?;
+                runtime_path.join("/target/release/uqbar")
+            } else {
+                panic!("uqdev run-tests: RepoPath must be a directory (the repo) or a binary.");
+            }
+        },
+    };
 
     for test in config.tests {
         for setup_package_path in &test.setup_package_paths {
@@ -336,7 +310,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
             };
 
             let (runtime_process, master_fd) = run_runtime(
-                &config.runtime_path,
+                &runtime_path,
                 &node_home,
                 node.port,
                 test.network_router.port,
@@ -385,8 +359,6 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
             ports,
             make_node_names(test.nodes)?,
         ).await?;
-
-        //let _ = send_to_kill_router.send(true).await;
     }
 
     Ok(())
