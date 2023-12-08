@@ -35,9 +35,9 @@ async fn execute(
             ).await
         },
         Some(("build", build_matches)) => {
-            let project_dir = PathBuf::from(build_matches.get_one::<String>("project-dir").unwrap());
+            let package_dir = PathBuf::from(build_matches.get_one::<String>("package-dir").unwrap());
             let verbose = !build_matches.get_one::<bool>("quiet").unwrap();
-            build::compile_package(&project_dir, verbose).await
+            build::compile_package(&package_dir, verbose).await
         },
         Some(("inject-message", inject_message_matches)) => {
             let url: &String = inject_message_matches.get_one("url").unwrap();
@@ -76,12 +76,12 @@ async fn execute(
             run_tests::execute(config_path.to_str().unwrap()).await
         },
         Some(("start-package", start_package_matches)) => {
-            let project_dir = PathBuf::from(start_package_matches.get_one::<String>("project-dir").unwrap());
+            let package_dir = PathBuf::from(start_package_matches.get_one::<String>("package-dir").unwrap());
             let url: &String = start_package_matches.get_one("url").unwrap();
             let node: Option<&str> = start_package_matches
                 .get_one("node")
                 .and_then(|s: &String| Some(s.as_str()));
-            start_package::execute(project_dir, url, node).await
+            start_package::execute(package_dir, url, node).await
         },
         _ => {
             println!("Invalid subcommand. Usage:\n{}", usage);
@@ -154,9 +154,9 @@ async fn main() -> anyhow::Result<()> {
         )
         .subcommand(Command::new("build")
             .about("Build an Uqbar process")
-            .arg(Arg::new("project-dir")
+            .arg(Arg::new("package-dir")
                 .action(ArgAction::Set)
-                .help("The project directory to build")
+                .help("The package directory to build")
                 .default_value(&current_dir)
             )
             .arg(Arg::new("quiet")
@@ -205,7 +205,7 @@ async fn main() -> anyhow::Result<()> {
             )
         )
         .subcommand(Command::new("new")
-            .about("Create an Uqbar template project")
+            .about("Create an Uqbar template package")
             .arg(Arg::new("directory")
                 .action(ArgAction::Set)
                 .help("Path to create template directory at")
@@ -229,9 +229,9 @@ async fn main() -> anyhow::Result<()> {
         )
         .subcommand(Command::new("start-package")
             .about("Start a built Uqbar process")
-            .arg(Arg::new("project-dir")
+            .arg(Arg::new("package-dir")
                 .action(ArgAction::Set)
-                .help("The project directory to build")
+                .help("The package directory to build")
                 .default_value(&current_dir)
             )
             .arg(Arg::new("url")
