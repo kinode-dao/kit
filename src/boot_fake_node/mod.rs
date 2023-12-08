@@ -59,7 +59,7 @@ pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     let binary_suffix = match (os_name, architecture_name) {
         ("Linux", "x86_64") => "x86_64-unknown-linux-gnu",
         ("Darwin", "arm") => "arm-apple-darwin",
-        // ("Darwin", "x86_64") => "x86_64-darwin",
+        ("Darwin", "x86_64") => "x86_64-apple-darwin",
         _ => panic!("OS/Architecture {}/{} not supported.", os_name, architecture_name),
     };
 
