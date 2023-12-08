@@ -18,7 +18,7 @@ struct Connection {
 }
 
 type Connections = HashMap<String, Connection>;
-type KillReceiver = tokio::sync::mpsc::Receiver<bool>;
+type KillReceiver = tokio::sync::mpsc::UnboundedReceiver<bool>;
 
 async fn handshake(stream: TcpStream) -> anyhow::Result<(String, WebSocketStream<TcpStream>)> {
     let ws_stream = accept_async(stream).await?;

@@ -1,7 +1,8 @@
-use clap::{Arg, ArgAction, command, Command};
+use clap::{Arg, ArgAction, command, Command, value_parser};
 use std::env;
 use std::path::PathBuf;
 
+mod boot_fake_node;
 mod build;
 mod inject_message;
 mod new;
@@ -11,14 +12,65 @@ mod start_package;
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let current_dir = env::current_dir()?.into_os_string();
-    // let current_dir = env::current_dir()?.as_os_str();
-    // let current_dir: String = env::current_dir()?.to_str().unwrap_or("").to_string();
     let mut app = command!()
         .name("UqDev")
         .version("0.1.0")
         .about("Development tools for Uqbar")
         .subcommand_required(true)
         .arg_required_else_help(true)
+        .subcommand(Command::new("boot-fake-node")
+            .about("Boot a fake node for development")
+            .arg(Arg::new("version")
+                .action(ArgAction::Set)
+                .short('v')
+                .long("version")
+                .help("Version of Uqbar binary to use")
+                .default_value("0.4.0-1cbc110")
+            )
+            .arg(Arg::new("node-home")
+                .action(ArgAction::Set)
+                .short('h')
+                .long("home")
+                .help("Where to place the home directory for the fake node")
+                .default_value("/tmp/uqbar-fake-node")
+            )
+            .arg(Arg::new("node-port")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("The port to run the fake node on")
+                .default_value("8080")
+                .value_parser(value_parser!(u16))
+            )
+            .arg(Arg::new("network-router-port")
+                .action(ArgAction::Set)
+                .long("network-router-port")
+                .help("The port to run the network router on")
+                .default_value("9001")
+                .value_parser(value_parser!(u16))
+            )
+            .arg(Arg::new("rpc")
+                .action(ArgAction::Set)
+                .short('r')
+                .long("rpc")
+                .help("Ethereum RPC endpoint (wss://)")
+                .required(false)
+            )
+            .arg(Arg::new("fake-node-name")
+                .action(ArgAction::Set)
+                .short('f')
+                .long("fake-node-name")
+                .help("Name for fake node")
+                .default_value("fake.uq")
+            )
+            .arg(Arg::new("password")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("password")
+                .help("Password to login")
+                .default_value("secret")
+            )
+        )
         .subcommand(Command::new("build")
             .about("Build an Uqbar process")
             .arg(Arg::new("project_dir")
@@ -120,6 +172,26 @@ async fn main() -> anyhow::Result<()> {
     let matches = matches.subcommand();
 
     match matches {
+        Some(("boot-fake-node", boot_matches)) => {
+            let version = boot_matches.get_one::<String>("version").unwrap();
+            let node_home = PathBuf::from(boot_matches.get_one::<String>("node-home").unwrap());
+            let node_port = boot_matches.get_one::<u16>("node-port").unwrap();
+            let network_router_port = boot_matches.get_one::<u16>("network-router-port").unwrap();
+            let rpc = boot_matches.get_one::<String>("rpc").and_then(|s| Some(s.as_str()));
+            let fake_node_name = boot_matches.get_one::<String>("fake-node-name").unwrap();
+            let password = boot_matches.get_one::<String>("password").unwrap();
+
+            boot_fake_node::execute(
+                version.clone(),
+                node_home,
+                *node_port,
+                *network_router_port,
+                rpc,
+                fake_node_name,
+                password,
+                vec![],
+            ).await?;
+        },
         Some(("build", build_matches)) => {
             let project_dir = PathBuf::from(build_matches.get_one::<String>("project_dir").unwrap());
             let verbose = !build_matches.get_one::<bool>("quiet").unwrap();

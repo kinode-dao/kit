@@ -40,7 +40,7 @@ fn handle_message (
             match serde_json::from_slice(ipc)? {
                 ChatRequest::Send { ref target, ref message } => {
                     if target == &our.node {
-                        wit::print_to_terminal(0, &format!("chat|{}: {}", source.node, message));
+                        wit::print_to_terminal(0, &format!("{package_name}|{}: {}", source.node, message));
                         message_archive.push((source.node.clone(), message.clone()));
                     } else {
                         let _ = Request::new()
