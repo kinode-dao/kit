@@ -106,7 +106,7 @@ async fn main() -> anyhow::Result<()> {
                 .short('v')
                 .long("version")
                 .help("Version of Uqbar binary to use")
-                .default_value("0.4.0-1cbc110")
+                .default_value("0.4.0-5903a5a")
             )
             .arg(Arg::new("node-home")
                 .action(ArgAction::Set)
