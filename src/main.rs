@@ -146,7 +146,6 @@ async fn main() -> anyhow::Result<()> {
             )
             .arg(Arg::new("password")
                 .action(ArgAction::Set)
-                .short('p')
                 .long("password")
                 .help("Password to login")
                 .default_value("secret")
