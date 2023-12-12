@@ -70,7 +70,7 @@ pub async fn compile_wasm_project(process_dir: &Path, is_subdir: bool, verbose: 
     // Check and download wasi_snapshot_preview1.wasm if it does not exist
     let wasi_snapshot_file = process_dir.join("wasi_snapshot_preview1.wasm");
     if !wasi_snapshot_file.exists() {
-        let wasi_version = "14.0.4";  // TODO: un-hardcode
+        let wasi_version = "15.0.1";  // TODO: un-hardcode
         let wasi_snapshot_url = format!(
             "https://github.com/bytecodealliance/wasmtime/releases/download/v{}/wasi_snapshot_preview1.reactor.wasm",
             wasi_version,
