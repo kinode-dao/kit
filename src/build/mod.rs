@@ -61,22 +61,20 @@ pub async fn compile_wasm_project(process_dir: &Path, is_subdir: bool, verbose: 
     fs::create_dir_all(&bindings_dir)?;
 
     // Check and download uqbar.wit if wit_dir does not exist
-    if !wit_dir.exists() {
-        fs::create_dir_all(&wit_dir)?;
-        let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/uqbar.wit";
-        download_file(uqbar_wit_url, &wit_dir.join("uqbar.wit")).await?;
-    }
+    //if !wit_dir.exists() { // TODO: do a smarter check; this check will fail when remote has updated v
+    fs::create_dir_all(&wit_dir)?;
+    let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/uqbar.wit";
+    download_file(uqbar_wit_url, &wit_dir.join("uqbar.wit")).await?;
 
     // Check and download wasi_snapshot_preview1.wasm if it does not exist
     let wasi_snapshot_file = process_dir.join("wasi_snapshot_preview1.wasm");
-    if !wasi_snapshot_file.exists() {
-        let wasi_version = "15.0.1";  // TODO: un-hardcode
-        let wasi_snapshot_url = format!(
-            "https://github.com/bytecodealliance/wasmtime/releases/download/v{}/wasi_snapshot_preview1.reactor.wasm",
-            wasi_version,
-        );
-        download_file(&wasi_snapshot_url, &wasi_snapshot_file).await?;
-    }
+    //if !wasi_snapshot_file.exists() { // TODO: do a smarter check; this check will fail when remote has updated v
+    let wasi_version = "15.0.1";  // TODO: un-hardcode
+    let wasi_snapshot_url = format!(
+        "https://github.com/bytecodealliance/wasmtime/releases/download/v{}/wasi_snapshot_preview1.reactor.wasm",
+        wasi_version,
+    );
+    download_file(&wasi_snapshot_url, &wasi_snapshot_file).await?;
 
     // Create target.wasm (compiled .wit) & world
     run_command(Command::new("wasm-tools")
