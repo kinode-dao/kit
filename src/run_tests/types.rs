@@ -26,6 +26,7 @@ pub struct Test {
     pub setup_package_paths: Vec<PathBuf>,
     pub test_package_paths: Vec<PathBuf>,
     pub package_build_verbose: bool,
+    pub timeout_secs: u64,
     pub network_router: NetworkRouter,
     pub nodes: Vec<Node>,
 }

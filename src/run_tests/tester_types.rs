@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use uqbar_process_lib::Address;
+use uqbar_process_lib::{Address, Response};
 use uqbar_process_lib::kernel_types as kt;
 // use uqbar_process_lib::uqbar::process::standard as wit;
 
@@ -19,7 +19,7 @@ pub struct KernelMessage {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum TesterRequest {
-    Run(Vec<String>),
+    Run { input_node_names: Vec<String>, test_timeout: u64 },
     KernelMessage(KernelMessage),
     GetFullMessage(kt::Message),
 }

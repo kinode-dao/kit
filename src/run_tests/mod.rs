@@ -1,9 +1,7 @@
 use std::cell::RefCell;
 use std::{fs, thread, time};
-use std::os::fd::AsRawFd;
-use std::os::unix::io::{FromRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::rc::Rc;
 
 use dirs::home_dir;
@@ -173,15 +171,19 @@ async fn load_tests(test_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> 
     Ok(())
 }
 
-async fn run_tests(test_batch: &str, mut ports: Vec<u16>, node_names: Vec<String>) -> anyhow::Result<()> {
+async fn run_tests(test_batch: &str, mut ports: Vec<u16>, node_names: Vec<String>, test_timeout: u64) -> anyhow::Result<()> {
     let master_port = ports.remove(0);
 
     // Set up non-master nodes.
     for port in ports {
         let request = inject_message::make_message(
             "tester:tester:uqbar",
-            &serde_json::to_string(&serde_json::json!({"Run": node_names})).unwrap(),
-            // "{\"Run\":null}",
+            &serde_json::to_string(&serde_json::json!({
+                "Run": {
+                    "input_node_names": node_names,
+                    "test_timeout": test_timeout,
+                }
+            })).unwrap(),
             None,
             None,
             None,
@@ -201,8 +203,12 @@ async fn run_tests(test_batch: &str, mut ports: Vec<u16>, node_names: Vec<String
     println!("Running tests...");
     let request = inject_message::make_message(
         "tester:tester:uqbar",
-        &serde_json::to_string(&serde_json::json!({"Run": node_names})).unwrap(),
-        // "{\"Run\":null}",
+        &serde_json::to_string(&serde_json::json!({
+            "Run": {
+                "input_node_names": node_names,
+                "test_timeout": test_timeout,
+            }
+        })).unwrap(),
         None,
         None,
         None,
@@ -265,7 +271,11 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                     &runtime_path,
                     config.runtime_build_verbose,
                 )?;
-                runtime_path.join("/target/release/uqbar")
+                fs::copy(
+                    runtime_path.join("target/release/uqbar"),
+                    runtime_path.join("uqbar"),
+                )?;
+                runtime_path.join("uqbar")
             } else {
                 panic!("uqdev run-tests: RepoPath must be a directory (the repo) or a binary.");
             }
@@ -292,8 +302,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
         for node in &test.nodes {
             fs::create_dir_all(&node.home)?;
             let node_home = fs::canonicalize(&node.home)?;
-            let home_fs = Path::new(node_home.to_str().unwrap())
-                .join("fs");
+            let home_fs = Path::new(node_home.to_str().unwrap()).join("fs");
             if home_fs.exists() {
                 fs::remove_dir_all(home_fs).unwrap();
             }
@@ -358,6 +367,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
             &format!("{:?}", test.test_package_paths),
             ports,
             make_node_names(test.nodes)?,
+            test.timeout_secs,
         ).await?;
     }
 
