@@ -1,11 +1,11 @@
 use std::{fs, path::PathBuf, collections::HashMap};
 
 const PATH_TO_CONTENT: &[(&str, &str)] = &[
-    ("Cargo.toml",        include_str!("templates/Cargo.toml")),
-    (".gitignore",        include_str!("templates/.gitignore")),
-    ("pkg/manifest.json", include_str!("templates/pkg/manifest.json")),
-    ("pkg/metadata.json", include_str!("templates/pkg/metadata.json")),
-    ("src/lib.rs",        include_str!("templates/src/lib.rs")),
+    ("Cargo.toml",        include_str!("templates/rust/chat/Cargo.toml")),
+    (".gitignore",        include_str!("templates/rust/chat/.gitignore")),
+    ("pkg/manifest.json", include_str!("templates/rust/chat/pkg/manifest.json")),
+    ("pkg/metadata.json", include_str!("templates/rust/chat/pkg/metadata.json")),
+    ("src/lib.rs",        include_str!("templates/rust/chat/src/lib.rs")),
 ];
 
 pub fn execute(new_dir: PathBuf, package_name: String) -> anyhow::Result<()> {

@@ -4,6 +4,17 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use reqwest;
+use serde::{Serialize, Deserialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CargoFile {
+    package: CargoPackage,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CargoPackage {
+    name: String,
+}
 
 pub fn run_command(cmd: &mut Command) -> io::Result<()> {
     let status = cmd.status()?;
@@ -29,6 +40,8 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
 }
 
 pub async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
+    // TODO: When expanding to other languages, will no longer be
+    //       able to use Cargo.toml as indicator of a process dir
     // Check if `Cargo.toml` exists in the directory
     let cargo_file = package_dir.join("Cargo.toml");
     if cargo_file.exists() {
@@ -48,7 +61,7 @@ pub async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Resul
 }
 
 pub async fn compile_wasm_project(process_dir: &Path, is_subdir: bool, verbose: bool) -> anyhow::Result<()> {
-    println!("Compiling WASM project in {:?}...", process_dir);
+    println!("Compiling Uqbar process in {:?}...", process_dir);
 
     // Paths
     let bindings_dir = process_dir
@@ -112,13 +125,21 @@ pub async fn compile_wasm_project(process_dir: &Path, is_subdir: bool, verbose: 
     // Adapt the module using wasm-tools
 
     // For use inside of process_dir
+    let wasm_file_name = {
+        let cargo_path = process_dir.join("Cargo.toml");
+        let cargo_contents = fs::read_to_string(cargo_path)?;
+        let cargo_parsed = toml::from_str::<CargoFile>(&cargo_contents)?;
+        cargo_parsed.package.name
+    };
     let wasm_file_prefix = Path::new("target/wasm32-wasi/release");
     let wasm_file = wasm_file_prefix
         .clone()
-        .join(&format!("{}.wasm", process_dir.file_name().unwrap().to_str().unwrap()));
+        .join(&format!("{}.wasm", wasm_file_name));
+        // .join(&format!("{}.wasm", process_dir.file_name().unwrap().to_str().unwrap()));
     let adapted_wasm_file = wasm_file_prefix
         .clone()
-        .join(&format!("{}_adapted.wasm", process_dir.file_name().unwrap().to_str().unwrap()));
+        .join(&format!("{}_adapted.wasm", wasm_file_name));
+        // .join(&format!("{}_adapted.wasm", process_dir.file_name().unwrap().to_str().unwrap()));
 
     let wasi_snapshot_file = Path::new("wasi_snapshot_preview1.wasm");
 
@@ -135,9 +156,11 @@ pub async fn compile_wasm_project(process_dir: &Path, is_subdir: bool, verbose: 
 
     let wasm_path =
         if is_subdir {
-            format!("../pkg/{}.wasm", process_dir.file_name().unwrap().to_str().unwrap())
+            format!("../pkg/{}.wasm", wasm_file_name)
+            // format!("../pkg/{}.wasm", process_dir.file_name().unwrap().to_str().unwrap())
         } else {
-            format!("pkg/{}.wasm", process_dir.file_name().unwrap().to_str().unwrap())
+            format!("pkg/{}.wasm", wasm_file_name)
+            // format!("pkg/{}.wasm", process_dir.file_name().unwrap().to_str().unwrap())
         };
     let wasm_path = Path::new(&wasm_path);
 

@@ -147,6 +147,9 @@ pub async fn execute(
     let runtime_path = match runtime_path {
         None => get_runtime_binary(&version).await?,
         Some(runtime_path) => {
+            if !runtime_path.exists() {
+                panic!("uqdev boot-fake-node: RepoPath {:?} does not exist.", runtime_path);
+            }
             if runtime_path.is_file() {
                 // TODO: make loading/finding base processes more robust
                 panic!("uqdev boot-fake-node: path to binary not yet implemented; please pass path to Uqbar core repo (or use --version)")
@@ -160,7 +163,7 @@ pub async fn execute(
                 )?;
                 runtime_path.join("uqbar")
             } else {
-                panic!("uqdev boot-fake-node: --runtime-path must be a directory (the repo) or a binary.");
+                panic!("uqdev boot-fake-node: --runtime-path {:?} must be a directory (the repo) or a binary.", runtime_path);
             }
         },
     };

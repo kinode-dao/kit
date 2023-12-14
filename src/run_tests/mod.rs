@@ -251,6 +251,9 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
     let runtime_path = match config.runtime {
         Runtime::FetchVersion(ref version) => get_runtime_binary(version).await?,
         Runtime::RepoPath(runtime_path) => {
+            if !runtime_path.exists() {
+                panic!("uqdev run-tests: RepoPath {:?} does not exist.", runtime_path);
+            }
             if runtime_path.is_file() {
                 // TODO: make loading/finding base processes more robust
                 panic!("uqdev run-tests: path to binary not yet implemented; please pass path to Uqbar core repo (or use --version)")
@@ -267,7 +270,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                 )?;
                 runtime_path.join("uqbar")
             } else {
-                panic!("uqdev run-tests: RepoPath must be a directory (the repo) or a binary.");
+                panic!("uqdev run-tests: RepoPath {:?} must be a directory (the repo) or a binary.", runtime_path);
             }
         },
     };
