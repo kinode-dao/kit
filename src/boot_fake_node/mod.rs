@@ -42,6 +42,20 @@ fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+pub fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
+    println!("Compiling Uqbar runtime...");
+
+    build::run_command(Command::new("cargo")
+        .args(&["+nightly", "build", "--release", "--features", "simulation-mode"])
+        .current_dir(path)
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+    )?;
+
+    println!("Done compiling Uqbar runtime.");
+    Ok(())
+}
+
 pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     let uname = Command::new("uname").output()?;
     if !uname.status.success() {
@@ -119,6 +133,7 @@ pub fn run_runtime(
 }
 
 pub async fn execute(
+    runtime_path: Option<PathBuf>,
     version: String,
     node_home: PathBuf,
     node_port: u16,
@@ -127,9 +142,28 @@ pub async fn execute(
     fake_node_name: &str,
     password: &str,
     mut args: Vec<&str>,
-    //verbose: bool,
 ) -> anyhow::Result<()> {
-    let runtime_path = get_runtime_binary(&version).await?;
+    // TODO: factor out with run_tests?
+    let runtime_path = match runtime_path {
+        None => get_runtime_binary(&version).await?,
+        Some(runtime_path) => {
+            if runtime_path.is_file() {
+                // TODO: make loading/finding base processes more robust
+                panic!("uqdev boot-fake-node: path to binary not yet implemented; please pass path to Uqbar core repo (or use --version)")
+                // runtime_path
+            } else if runtime_path.is_dir() {
+                // Compile the runtime binary
+                compile_runtime(&runtime_path, true)?;
+                fs::copy(
+                    runtime_path.join("target/release/uqbar"),
+                    runtime_path.join("uqbar"),
+                )?;
+                runtime_path.join("uqbar")
+            } else {
+                panic!("uqdev boot-fake-node: --runtime-path must be a directory (the repo) or a binary.");
+            }
+        },
+    };
 
     let (send_to_kill_router, recv_kill_in_router) = tokio::sync::mpsc::unbounded_channel();
     tokio::task::spawn(network_router::execute(

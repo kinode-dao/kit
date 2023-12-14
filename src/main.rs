@@ -15,6 +15,9 @@ async fn execute(
 ) -> anyhow::Result<()> {
     match matches {
         Some(("boot-fake-node", boot_matches)) => {
+            let runtime_path = boot_matches
+                .get_one::<String>("runtime-path")
+                .and_then(|p| Some(PathBuf::from(p)));
             let version = boot_matches.get_one::<String>("version").unwrap();
             let node_home = PathBuf::from(boot_matches.get_one::<String>("node-home").unwrap());
             let node_port = boot_matches.get_one::<u16>("node-port").unwrap();
@@ -24,6 +27,7 @@ async fn execute(
             let password = boot_matches.get_one::<String>("password").unwrap();
 
             boot_fake_node::execute(
+                runtime_path,
                 version.clone(),
                 node_home,
                 *node_port,
@@ -101,11 +105,16 @@ async fn main() -> anyhow::Result<()> {
         .arg_required_else_help(true)
         .subcommand(Command::new("boot-fake-node")
             .about("Boot a fake node for development")
+            .arg(Arg::new("runtime-path")
+                .action(ArgAction::Set)
+                .long("runtime-path")
+                .help("Path to Uqbar core repo or runtime binary (overrides --version)")
+            )
             .arg(Arg::new("version")
                 .action(ArgAction::Set)
                 .short('v')
                 .long("version")
-                .help("Version of Uqbar binary to use")
+                .help("Version of Uqbar binary to use (overridden by --runtime-path)")
                 .default_value("0.4.0-5903a5a")
             )
             .arg(Arg::new("node-home")

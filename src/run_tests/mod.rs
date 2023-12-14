@@ -8,7 +8,7 @@ use dirs::home_dir;
 use serde_json::Value;
 use toml;
 
-use super::boot_fake_node::{get_runtime_binary, run_runtime};
+use super::boot_fake_node::{compile_runtime, get_runtime_binary, run_runtime};
 use super::build;
 use super::inject_message;
 use super::start_package;
@@ -81,19 +81,6 @@ impl Config {
     }
 }
 
-fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
-    println!("Compiling Uqbar runtime...");
-
-    build::run_command(Command::new("cargo")
-        .args(&["+nightly", "build", "--release", "--features", "simulation-mode"])
-        .current_dir(path)
-        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
-    )?;
-
-    println!("Done compiling Uqbar runtime.");
-    Ok(())
-}
 async fn wait_until_booted(port: u16, max_port_diff: u16, max_waits: u16) -> anyhow::Result<Option<u16>> {
     for _ in 0..max_waits {
         for port_scan in port..port + max_port_diff {
@@ -260,11 +247,14 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
 
     // println!("{:?}", config);
 
+    // TODO: factor out with boot_fake_node?
     let runtime_path = match config.runtime {
         Runtime::FetchVersion(ref version) => get_runtime_binary(version).await?,
         Runtime::RepoPath(runtime_path) => {
             if runtime_path.is_file() {
-                runtime_path
+                // TODO: make loading/finding base processes more robust
+                panic!("uqdev run-tests: path to binary not yet implemented; please pass path to Uqbar core repo (or use --version)")
+                // runtime_path
             } else if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(

@@ -6,13 +6,13 @@ Tools for developing on Uqbar
 
 Install with cargo:
 
-```
+```bash
 cargo install --git https://github.com/uqbar-dao/uqdev
 ```
 
 ## Usage
 
-```
+```bash
 # Create a new project package template:
 uqdev new my_package -p my_package
 
@@ -40,6 +40,13 @@ uqdev inject-message --help
 uqdev boot-fake-node --help
 uqdev start-package --help
 uqdev run-tests --help
+```
+
+`uqdev boot-fake-node` can also accept a `--runtime-path` argument that compiles the fake node binary from a local Uqbar core repository.
+Use like (substituting path to Uqbar core repo):
+
+```bash
+uqdev boot-fake-node --runtime-path ~/git/uqbar-v2/uqbar
 ```
 
 UqDev also contains tools for running tests.
