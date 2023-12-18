@@ -76,7 +76,8 @@ pub async fn compile_wasm_project(process_dir: &Path, is_subdir: bool, verbose: 
     // Check and download uqbar.wit if wit_dir does not exist
     //if !wit_dir.exists() { // TODO: do a smarter check; this check will fail when remote has updated v
     fs::create_dir_all(&wit_dir)?;
-    let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/uqbar.wit";
+    // let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/uqbar.wit";
+    let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/2bb0a6b3b860545871cd53f607ef2b4e1da7a451/uqbar.wit";
     download_file(uqbar_wit_url, &wit_dir.join("uqbar.wit")).await?;
 
     // Check and download wasi_snapshot_preview1.wasm if it does not exist
