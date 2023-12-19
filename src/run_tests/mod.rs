@@ -255,11 +255,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                     &runtime_path,
                     config.runtime_build_verbose,
                 )?;
-                fs::copy(
-                    runtime_path.join("target/release/uqbar"),
-                    runtime_path.join("uqbar"),
-                )?;
-                runtime_path.join("uqbar")
+                runtime_path.join("target/release/uqbar")
             } else {
                 panic!("uqdev run-tests: RepoPath {:?} must be a directory (the repo) or a binary.", runtime_path);
             }
