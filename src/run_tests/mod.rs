@@ -81,34 +81,30 @@ impl Config {
     }
 }
 
-async fn wait_until_booted(port: u16, max_port_diff: u16, max_waits: u16) -> anyhow::Result<Option<u16>> {
+async fn wait_until_booted(port: u16, max_waits: u16) -> anyhow::Result<()> {
     for _ in 0..max_waits {
-        for port_scan in port..port + max_port_diff {
-            let request = inject_message::make_message(
-                "vfs:sys:uqbar",
-                &serde_json::to_string(&serde_json::json!({
-                    "drive": "tester:uqbar",
-                    "action": {"GetEntry": "/"},
-                })).unwrap(),
-                None,
-                None,
-                None,
-            )?;
+        let request = inject_message::make_message(
+            "vfs:sys:uqbar",
+            &serde_json::to_string(&serde_json::json!({
+                "drive": "tester:uqbar",
+                "action": {"GetEntry": "/"},
+            })).unwrap(),
+            None,
+            None,
+            None,
+        )?;
 
-            match inject_message::send_request(
-                &format!("http://localhost:{}", port_scan),
-                request,
-            ).await {
-                Ok(response) if response.status() == 200 => return Ok(Some(port_scan)),
-                _ => ()
-            }
-
-            thread::sleep(time::Duration::from_millis(100));
+        match inject_message::send_request(
+            &format!("http://localhost:{}", port),
+            request,
+        ).await {
+            Ok(response) if response.status() == 200 => return Ok(()),
+            _ => ()
         }
+
         thread::sleep(time::Duration::from_secs(1));
     }
-    println!("Failed to find Uqbar on ports {}-{}", port, port + max_port_diff);
-    Ok(None)
+    Err(anyhow::anyhow!("uqdev run-tests: could not connect to Uqbar node"))
 }
 
 async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> {
@@ -343,10 +339,10 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
         let mut ports = Vec::new();
 
         // Cleanup, boot check, test loading, and running
-        for node in nodes.borrow_mut().iter_mut() {
+        for node in nodes.borrow().iter() {
             let node_home = fs::canonicalize(&node.home)?;
             println!("Setting up node {:?}...", node_home);
-            node.port = wait_until_booted(node.port, 5, 5).await?.unwrap();
+            wait_until_booted(node.port, 5).await?;
             ports.push(node.port);
             println!("Done setting up node {:?} on port {}.", node_home, node.port);
         }

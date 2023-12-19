@@ -73,13 +73,11 @@ pub async fn execute(
     port: u16,
     defects: NetworkRouterDefects,
     mut recv_kill_in_router: KillReceiver,
-) {
+) -> anyhow::Result<()> {
     let (send_to_loop, mut recv_in_loop): (Sender, Receiver) = mpsc::channel(32);
     let mut connections: Connections = HashMap::new();
 
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
-        .await
-        .expect("Failed to bind");
+    let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
 
     println!("network_router: online at {}\r", port);
 
@@ -115,4 +113,6 @@ pub async fn execute(
             },
         }
     }
+
+    Ok(())
 }
