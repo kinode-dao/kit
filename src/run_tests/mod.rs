@@ -86,8 +86,8 @@ async fn wait_until_booted(port: u16, max_waits: u16) -> anyhow::Result<()> {
         let request = inject_message::make_message(
             "vfs:sys:uqbar",
             &serde_json::to_string(&serde_json::json!({
-                "drive": "tester:uqbar",
-                "action": {"GetEntry": "/"},
+                "path": "/tester:uqbar/pkg",
+                "action": "ReadDir",
             })).unwrap(),
             None,
             None,
@@ -129,13 +129,8 @@ async fn load_tests(test_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> 
         let request = inject_message::make_message(
             "vfs:sys:uqbar",
             &serde_json::to_string(&serde_json::json!({
-                "drive": "tester:uqbar",
-                "action": {
-                    "Add": {
-                        "full_path": format!("/{basename}.wasm"),
-                        "entry_type": "NewFile",
-                    }
-                }
+                "path": format!("/tester:uqbar/pkg/{}", "{basename}.wasm"),
+                "action": "ReWrite",
             })).unwrap(),
             None,
             None,
