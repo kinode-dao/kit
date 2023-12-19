@@ -1,3 +1,4 @@
+use std::io::Read;
 use std::cell::RefCell;
 use std::{fs, io, thread, time};
 use std::os::fd::AsRawFd;
@@ -99,6 +100,21 @@ pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     Ok(runtime_path)
 }
 
+fn files_are_same(file_path1: PathBuf, file_path2: PathBuf) -> anyhow::Result<bool> {
+    let mut file1 = fs::File::open(file_path1)?;
+    let mut file2 = fs::File::open(file_path2)?;
+
+    let mut buffer1 = Vec::new();
+    let mut buffer2 = Vec::new();
+
+    file1.read_to_end(&mut buffer1)?;
+    file2.read_to_end(&mut buffer2)?;
+
+    let diff = similar::capture_diff_slices(similar::Algorithm::Myers, &buffer1, &buffer2);
+
+    Ok(diff.iter().all(|op| matches!(op, similar::DiffOp::Equal { .. })))
+}
+
 pub fn run_runtime(
     path: &Path,
     home: &Path,
@@ -157,10 +173,15 @@ pub async fn execute(
             } else if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(&runtime_path, true)?;
-                fs::copy(
+                if !files_are_same(
                     runtime_path.join("target/release/uqbar"),
                     runtime_path.join("uqbar"),
-                )?;
+                )? {
+                    fs::copy(
+                        runtime_path.join("target/release/uqbar"),
+                        runtime_path.join("uqbar"),
+                    )?;
+                }
                 runtime_path.join("uqbar")
             } else {
                 panic!("uqdev boot-fake-node: --runtime-path {:?} must be a directory (the repo) or a binary.", runtime_path);
