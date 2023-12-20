@@ -92,9 +92,10 @@ fn cleanup_node(node: &mut NodeInfo) {
     nix::unistd::write(node.master_fd.as_raw_fd(), b"\x03").unwrap();
     node.process_handle.wait().unwrap();
 
-    let home_fs = &node.home.join("fs");
-    if home_fs.exists() {
-        fs::remove_dir_all(home_fs).unwrap();
+    if node.home.exists() {
+        for dir in &["kernel", "kv", "sqlite", "vfs"] {
+            fs::remove_dir_all(&node.home.join(dir)).unwrap();
+        }
     }
     println!("Done cleaning up {:?}.", node.home);
 }
