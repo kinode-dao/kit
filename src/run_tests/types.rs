@@ -94,7 +94,10 @@ fn cleanup_node(node: &mut NodeInfo) {
 
     if node.home.exists() {
         for dir in &["kernel", "kv", "sqlite", "vfs"] {
-            fs::remove_dir_all(&node.home.join(dir)).unwrap();
+            let dir = node.home.join(dir);
+            if dir.exists() {
+                fs::remove_dir_all(&node.home.join(dir)).unwrap();
+            }
         }
     }
     println!("Done cleaning up {:?}.", node.home);

@@ -43,6 +43,43 @@ fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn get_commit_history(user: &str, repo: &str) -> anyhow::Result<Vec<serde_json::Value>> {
+    let url = format!(
+        "https://api.github.com/repos/{}/{}/commits",
+        user,
+        repo,
+    );
+
+    let client = reqwest::Client::new();
+    let res = client.get(url)
+        .header("User-Agent", "request")
+        .send()
+        .await?
+        .json::<Vec<serde_json::Value>>()
+        .await?;
+
+    Ok(res)
+}
+
+async fn get_latest_commit_hash(user: &str, repo: &str) -> anyhow::Result<String> {
+    let commits = get_commit_history(user, repo).await?;
+    let latest_commit = commits
+        .get(0)
+        .ok_or_else(|| anyhow::anyhow!("no commits found"))?;
+    latest_commit
+        .get("sha")
+        .and_then(|s| Some(s.to_string()))
+        .ok_or_else(|| anyhow::anyhow!("foo"))
+}
+
+async fn fetch_local_commit_hash(commit_path: &PathBuf) -> anyhow::Result<Option<String>> {
+    if !commit_path.exists() {
+        return Ok(None);
+    }
+    let commit = fs::read_to_string(commit_path)?;
+    Ok(Some(commit))
+}
+
 pub fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
     println!("Compiling Uqbar runtime...");
 
@@ -54,6 +91,28 @@ pub fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
     )?;
 
     println!("Done compiling Uqbar runtime.");
+    Ok(())
+}
+
+async fn get_runtime_binary_inner(
+    version: &str,
+    binary_name: &str,
+    runtime_dir: &PathBuf,
+) -> anyhow::Result<()> {
+    let url = format!("https://github.com/uqbar-dao/uqbin/raw/master/{version}/{binary_name}.zip");
+
+    let runtime_zip_path = runtime_dir.join(format!("{}.zip", binary_name));
+    let runtime_path = runtime_dir.join("uqbar");
+
+    build::download_file(&url, &runtime_zip_path).await?;
+    extract_zip(&runtime_zip_path)?;
+
+    // Add execute permission
+    let metadata = fs::metadata(&runtime_path)?;
+    let mut permissions = metadata.permissions();
+    permissions.set_mode(permissions.mode() | 0o111);
+    fs::set_permissions(&runtime_path, permissions)?;
+
     Ok(())
 }
 
@@ -71,30 +130,45 @@ pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     let architecture_name = std::str::from_utf8(&uname_p.stdout)?.trim();
 
     // TODO: update when have binaries
-    let binary_suffix = match (os_name, architecture_name) {
+    let binary_name_suffix = match (os_name, architecture_name) {
         ("Linux", "x86_64") => "x86_64-unknown-linux-gnu",
         ("Darwin", "arm") => "arm-apple-darwin",
-        ("Darwin", "i386") => "i386-apple-darwin",
+        // ("Darwin", "i386") => "i386-apple-darwin",
         // ("Darwin", "x86_64") => "x86_64-apple-darwin",
         _ => panic!("OS/Architecture {}/{} not supported.", os_name, architecture_name),
     };
-
-    let binary = format!("uqbar-{}", binary_suffix);
-    let url = format!("https://github.com/uqbar-dao/uqbin/raw/master/{version}/{binary}.zip");
+    let binary_name = format!("uqbar-{}", binary_name_suffix);
 
     let runtime_dir = PathBuf::from(format!("/tmp/uqbar-{}", version));
-    let runtime_zip_path = runtime_dir.join(format!("{}.zip", binary));
-    let runtime_path = runtime_dir.join(binary).join("uqbar");
-    if !runtime_path.exists() {
+    let local_commit_path = runtime_dir.join("commit.txt");
+    let runtime_path = runtime_dir.join("uqbar");
+    let local_commit_hash = fetch_local_commit_hash(&local_commit_path).await?;
+    // enable offline boot-fake-node:
+    //  if online, fetch latest hash from github;
+    //  else if we have a local version, just use that
+    let latest_commit_hash = match get_latest_commit_hash("uqbar-dao", "uqbin").await {
+        Ok(s) => Ok(s),
+        Err(e) => {
+            match e.downcast_ref::<reqwest::Error>() {
+                None => Err(e),
+                Some(ee) => {
+                    if ee.is_connect() {
+                        if let Some(local_commit_hash) = local_commit_hash.clone() {
+                            Ok(local_commit_hash)
+                        } else {
+                            Err(e)
+                        }
+                    } else {
+                        Err(e)
+                    }
+                },
+            }
+        },
+    }?;
+    if !(runtime_dir.exists() && local_commit_hash == Some(latest_commit_hash.clone())) {
         fs::create_dir_all(&runtime_dir)?;
-        build::download_file(&url, &runtime_zip_path).await?;
-        extract_zip(&runtime_zip_path)?;
-
-        // Add execute permission
-        let metadata = fs::metadata(&runtime_path)?;
-        let mut permissions = metadata.permissions();
-        permissions.set_mode(permissions.mode() | 0o111);
-        fs::set_permissions(&runtime_path, permissions)?;
+        fs::write(local_commit_path, latest_commit_hash)?;
+        get_runtime_binary_inner(version, &binary_name, &runtime_dir).await?;
     }
 
     Ok(runtime_path)

@@ -115,7 +115,7 @@ async fn main() -> anyhow::Result<()> {
                 .short('v')
                 .long("version")
                 .help("Version of Uqbar binary to use (overridden by --runtime-path)")
-                .default_value("0.4.0-5903a5a")
+                .default_value("0.4.0")
             )
             .arg(Arg::new("node-home")
                 .action(ArgAction::Set)
