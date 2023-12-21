@@ -42,25 +42,19 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
 pub async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
     // TODO: When expanding to other languages, will no longer be
     //       able to use Cargo.toml as indicator of a process dir
-    // Check if `Cargo.toml` exists in the directory
-    let cargo_file = package_dir.join("Cargo.toml");
-    if cargo_file.exists() {
-        compile_wasm_project(package_dir, false, verbose).await?;
-    } else {
-        // If `Cargo.toml` is not found, look for subdirectories containing `Cargo.toml`
-        for entry in package_dir.read_dir()? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() && path.join("Cargo.toml").exists() {
-                compile_wasm_project(&path, true, verbose).await?;
-            }
+    // Look for subdirectories containing `Cargo.toml`
+    for entry in package_dir.read_dir()? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() && path.join("Cargo.toml").exists() {
+            compile_wasm_project(&path, verbose).await?;
         }
     }
 
     Ok(())
 }
 
-pub async fn compile_wasm_project(process_dir: &Path, is_subdir: bool, verbose: bool) -> anyhow::Result<()> {
+async fn compile_wasm_project(process_dir: &Path, verbose: bool) -> anyhow::Result<()> {
     println!("Compiling Uqbar process in {:?}...", process_dir);
 
     // Paths
@@ -155,14 +149,7 @@ pub async fn compile_wasm_project(process_dir: &Path, is_subdir: bool, verbose: 
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    let wasm_path =
-        if is_subdir {
-            format!("../pkg/{}.wasm", wasm_file_name)
-            // format!("../pkg/{}.wasm", process_dir.file_name().unwrap().to_str().unwrap())
-        } else {
-            format!("pkg/{}.wasm", wasm_file_name)
-            // format!("pkg/{}.wasm", process_dir.file_name().unwrap().to_str().unwrap())
-        };
+    let wasm_path = format!("../pkg/{}.wasm", wasm_file_name);
     let wasm_path = Path::new(&wasm_path);
 
     // Embed wit into the component and place it in the expected location

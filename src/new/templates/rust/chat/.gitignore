@@ -1,6 +1,6 @@
-target/
+*/target/
 pkg/*.wasm
 *.swp
 *.swo
-wasi_snapshot_preview1.wasm
-wit/
+*/wasi_snapshot_preview1.wasm
+*/wit/

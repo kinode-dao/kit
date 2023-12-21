@@ -1,5 +1,5 @@
 {
     "package": "{package_name}",
-    "publisher": "template.uq",
+    "publisher": "{publisher}",
     "version": [0, 1, 0]
 }

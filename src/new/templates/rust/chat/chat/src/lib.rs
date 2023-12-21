@@ -45,7 +45,7 @@ fn handle_message (
                         let _ = Request::new()
                             .target(Address {
                                 node: target.clone(),
-                                process: ProcessId::from_str("{package_name}:chat:uqbar")?,
+                                process: ProcessId::from_str("{package_name}:{package_name}:{publisher}")?,
                             })
                             .ipc(ipc.clone())
                             .send_and_await_response(5)?

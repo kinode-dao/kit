@@ -58,8 +58,9 @@ async fn execute(
         Some(("new", new_matches)) => {
             let new_dir = PathBuf::from(new_matches.get_one::<String>("directory").unwrap());
             let package_name = new_matches.get_one::<String>("package-name").unwrap();
+            let publisher = new_matches.get_one::<String>("publisher").unwrap();
 
-            new::execute(new_dir, package_name.clone())
+            new::execute(new_dir, package_name.clone(), publisher.clone())
         },
         Some(("run-tests", run_tests_matches)) => {
             let config_path = match run_tests_matches.get_one::<String>("config") {
@@ -221,10 +222,17 @@ async fn main() -> anyhow::Result<()> {
             )
             .arg(Arg::new("package-name")
                 .action(ArgAction::Set)
-                .short('p')
+                .short('a')
                 .long("package")
                 .help("Name of the package")
                 .required(true)
+            )
+            .arg(Arg::new("publisher")
+                .action(ArgAction::Set)
+                .short('u')
+                .long("package")
+                .help("Name of the publisher")
+                .default_value("template.uq")
             )
         )
         .subcommand(Command::new("run-tests")
