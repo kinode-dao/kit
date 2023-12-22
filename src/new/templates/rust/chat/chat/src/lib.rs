@@ -49,9 +49,9 @@ type MessageArchive = HashMap<String, Vec<ChatMessage>>;
 fn handle_http_server_request(
     our: &Address,
     message_archive: &mut MessageArchive,
+    our_channel_id: &mut u32,
     source: &Address,
     ipc: &[u8],
-    our_channel_id: &mut u32,
 ) -> anyhow::Result<()> {
     let Ok(server_request) = serde_json::from_slice::<HttpServerRequest>(ipc) else {
         // Fail silently if we can't parse the request
@@ -259,7 +259,7 @@ fn handle_message(
             // Requests that come from other nodes running this app
             handle_chat_request(our, message_archive, channel_id, source, &ipc, false)?;
             // Requests that come from our http server
-            handle_http_server_request(our, message_archive, source, ipc, channel_id)?;
+            handle_http_server_request(our, message_archive, channel_id, source, ipc)?;
         }
     }
 

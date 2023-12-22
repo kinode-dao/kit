@@ -40,18 +40,17 @@ async fn execute(
         },
         Some(("build", build_matches)) => {
             let package_dir = PathBuf::from(build_matches.get_one::<String>("package-dir").unwrap());
+            let ui = build_matches.get_one::<bool>("ui").unwrap_or(&false);
+            let ui_only = build_matches.get_one::<bool>("ui-only").unwrap_or(&false);
             let verbose = !build_matches.get_one::<bool>("quiet").unwrap();
-            build::compile_package(&package_dir, verbose).await
-        },
-        Some(("build-ui", build_matches)) => {
-            let package_dir = PathBuf::from(build_matches.get_one::<String>("package-dir").unwrap());
-            let verbose = !build_matches.get_one::<bool>("quiet").unwrap();
-            build::compile_and_copy_ui(&package_dir, verbose)
-        },
-        Some(("build-with-ui", build_matches)) => {
-            let package_dir = PathBuf::from(build_matches.get_one::<String>("package-dir").unwrap());
-            let verbose = !build_matches.get_one::<bool>("quiet").unwrap();
-            build::compile_package_and_ui(&package_dir, verbose).await
+
+            if *ui_only {
+                build::compile_and_copy_ui(&package_dir, verbose)
+            } else if *ui {
+                build::compile_package_and_ui(&package_dir, verbose).await
+            } else {
+                build::compile_package(&package_dir, verbose).await
+            }
         },
         Some(("inject-message", inject_message_matches)) => {
             let url: &String = inject_message_matches.get_one("url").unwrap();
@@ -185,34 +184,16 @@ async fn main() -> anyhow::Result<()> {
                 .help("If set, do not print `cargo` stdout/stderr")
                 .required(false)
             )
-        )
-        .subcommand(Command::new("build-ui")
-            .about("Build the web UI for an Uqbar process")
-            .arg(Arg::new("package-dir")
-                .action(ArgAction::Set)
-                .help("The package directory to build")
-                .default_value(&current_dir)
-            )
-            .arg(Arg::new("quiet")
+            .arg(Arg::new("ui")
                 .action(ArgAction::SetTrue)
-                .short('q')
-                .long("quiet")
-                .help("If set, do not print `cargo` stdout/stderr")
+                .long("ui")
+                .help("If set, build the web UI for the process")
                 .required(false)
             )
-        )
-        .subcommand(Command::new("build-with-ui")
-            .about("Build an Uqbar process and its web UI")
-            .arg(Arg::new("package-dir")
-                .action(ArgAction::Set)
-                .help("The package directory to build")
-                .default_value(&current_dir)
-            )
-            .arg(Arg::new("quiet")
+            .arg(Arg::new("ui-only")
                 .action(ArgAction::SetTrue)
-                .short('q')
-                .long("quiet")
-                .help("If set, do not print `cargo` stdout/stderr")
+                .long("ui-only")
+                .help("If set, build ONLY the web UI for the process")
                 .required(false)
             )
         )

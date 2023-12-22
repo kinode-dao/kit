@@ -58,10 +58,7 @@ pub fn execute(new_dir: PathBuf, package_name: String, publisher: String) -> any
     // Create the template directory and subdirectories
     fs::create_dir_all(new_dir.join("pkg"))?;
     fs::create_dir_all(new_dir.join(&package_name).join("src"))?;
-    fs::create_dir_all(new_dir.join("ui"))?;
-    fs::create_dir_all(new_dir.join("ui/public"))?;
     fs::create_dir_all(new_dir.join("ui/public/assets"))?;
-    fs::create_dir_all(new_dir.join("ui/src"))?;
     fs::create_dir_all(new_dir.join("ui/src/assets"))?;
     fs::create_dir_all(new_dir.join("ui/src/store"))?;
     fs::create_dir_all(new_dir.join("ui/src/types"))?;
