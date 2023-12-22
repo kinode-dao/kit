@@ -16,8 +16,8 @@ cargo install --git https://github.com/uqbar-dao/uqdev
 # Create a new project package template:
 uqdev new my_package -p my_package
 
-# Build the package:
-uqdev build my_package
+# Build the package ("--ui" is optional):
+uqdev build my_package --ui
 
 # Start a fake node, by default, on port 8080:
 uqdev boot-fake-node
@@ -51,3 +51,13 @@ uqdev boot-fake-node --runtime-path ~/git/uqbar-v2/uqbar
 
 UqDev also contains tools for running tests.
 For details and examples, please see https://github.com/uqbar-dao/core_tests
+
+## UI Development
+
+NodeJS (v18 or higher) and NPM are required to build and develop the UI.
+
+The UI is written in React with Vite as the bundler + reloader.
+
+To develop locally against a node running on port 8080, run `npm install` and `npm start`. The UI should open on port `3000` and will proxy all websocket and HTTP requests to the local node.
+
+If the node is running on a different port or at a remote URL, the proxy target can be changed on line 19 of `ui/vite.config.ts` or VITE_API_URL="*target*" can be added before the `npm start` command like `VITE_API_URL="*target*" npm start`.
