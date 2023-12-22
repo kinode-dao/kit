@@ -1,6 +1,6 @@
 use std::fs::{self, File};
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use reqwest;
@@ -36,6 +36,43 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
     let content = response.bytes().await?;
 
     fs::write(path, &content)?;
+    Ok(())
+}
+
+pub fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
+    let ui_path = package_dir.join("ui");
+    println!("Building UI in {:?}...", ui_path);
+
+    if ui_path.exists() && ui_path.is_dir() && ui_path.join("package.json").exists() {
+        println!("UI directory found, running npm install...");
+
+        // Set the current directory to 'ui_path' for the command
+        run_command(Command::new("npm")
+            .arg("install")
+            .current_dir(&ui_path) // Set the working directory
+            .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+            .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+        )?;
+
+        println!("Running npm run build:copy...");
+
+        // Similarly for 'npm run build:copy'
+        run_command(Command::new("npm")
+            .args(["run", "build:copy"])
+            .current_dir(&ui_path) // Set the working directory
+            .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+            .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+        )?;
+    } else {
+        println!("'ui' directory not found or 'ui/package.json' does not exist");
+    }
+
+    Ok(())
+}
+
+pub async fn compile_package_and_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
+    compile_package(package_dir, verbose).await?;
+    compile_and_copy_ui(package_dir, verbose)?;
     Ok(())
 }
 

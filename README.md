@@ -19,6 +19,9 @@ uqdev new my_package -p my_package
 # Build the package:
 uqdev build my_package
 
+# Build the package (along with the UI):
+uqdev build-with-ui my_package
+
 # Start a fake node, by default, on port 8080:
 uqdev boot-fake-node
 
@@ -36,6 +39,8 @@ uqdev start-package -u http://localhost:8080
 uqdev --help
 uqdev new --help
 uqdev build --help
+uqdev build-ui --help
+uqdev build-with-ui --help
 uqdev inject-message --help
 uqdev boot-fake-node --help
 uqdev start-package --help
