@@ -1,10 +1,9 @@
-use std::cell::RefCell;
-use std::fs;
-use std::os::fd::AsRawFd;
-use std::os::unix::io::{FromRawFd, OwnedFd};
-use std::path::{Path, PathBuf};
+use std::os::unix::io::OwnedFd;
+use std::path::PathBuf;
 use std::process::Child;
-use std::rc::Rc;
+use std::sync::Arc;
+
+use tokio::sync::Mutex;
 
 use serde::{Serialize, Deserialize};
 
@@ -53,52 +52,35 @@ pub struct Node {
     pub runtime_verbose: bool,
 }
 
+pub type NodeHandles = Arc<Mutex<Vec<Child>>>;
+pub type NodeCleanupInfos = Arc<Mutex<Vec<NodeCleanupInfo>>>;
+
+pub type RecvBool = tokio::sync::mpsc::UnboundedReceiver<bool>;
+pub type SendBool = tokio::sync::mpsc::UnboundedSender<bool>;
+pub type BroadcastRecvBool = tokio::sync::broadcast::Receiver<bool>;
+pub type BroadcastSendBool = tokio::sync::broadcast::Sender<bool>;
+
 #[derive(Debug)]
-pub struct NodeInfo {
-    pub process_handle: Child,
+pub struct NodeCleanupInfo {
     pub master_fd: OwnedFd,
-    pub port: u16,
+    pub process_id: i32,
     pub home: PathBuf,
 }
 
 pub struct CleanupContext {
-    pub nodes: Rc<RefCell<Vec<NodeInfo>>>,
-    pub send_to_kill_router: tokio::sync::mpsc::UnboundedSender<bool>,
+    pub send_to_cleanup: SendBool,
 }
 
 impl CleanupContext {
     pub fn new(
-        nodes: Rc<RefCell<Vec<NodeInfo>>>,
-        send_to_kill_router: tokio::sync::mpsc::UnboundedSender<bool>,
-) -> Self {
-        CleanupContext { nodes, send_to_kill_router }
+        send_to_cleanup: SendBool,
+    ) -> Self {
+        CleanupContext { send_to_cleanup }
     }
 }
 
 impl Drop for CleanupContext {
     fn drop(&mut self) {
-        for node in self.nodes.borrow_mut().iter_mut() {
-            cleanup_node(node);
-        }
-        let _ = self.send_to_kill_router.send(true);
-
+        let _ = self.send_to_cleanup.send(true);
     }
-}
-
-fn cleanup_node(node: &mut NodeInfo) {
-    // Assuming Node is a struct that contains process_handle, master_fd, and home
-    // Send Ctrl-C to the process
-    println!("Cleaning up {:?}...", node.home);
-    nix::unistd::write(node.master_fd.as_raw_fd(), b"\x03").unwrap();
-    node.process_handle.wait().unwrap();
-
-    if node.home.exists() {
-        for dir in &["kernel", "kv", "sqlite", "vfs"] {
-            let dir = node.home.join(dir);
-            if dir.exists() {
-                fs::remove_dir_all(&node.home.join(dir)).unwrap();
-            }
-        }
-    }
-    println!("Done cleaning up {:?}.", node.home);
 }
