@@ -6,6 +6,7 @@ mod boot_fake_node;
 mod build;
 mod inject_message;
 mod new;
+mod remove_package;
 mod run_tests;
 mod start_package;
 
@@ -16,15 +17,15 @@ async fn execute(
     match matches {
         Some(("boot-fake-node", boot_matches)) => {
             let runtime_path = boot_matches
-                .get_one::<String>("runtime-path")
+                .get_one::<String>("PATH")
                 .and_then(|p| Some(PathBuf::from(p)));
-            let version = boot_matches.get_one::<String>("version").unwrap();
-            let node_home = PathBuf::from(boot_matches.get_one::<String>("node-home").unwrap());
-            let node_port = boot_matches.get_one::<u16>("node-port").unwrap();
-            let network_router_port = boot_matches.get_one::<u16>("network-router-port").unwrap();
-            let rpc = boot_matches.get_one::<String>("rpc").and_then(|s| Some(s.as_str()));
-            let fake_node_name = boot_matches.get_one::<String>("fake-node-name").unwrap();
-            let password = boot_matches.get_one::<String>("password").unwrap();
+            let version = boot_matches.get_one::<String>("VERSION").unwrap();
+            let node_home = PathBuf::from(boot_matches.get_one::<String>("HOME").unwrap());
+            let node_port = boot_matches.get_one::<u16>("NODE_PORT").unwrap();
+            let network_router_port = boot_matches.get_one::<u16>("NETWORK_ROUTER_PORT").unwrap();
+            let rpc = boot_matches.get_one::<String>("RPC_ENDPOINT").and_then(|s| Some(s.as_str()));
+            let fake_node_name = boot_matches.get_one::<String>("NODE_NAME").unwrap();
+            let password = boot_matches.get_one::<String>("PASSWORD").unwrap();
 
             boot_fake_node::execute(
                 runtime_path,
@@ -39,10 +40,10 @@ async fn execute(
             ).await
         },
         Some(("build", build_matches)) => {
-            let package_dir = PathBuf::from(build_matches.get_one::<String>("package-dir").unwrap());
-            let ui = build_matches.get_one::<bool>("ui").unwrap_or(&false);
-            let ui_only = build_matches.get_one::<bool>("ui-only").unwrap_or(&false);
-            let verbose = !build_matches.get_one::<bool>("quiet").unwrap();
+            let package_dir = PathBuf::from(build_matches.get_one::<String>("DIR").unwrap());
+            let ui = build_matches.get_one::<bool>("UI").unwrap_or(&false);
+            let ui_only = build_matches.get_one::<bool>("UI_ONLY").unwrap_or(&false);
+            let verbose = !build_matches.get_one::<bool>("QUIET").unwrap();
 
             if *ui_only {
                 build::compile_and_copy_ui(&package_dir, verbose)
@@ -53,30 +54,30 @@ async fn execute(
             }
         },
         Some(("inject-message", inject_message_matches)) => {
-            let url: &String = inject_message_matches.get_one("url").unwrap();
-            let process: &String = inject_message_matches.get_one("process").unwrap();
-            let ipc: &String = inject_message_matches.get_one("ipc").unwrap();
+            let url: &String = inject_message_matches.get_one("URL").unwrap();
+            let process: &String = inject_message_matches.get_one("PROCESS").unwrap();
+            let ipc: &String = inject_message_matches.get_one("IPC").unwrap();
             let node: Option<&str> = inject_message_matches
-                .get_one("node")
+                .get_one("NODE_NAME")
                 .and_then(|s: &String| Some(s.as_str()));
             let bytes: Option<&str> = inject_message_matches
-                .get_one("bytes")
+                .get_one("PATH")
                 .and_then(|s: &String| Some(s.as_str()));
             inject_message::execute(url, process, ipc, node, bytes).await
         },
         Some(("new", new_matches)) => {
-            let new_dir = PathBuf::from(new_matches.get_one::<String>("directory").unwrap());
+            let new_dir = PathBuf::from(new_matches.get_one::<String>("DIR").unwrap());
             let new_dir_clone = new_dir.clone();
-            let package_name = match new_matches.get_one::<String>("package-name") {
+            let package_name = match new_matches.get_one::<String>("PACKAGE") {
                 Some(pn) => pn,
                 None => new_dir_clone.file_name().unwrap().to_str().unwrap(),
             };
-            let publisher = new_matches.get_one::<String>("publisher").unwrap();
+            let publisher = new_matches.get_one::<String>("PUBLISHER").unwrap();
 
             new::execute(new_dir, package_name.to_string(), publisher.clone())
         },
         Some(("run-tests", run_tests_matches)) => {
-            let config_path = match run_tests_matches.get_one::<String>("config") {
+            let config_path = match run_tests_matches.get_one::<String>("PATH") {
                 Some(path) => PathBuf::from(path),
                 None => std::env::current_dir()?.join("tests.toml"),
             };
@@ -93,11 +94,24 @@ async fn execute(
 
             run_tests::execute(config_path.to_str().unwrap()).await
         },
+        Some(("remove-package", remove_package_matches)) => {
+            let package_name = remove_package_matches.get_one::<String>("PACKAGE")
+                .and_then(|s: &String| Some(s.as_str()));
+            let publisher = remove_package_matches.get_one::<String>("PUBLISHER")
+                .and_then(|s: &String| Some(s.as_str()));
+            let package_dir = PathBuf::from(remove_package_matches.get_one::<String>("DIR").unwrap());
+            let url: &String = remove_package_matches.get_one("URL").unwrap();
+            let node: Option<&str> = remove_package_matches
+                .get_one("NODE_NAME")
+                .and_then(|s: &String| Some(s.as_str()));
+            let is_delete = !remove_package_matches.get_one::<bool>("UNINSTALL_ONLY").unwrap();
+            remove_package::execute(package_dir, url, node, package_name, publisher, is_delete).await
+        },
         Some(("start-package", start_package_matches)) => {
-            let package_dir = PathBuf::from(start_package_matches.get_one::<String>("package-dir").unwrap());
-            let url: &String = start_package_matches.get_one("url").unwrap();
+            let package_dir = PathBuf::from(start_package_matches.get_one::<String>("DIR").unwrap());
+            let url: &String = start_package_matches.get_one("URL").unwrap();
             let node: Option<&str> = start_package_matches
-                .get_one("node")
+                .get_one("NODE_NAME")
                 .and_then(|s: &String| Some(s.as_str()));
             start_package::execute(package_dir, url, node).await
         },
@@ -181,13 +195,6 @@ async fn main() -> anyhow::Result<()> {
                 .help("The package directory to build")
                 .default_value(&current_dir)
             )
-            .arg(Arg::new("QUIET")
-                .action(ArgAction::SetTrue)
-                .short('q')
-                .long("quiet")
-                .help("If set, do not print `cargo` stdout/stderr")
-                .required(false)
-            )
             .arg(Arg::new("UI")
                 .action(ArgAction::SetTrue)
                 .long("ui")
@@ -200,6 +207,13 @@ async fn main() -> anyhow::Result<()> {
                 .help("If set, build ONLY the web UI for the process")
                 .required(false)
             )
+            .arg(Arg::new("QUIET")
+                .action(ArgAction::SetTrue)
+                .short('q')
+                .long("quiet")
+                .help("If set, do not print `cargo` stdout/stderr")
+                .required(false)
+            )
         )
         .subcommand(Command::new("inject-message")
             .about("Inject a message to a running Uqbar node")
@@ -207,6 +221,7 @@ async fn main() -> anyhow::Result<()> {
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
+                .help("URL node is running at")
                 .required(true)
             )
             .arg(Arg::new("PROCESS")
@@ -254,7 +269,7 @@ async fn main() -> anyhow::Result<()> {
             .arg(Arg::new("PUBLISHER")
                 .action(ArgAction::Set)
                 .short('u')
-                .long("package")
+                .long("publisher")
                 .help("Name of the publisher")
                 .default_value("template.uq")
             )
@@ -267,9 +282,51 @@ async fn main() -> anyhow::Result<()> {
                 .default_value("tests.toml")
             )
         )
+        .subcommand(Command::new("remove-package")
+            .about("Remove a running package from a node")
+            .arg(Arg::new("PACKAGE")
+                .action(ArgAction::Set)
+                .short('a')
+                .long("package")
+                .help("Name of the package (Overrides DIR)")
+                .required(false)
+            )
+            .arg(Arg::new("PUBLISHER")
+                .action(ArgAction::Set)
+                .short('u')
+                .long("publisher")
+                .help("Name of the publisher (Overrides DIR)")
+                .required(false)
+            )
+            .arg(Arg::new("DIR")
+                .action(ArgAction::Set)
+                .help("The package directory to remove (Overridden by PACKAGE/PUBLISHER)")
+                .default_value(&current_dir)
+            )
+            .arg(Arg::new("URL")
+                .action(ArgAction::Set)
+                .short('u')
+                .long("url")
+                .help("URL node is running at")
+                .required(true)
+            )
+            .arg(Arg::new("NODE_NAME")
+                .action(ArgAction::Set)
+                .short('n')
+                .long("node")
+                .help("Node ID (default: our)")
+                .required(false)
+            )
+            .arg(Arg::new("UNINSTALL_ONLY")
+                .action(ArgAction::SetTrue)
+                .short('u')
+                .help("Only uninstall the package; don't delete it from node")
+                .long("uninstall-only")
+            )
+        )
         .subcommand(Command::new("start-package")
             .about("Start a built Uqbar process")
-            .arg(Arg::new("PATH")
+            .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
                 .help("The package directory to build")
                 .default_value(&current_dir)
@@ -278,12 +335,14 @@ async fn main() -> anyhow::Result<()> {
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
+                .help("URL node is running at")
                 .required(true)
             )
             .arg(Arg::new("NODE_NAME")
                 .action(ArgAction::Set)
                 .short('n')
                 .long("node")
+                .help("Node ID (default: our)")
                 .required(false)
             )
         );
