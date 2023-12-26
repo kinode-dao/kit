@@ -276,6 +276,10 @@ pub async fn execute(
     });
     task_handles.push(handle);
 
+    if node_home.exists() {
+        fs::remove_dir_all(&node_home)?;
+    }
+
     // TODO: can remove?
     thread::sleep(time::Duration::from_secs(1));
 
