@@ -57,6 +57,8 @@ pub type NodeCleanupInfos = Arc<Mutex<Vec<NodeCleanupInfo>>>;
 
 pub type RecvBool = tokio::sync::mpsc::UnboundedReceiver<bool>;
 pub type SendBool = tokio::sync::mpsc::UnboundedSender<bool>;
+pub type BroadcastRecvBool = tokio::sync::broadcast::Receiver<bool>;
+pub type BroadcastSendBool = tokio::sync::broadcast::Sender<bool>;
 
 #[derive(Debug)]
 pub struct NodeCleanupInfo {

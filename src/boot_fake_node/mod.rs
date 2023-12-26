@@ -247,14 +247,14 @@ pub async fn execute(
     let node_cleanup_infos = Arc::new(Mutex::new(Vec::new()));
 
     let (send_to_cleanup, recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
-    let (send_to_kill_cos, recv_kill_in_cos) = tokio::sync::mpsc::unbounded_channel();
-    let (send_to_kill_router, recv_kill_in_router) = tokio::sync::mpsc::unbounded_channel();
+    let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
+    let recv_kill_in_cos = send_to_kill.subscribe();
+    let recv_kill_in_router = send_to_kill.subscribe();
 
     let node_cleanup_infos_for_cleanup = Arc::clone(&node_cleanup_infos);
     let handle = tokio::spawn(cleanup(
         recv_in_cleanup,
-        send_to_kill_cos,
-        send_to_kill_router,
+        send_to_kill,
         node_cleanup_infos_for_cleanup,
         None,
         detached,

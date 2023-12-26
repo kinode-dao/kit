@@ -3,10 +3,13 @@ use std::os::fd::AsRawFd;
 
 use tokio::signal::unix::{signal, SignalKind};
 
-use crate::run_tests::types::{NodeCleanupInfo, NodeCleanupInfos, NodeHandles, RecvBool, SendBool};
+use crate::run_tests::types::{BroadcastRecvBool, BroadcastSendBool, NodeCleanupInfo, NodeCleanupInfos, NodeHandles, RecvBool, SendBool};
 
 /// trigger cleanup if receive signal to kill process
-pub async fn cleanup_on_signal(send_to_cleanup: SendBool, mut recv_kill_in_cos: RecvBool) {
+pub async fn cleanup_on_signal(
+    send_to_cleanup: SendBool,
+    mut recv_kill_in_cos: BroadcastRecvBool,
+) {
     let mut sigalrm = signal(SignalKind::alarm()).expect("uqdev run-tests: failed to set up SIGALRM handler");
     let mut sighup = signal(SignalKind::hangup()).expect("uqdev run-tests: failed to set up SIGHUP handler");
     let mut sigint = signal(SignalKind::interrupt()).expect("uqdev run-tests: failed to set up SIGINT handler");
@@ -33,8 +36,7 @@ pub async fn cleanup_on_signal(send_to_cleanup: SendBool, mut recv_kill_in_cos: 
 
 pub async fn cleanup(
     mut recv_in_cleanup: RecvBool,
-    send_to_kill_cos: SendBool,
-    send_to_kill_router: SendBool,
+    send_to_kill: BroadcastSendBool,
     node_cleanup_infos: NodeCleanupInfos,
     node_handles: Option<NodeHandles>,
     detached: bool,
@@ -82,6 +84,5 @@ pub async fn cleanup(
         }
         println!("Done cleaning up {:?}.\r", home);
     }
-    let _ = send_to_kill_cos.send(true);
-    let _ = send_to_kill_router.send(true);
+    let _ = send_to_kill.send(true);
 }

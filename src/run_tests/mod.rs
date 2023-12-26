@@ -1,10 +1,11 @@
-use std::{fs, thread, time};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
 
 use dirs::home_dir;
 use serde_json::Value;
@@ -85,7 +86,11 @@ impl Config {
     }
 }
 
-async fn wait_until_booted(port: u16, max_waits: u16) -> anyhow::Result<()> {
+async fn wait_until_booted(
+    port: u16,
+    max_waits: u16,
+    mut recv_kill_in_wait: BroadcastRecvBool,
+) -> anyhow::Result<()> {
     for _ in 0..max_waits {
         let request = inject_message::make_message(
             "vfs:sys:uqbar",
@@ -106,7 +111,12 @@ async fn wait_until_booted(port: u16, max_waits: u16) -> anyhow::Result<()> {
             _ => ()
         }
 
-        thread::sleep(time::Duration::from_secs(1));
+        tokio::select! {
+            _ = sleep(Duration::from_secs(1)) => {}
+            _ = recv_kill_in_wait.recv() => {
+                return Err(anyhow::anyhow!("received exit"));
+            }
+        };
     }
     Err(anyhow::anyhow!("uqdev run-tests: could not connect to Uqbar node"))
 }
@@ -279,21 +289,21 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
 
         // Initialize variables for master node and nodes list
         let mut master_node_port = None;
-        //let nodes = Arc::new(Mutex::new(Vec::new()));
         let mut task_handles = Vec::new();
         let node_handles = Arc::new(Mutex::new(Vec::new()));
         let node_cleanup_infos = Arc::new(Mutex::new(Vec::new()));
 
         // Cleanup, boot check, test loading, and running
         let (send_to_cleanup, recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
-        let (send_to_kill_cos, recv_kill_in_cos) = tokio::sync::mpsc::unbounded_channel();
-        let (send_to_kill_router, recv_kill_in_router) = tokio::sync::mpsc::unbounded_channel();
+        let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
+        let recv_kill_in_cos = send_to_kill.subscribe();
+        let recv_kill_in_router = send_to_kill.subscribe();
         let node_cleanup_infos_for_cleanup = Arc::clone(&node_cleanup_infos);
         let node_handles_for_cleanup = Arc::clone(&node_handles);
+        let send_to_kill_for_cleanup = send_to_kill.clone();
         let handle = tokio::spawn(cleanup(
             recv_in_cleanup,
-            send_to_kill_cos,
-            send_to_kill_router,
+            send_to_kill_for_cleanup,
             node_cleanup_infos_for_cleanup,
             Some(node_handles_for_cleanup),
             detached,
@@ -365,7 +375,8 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
         for node in &test.nodes {
             let node_home = fs::canonicalize(&node.home)?;
             println!("Setting up node {:?}...", node_home);
-            wait_until_booted(node.port, 5).await?;
+            let recv_kill_in_wait = send_to_kill.subscribe();
+            wait_until_booted(node.port, 5, recv_kill_in_wait).await?;
             ports.push(node.port);
             println!("Done setting up node {:?} on port {}.", node_home, node.port);
         }
