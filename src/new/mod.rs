@@ -1,33 +1,61 @@
 use std::{fs, path::{PathBuf, Path}, collections::HashMap};
 
-const PATH_TO_CONTENT: &[(&str, &str)] = &[
-    (".gitignore",                include_str!("templates/rust/chat/.gitignore")),
-    ("{package_name}/Cargo.toml", include_str!("templates/rust/chat/chat/Cargo.toml")),
-    ("{package_name}/src/lib.rs", include_str!("templates/rust/chat/chat/src/lib.rs")),
-    ("pkg/manifest.json",         include_str!("templates/rust/chat/pkg/manifest.json")),
-    ("pkg/metadata.json",         include_str!("templates/rust/chat/pkg/metadata.json")),
-    ("ui/.eslintrc.cjs",          include_str!("templates/rust/chat/ui/.eslintrc.cjs")),
-    ("ui/.gitignore",             include_str!("templates/rust/chat/ui/.gitignore")),
-    ("ui/README.md",              include_str!("templates/rust/chat/ui/README.md")),
-    ("ui/package.json",           include_str!("templates/rust/chat/ui/package.json")),
-    ("ui/package-lock.json",      include_str!("templates/rust/chat/ui/package-lock.json")),
-    ("ui/tsconfig.json",          include_str!("templates/rust/chat/ui/tsconfig.json")),
-    ("ui/tsconfig.node.json",     include_str!("templates/rust/chat/ui/tsconfig.node.json")),
-    ("ui/vite.config.ts",         include_str!("templates/rust/chat/ui/vite.config.ts")),
-    ("ui/index.html",             include_str!("templates/rust/chat/ui/index.html")),
-    ("ui/public/assets/vite.svg", include_str!("templates/rust/chat/ui/public/assets/vite.svg")),
-    ("ui/src/App.css",            include_str!("templates/rust/chat/ui/src/App.css")),
-    ("ui/src/App.tsx",            include_str!("templates/rust/chat/ui/src/App.tsx")),
-    ("ui/src/assets/react.svg",   include_str!("templates/rust/chat/ui/src/assets/react.svg")),
-    ("ui/src/index.css",          include_str!("templates/rust/chat/ui/src/index.css")),
-    ("ui/src/main.tsx",           include_str!("templates/rust/chat/ui/src/main.tsx")),
-    ("ui/src/store/chat.ts",      include_str!("templates/rust/chat/ui/src/store/chat.ts")),
-    ("ui/src/types/Chat.ts",      include_str!("templates/rust/chat/ui/src/types/Chat.ts")),
-    ("ui/src/types/global.ts",    include_str!("templates/rust/chat/ui/src/types/global.ts")),
-    ("ui/src/vite-env.d.ts",      include_str!("templates/rust/chat/ui/src/vite-env.d.ts")),
-];
+include!("includes.rs");
 
-pub fn execute(new_dir: PathBuf, package_name: String, publisher: String) -> anyhow::Result<()> {
+#[derive(Clone)]
+pub enum Language {
+    Rust,
+    Python,
+}
+
+#[derive(Clone)]
+pub enum Template {
+    Chat,
+}
+
+impl Language {
+    fn to_string(&self) -> String {
+        match self {
+            Language::Rust => "rust",
+            Language::Python => "python",
+        }.to_string()
+    }
+}
+
+impl Template {
+    fn to_string(&self) -> String {
+        match self {
+            Template::Chat => "chat",
+        }.to_string()
+    }
+}
+
+impl From<&String> for Language {
+    fn from(s: &String) -> Self {
+        match s.as_str() {
+            "rust" => Language::Rust,
+            "python" => Language::Python,
+            _ => panic!("uqdev: language must be 'rust' or 'python'; not '{s}'"),
+        }
+    }
+}
+
+impl From<&String> for Template {
+    fn from(s: &String) -> Self {
+        match s.as_str() {
+            "chat" => Template::Chat,
+            _ => panic!("uqdev: template must be 'chat'; not '{s}'"),
+        }
+    }
+}
+
+pub fn execute(
+    new_dir: PathBuf,
+    package_name: String,
+    publisher: String,
+    language: Language,
+    template: Template,
+) -> anyhow::Result<()> {
     // Check if the directory already exists
     if new_dir.exists() {
         let error = format!(
@@ -38,35 +66,34 @@ pub fn execute(new_dir: PathBuf, package_name: String, publisher: String) -> any
         return Err(anyhow::anyhow!(error));
     }
 
-    let mut path_to_content: HashMap<String, String> = PATH_TO_CONTENT
+    let template_prefix = format!("{}/{}/", language.to_string(), template.to_string());
+    let path_to_content: HashMap<String, String> = PATH_TO_CONTENT
         .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .filter_map(|(k, v)| {
+            k
+                .strip_prefix(&template_prefix)
+                .and_then(|stripped| {
+                    let key = stripped
+                        .replace("{package_name}", &package_name)
+                        .to_string();
+                    let val = v
+                        .replace("{package_name}", &package_name)
+                        .replace("{publisher}", &publisher)
+                        .to_string();
+                    Some((key, val))
+                })
+        })
         .collect();
-    for entry in &[
-        ".gitignore",
-        "{package_name}/Cargo.toml",
-        "{package_name}/src/lib.rs",
-        "pkg/manifest.json",
-        "pkg/metadata.json",
-    ] {
-        path_to_content
-            .entry(entry.to_string())
-            .and_modify(|c| *c = c.replace("{package_name}", &package_name))
-            .and_modify(|c| *c = c.replace("{publisher}", &publisher));
-    }
 
     // Create the template directory and subdirectories
-    fs::create_dir_all(new_dir.join("pkg"))?;
-    fs::create_dir_all(new_dir.join(&package_name).join("src"))?;
-    fs::create_dir_all(new_dir.join("ui/public/assets"))?;
-    fs::create_dir_all(new_dir.join("ui/src/assets"))?;
-    fs::create_dir_all(new_dir.join("ui/src/store"))?;
-    fs::create_dir_all(new_dir.join("ui/src/types"))?;
+    path_to_content
+        .keys()
+        .filter_map(|p| Path::new(p).parent())
+        .try_for_each(|p| fs::create_dir_all(new_dir.join(p)))?;
 
     // Copy the template files
     for (path, content) in path_to_content {
-        let path = path.replace("{package_name}", &package_name);
-        fs::write(new_dir.join(path.replace("{package_name}", &package_name)), content)?;
+        fs::write(new_dir.join(path), content)?;
     }
 
     println!("Template directory created successfully at {:?}.", new_dir);

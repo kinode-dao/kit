@@ -73,8 +73,16 @@ async fn execute(
                 None => new_dir_clone.file_name().unwrap().to_str().unwrap(),
             };
             let publisher = new_matches.get_one::<String>("PUBLISHER").unwrap();
+            let language: new::Language = new_matches.get_one::<String>("LANGUAGE").unwrap().into();
+            let template: new::Template = new_matches.get_one::<String>("TEMPLATE").unwrap().into();
 
-            new::execute(new_dir, package_name.to_string(), publisher.clone())
+            new::execute(
+                new_dir,
+                package_name.to_string(),
+                publisher.clone(),
+                language.clone(),
+                template.clone(),
+            )
         },
         Some(("run-tests", run_tests_matches)) => {
             let config_path = match run_tests_matches.get_one::<String>("PATH") {
@@ -207,6 +215,14 @@ async fn main() -> anyhow::Result<()> {
                 .help("If set, build ONLY the web UI for the process")
                 .required(false)
             )
+            //.arg(Arg::new("LANGUAGE")
+            //    .action(ArgAction::Set)
+            //    .short('l')
+            //    .long("language")
+            //    .help("Programming language of the template")
+            //    .value_parser(["rust", "python"])
+            //    .default_value("rust")
+            //)
             .arg(Arg::new("QUIET")
                 .action(ArgAction::SetTrue)
                 .short('q')
@@ -272,6 +288,22 @@ async fn main() -> anyhow::Result<()> {
                 .long("publisher")
                 .help("Name of the publisher")
                 .default_value("template.uq")
+            )
+            .arg(Arg::new("LANGUAGE")
+                .action(ArgAction::Set)
+                .short('l')
+                .long("language")
+                .help("Programming language of the template")
+                .value_parser(["rust", "python"])
+                .default_value("rust")
+            )
+            .arg(Arg::new("TEMPLATE")
+                .action(ArgAction::Set)
+                .short('t')
+                .long("template")
+                .help("Template to create")
+                .value_parser(["chat"])
+                .default_value("chat")
             )
         )
         .subcommand(Command::new("run-tests")
