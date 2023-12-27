@@ -14,7 +14,7 @@ cargo install --git https://github.com/uqbar-dao/uqdev
 
 ```bash
 # Create a new project package template:
-uqdev new my_package -p my_package
+uqdev new my_package
 
 # Build the package ("--ui" is optional):
 uqdev build my_package --ui
