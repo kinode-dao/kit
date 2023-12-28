@@ -7,6 +7,17 @@ Tools for developing on Uqbar
 Install with cargo:
 
 ```bash
+# Get utility to build Python:
+pip3 install componentize-py==0.7.1
+
+# Get nvm, node, npm for building front-ends:
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+
+# Then, in a new terminal:
+nvm install node
+nvm install-latest-npm
+
+# Install `uqdev` tools:
 cargo install --git https://github.com/uqbar-dao/uqdev
 ```
 

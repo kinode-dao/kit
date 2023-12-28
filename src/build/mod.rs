@@ -1,6 +1,6 @@
 use std::fs::{self, File};
 use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 use reqwest;
@@ -14,6 +14,13 @@ struct CargoFile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoPackage {
     name: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Metadata {
+    package: String,
+    publisher: String,
+    version: [u32; 3],
 }
 
 pub fn run_command(cmd: &mut Command) -> io::Result<()> {
@@ -77,22 +84,59 @@ pub async fn compile_package_and_ui(package_dir: &Path, verbose: bool) -> anyhow
 }
 
 pub async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
-    // TODO: When expanding to other languages, will no longer be
-    //       able to use Cargo.toml as indicator of a process dir
-    // Look for subdirectories containing `Cargo.toml`
+    let rust_src_path = "src/lib.rs";
+    let python_src_path = "src/lib.py";
     for entry in package_dir.read_dir()? {
         let entry = entry?;
         let path = entry.path();
-        if path.is_dir() && path.join("Cargo.toml").exists() {
-            compile_wasm_project(&path, verbose).await?;
+        if path.is_dir() {
+            if path.join(&rust_src_path).exists() {
+                compile_rust_wasm_process(&path, verbose).await?;
+            } else if path.join(&python_src_path).exists() {
+                compile_python_wasm_process(&path, verbose).await?;
+            }
         }
     }
 
     Ok(())
 }
 
-async fn compile_wasm_project(process_dir: &Path, verbose: bool) -> anyhow::Result<()> {
-    println!("Compiling Uqbar process in {:?}...", process_dir);
+async fn compile_python_wasm_process(
+    process_dir: &Path,
+    verbose: bool,
+) -> anyhow::Result<()> {
+    println!("Compiling Python Uqbar process in {:?}...", process_dir);
+    let wit_dir = process_dir.join("wit");
+    fs::create_dir_all(&wit_dir)?;
+    let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/uqbar.wit";
+    download_file(uqbar_wit_url, &wit_dir.join("uqbar.wit")).await?;
+
+    let wasm_file_name = process_dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap();
+
+    run_command(Command::new("componentize-py")
+        .args(&[
+            "-d", "../wit/",
+            "-w", "process",
+            "componentize", "lib",
+            "-o", &format!("../../pkg/{wasm_file_name}.wasm")
+        ])
+        .current_dir(process_dir.join("src"))
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+    )?;
+
+    println!("Done compiling Python Uqbar process in {:?}.", process_dir);
+    Ok(())
+}
+
+async fn compile_rust_wasm_process(
+    process_dir: &Path,
+    verbose: bool,
+) -> anyhow::Result<()> {
+    println!("Compiling Rust Uqbar process in {:?}...", process_dir);
 
     // Paths
     let bindings_dir = process_dir
@@ -107,8 +151,7 @@ async fn compile_wasm_project(process_dir: &Path, verbose: bool) -> anyhow::Resu
     // Check and download uqbar.wit if wit_dir does not exist
     //if !wit_dir.exists() { // TODO: do a smarter check; this check will fail when remote has updated v
     fs::create_dir_all(&wit_dir)?;
-    // let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/uqbar.wit";
-    let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/2bb0a6b3b860545871cd53f607ef2b4e1da7a451/uqbar.wit";
+    let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/uqbar.wit";
     download_file(uqbar_wit_url, &wit_dir.join("uqbar.wit")).await?;
 
     // Check and download wasi_snapshot_preview1.wasm if it does not exist
@@ -163,6 +206,7 @@ async fn compile_wasm_project(process_dir: &Path, verbose: bool) -> anyhow::Resu
         let cargo_parsed = toml::from_str::<CargoFile>(&cargo_contents)?;
         cargo_parsed.package.name
     };
+
     let wasm_file_prefix = Path::new("target/wasm32-wasi/release");
     let wasm_file = wasm_file_prefix
         .clone()
@@ -202,6 +246,6 @@ async fn compile_wasm_project(process_dir: &Path, verbose: bool) -> anyhow::Resu
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling WASM project in {:?}.", process_dir);
+    println!("Done compiling Rust Uqbar process in {:?}.", process_dir);
     Ok(())
 }
