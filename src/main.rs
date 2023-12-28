@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 mod boot_fake_node;
 mod build;
+mod dev_ui;
 mod inject_message;
 mod new;
 mod remove_package;
@@ -48,10 +49,9 @@ async fn execute(
         },
         Some(("dev-ui", dev_ui_matches)) => {
             let package_dir = PathBuf::from(dev_ui_matches.get_one::<String>("DIR").unwrap());
-            let default_url = "http://127.0.0.1:8080".to_string();
-            let url: &String = dev_ui_matches.get_one("URL").unwrap_or(&default_url);
+            let url: &String = dev_ui_matches.get_one("URL").unwrap();
 
-            build::develop_ui(&package_dir, url)
+            dev_ui::execute(&package_dir, url)
         },
         Some(("inject-message", inject_message_matches)) => {
             let url: &String = inject_message_matches.get_one("URL").unwrap();
@@ -230,8 +230,8 @@ async fn main() -> anyhow::Result<()> {
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
-                .help("Node URL (defaults to http://localhost:8080)")
-                .required(false)
+                .help("Node URL")
+                .default_value("http://localhost:8080")
             )
         )
         .subcommand(Command::new("inject-message")
@@ -240,8 +240,8 @@ async fn main() -> anyhow::Result<()> {
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
-                .help("URL node is running at")
-                .required(true)
+                .help("Node URL")
+                .default_value("http://localhost:8080")
             )
             .arg(Arg::new("PROCESS")
                 .action(ArgAction::Set)
@@ -348,8 +348,8 @@ async fn main() -> anyhow::Result<()> {
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
-                .help("URL node is running at")
-                .required(true)
+                .help("Node URL")
+                .default_value("http://localhost:8080")
             )
             .arg(Arg::new("NODE_NAME")
                 .action(ArgAction::Set)
@@ -376,8 +376,8 @@ async fn main() -> anyhow::Result<()> {
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
-                .help("URL node is running at")
-                .required(true)
+                .help("Node URL")
+                .default_value("http://localhost:8080")
             )
             .arg(Arg::new("NODE_NAME")
                 .action(ArgAction::Set)

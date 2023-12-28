@@ -85,7 +85,7 @@ pub async fn execute(
         }
     }
 
-    println!("Successfully removed package: {}:{}", package_name, publisher);
+    println!("Successfully removed package {}:{} on node at {}", package_name, publisher, url);
 
     Ok(())
 }

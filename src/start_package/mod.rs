@@ -127,7 +127,7 @@ pub async fn execute(project_dir: PathBuf, url: &str, node: Option<&str>) -> any
         process::exit(1);
     }
 
-    println!("Successfully installed package: {}", pkg_publisher);
+    println!("Successfully installed package {} on node at {}", pkg_publisher, url);
 
     Ok(())
 }

@@ -78,9 +78,18 @@ For details and examples, please see https://github.com/uqbar-dao/core_tests
 
 ## UI Development
 
-The simplest way to work on the UI is to use `uqdev dev-ui` which develops against a running node. Under the hood, `uqdev dev-ui` is just `cd ui && npm install && npm start`.
+The simplest way to work on the UI is to use `uqdev dev-ui` which develops against a running node.
+Under the hood, `uqdev dev-ui` is just `cd ui && npm install && npm start`.
 
-The UI should open on port `3000` (or next available port) and will proxy all websocket and HTTP requests to `http://localhost:8080` by default. You can choose to proxy to any URL using the `-u` flag: `uqdev dev-ui my_package -u http://localhost:8081`. This is the same as prepending the environment variable: `VITE_NODE_URL=http://localhost:8081 npm start`.
+The UI should open on port `3000` (or next available port) and will proxy all websocket and HTTP requests to `http://localhost:8080` by default.
+You can choose to proxy to any URL using the `-u` flag:
+```bash
+uqdev dev-ui my_package -u http://localhost:8081
+```
+This is the same as prepending the environment variable:
+```bash
+VITE_NODE_URL=http://localhost:8081 npm start
+```
 
 NodeJS (v18 or higher) and NPM are required to build and develop the UI.
 
