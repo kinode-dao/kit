@@ -12,10 +12,6 @@ If you have multiple processes in `manifest.json`, make sure the first process w
 
 Run `npm i` and then `npm start` to start working on the UI.
 
-#### Http Proxying in Development
-
-You must add any proxied routes to `vite.config.ts`. There is a commented example with debug logging.
-
 ## public vs assets
 
 The `public/assets` folder contains files that are referenced in `index.html`, `src/assets` is for asset files that are only referenced in `src` code.

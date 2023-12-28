@@ -59,6 +59,7 @@ uqdev start-package -u http://localhost:8080
 uqdev --help
 uqdev new --help
 uqdev build --help
+uqdev dev-ui --help
 uqdev inject-message --help
 uqdev boot-fake-node --help
 uqdev start-package --help
@@ -77,10 +78,10 @@ For details and examples, please see https://github.com/uqbar-dao/core_tests
 
 ## UI Development
 
+The simplest way to work on the UI is to use `uqdev dev-ui` which develops against a running node. Under the hood, `uqdev dev-ui` is just `cd ui && npm install && npm start`.
+
+The UI should open on port `3000` (or next available port) and will proxy all websocket and HTTP requests to `http://localhost:8080` by default. You can choose to proxy to any URL using the `-u` flag: `uqdev dev-ui my_package -u http://localhost:8081`. This is the same as prepending the environment variable: `VITE_NODE_URL=http://localhost:8081 npm start`.
+
 NodeJS (v18 or higher) and NPM are required to build and develop the UI.
 
 The UI is written in React with Vite as the bundler + reloader.
-
-To develop locally against a node running on port 8080, run `npm install` and `npm start`. The UI should open on port `3000` and will proxy all websocket and HTTP requests to the local node.
-
-If the node is running on a different port or at a remote URL, the proxy target can be changed on line 19 of `ui/vite.config.ts` or VITE_API_URL="*target*" can be added before the `npm start` command like `VITE_API_URL="*target*" npm start`.

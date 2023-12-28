@@ -46,6 +46,13 @@ async fn execute(
 
             build::execute(&package_dir, *ui_only, verbose).await
         },
+        Some(("dev-ui", dev_ui_matches)) => {
+            let package_dir = PathBuf::from(dev_ui_matches.get_one::<String>("DIR").unwrap());
+            let default_url = "http://127.0.0.1:8080".to_string();
+            let url: &String = dev_ui_matches.get_one("URL").unwrap_or(&default_url);
+
+            build::develop_ui(&package_dir, url)
+        },
         Some(("inject-message", inject_message_matches)) => {
             let url: &String = inject_message_matches.get_one("URL").unwrap();
             let process: &String = inject_message_matches.get_one("PROCESS").unwrap();
@@ -209,6 +216,21 @@ async fn main() -> anyhow::Result<()> {
                 .short('q')
                 .long("quiet")
                 .help("If set, do not print `cargo` stdout/stderr")
+                .required(false)
+            )
+        )
+        .subcommand(Command::new("dev-ui")
+            .about("Start the web UI development server with hot reloading (same as `cd ui && npm i && npm start`)")
+            .arg(Arg::new("DIR")
+                .action(ArgAction::Set)
+                .help("The package directory to build (must contain a `ui` directory)")
+                .default_value(&current_dir)
+            )
+            .arg(Arg::new("URL")
+                .action(ArgAction::Set)
+                .short('u')
+                .long("url")
+                .help("Node URL (defaults to http://localhost:8080)")
                 .required(false)
             )
         )
