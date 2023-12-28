@@ -24,7 +24,7 @@ cargo install --git https://github.com/uqbar-dao/uqdev
 ## Usage
 
 ```bash
-# Create a new project package template:
+# Create a new package template (default Rust):
 uqdev new my_package
 
 # Build the package ("--ui" is optional):
@@ -38,8 +38,14 @@ uqdev start-package my_package --url http://localhost:8080
 
 # Or build, start a node, and start a package from inside the project...
 cd my_package
-uqdev build
+uqdev build --ui
 uqdev boot-fake-node
+uqdev start-package -u http://localhost:8080
+
+# Create a Python package template (it `build`s & `start-package`s just like a Rust package!):
+uqdev new my_py_package -l python
+cd my_py_package
+uqdev build
 uqdev start-package -u http://localhost:8080
 
 # Print usage
