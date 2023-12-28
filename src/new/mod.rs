@@ -55,6 +55,7 @@ pub fn execute(
     publisher: String,
     language: Language,
     template: Template,
+    ui: bool,
 ) -> anyhow::Result<()> {
     // Check if the directory already exists
     if new_dir.exists() {
@@ -66,12 +67,24 @@ pub fn execute(
         return Err(anyhow::anyhow!(error));
     }
 
-    let template_prefix = format!("{}/{}/", language.to_string(), template.to_string());
+    let ui_infix = if ui { "ui".to_string() } else { "no-ui".to_string() };
+    let template_prefix = format!(
+        "{}/{}/{}/",
+        language.to_string(),
+        ui_infix,
+        template.to_string(),
+    );
+    let ui_prefix = format!(
+        "{}/{}/",
+        ui_infix,
+        template.to_string(),
+    );
     let path_to_content: HashMap<String, String> = PATH_TO_CONTENT
         .iter()
         .filter_map(|(k, v)| {
             k
                 .strip_prefix(&template_prefix)
+                .or_else(|| k.strip_prefix(&ui_prefix))
                 .and_then(|stripped| {
                     let key = stripped
                         .replace("{package_name}", &package_name)
@@ -84,6 +97,14 @@ pub fn execute(
                 })
         })
         .collect();
+    if ui && path_to_content.keys().filter(|p| !p.starts_with("ui")).count() == 0 {
+        // Only `ui/` exists
+        return Err(anyhow::anyhow!(
+            "uqdev new: cannot use `--ui` for {} {}; template does not exist",
+            language.to_string(),
+            template.to_string(),
+        ));
+    }
 
     // Create the template directory and subdirectories
     path_to_content

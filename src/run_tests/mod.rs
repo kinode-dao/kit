@@ -279,10 +279,10 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
 
     for test in config.tests {
         for setup_package_path in &test.setup_package_paths {
-            build::compile_package(&setup_package_path, test.package_build_verbose).await?;
+            build::execute(&setup_package_path, false, test.package_build_verbose).await?;
         }
         for test_package_path in &test.test_package_paths {
-            build::compile_package(&test_package_path, test.package_build_verbose).await?;
+            build::execute(&test_package_path, false, test.package_build_verbose).await?;
         }
 
         // Initialize variables for master node and nodes list

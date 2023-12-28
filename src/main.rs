@@ -41,17 +41,10 @@ async fn execute(
         },
         Some(("build", build_matches)) => {
             let package_dir = PathBuf::from(build_matches.get_one::<String>("DIR").unwrap());
-            let ui = build_matches.get_one::<bool>("UI").unwrap_or(&false);
             let ui_only = build_matches.get_one::<bool>("UI_ONLY").unwrap_or(&false);
             let verbose = !build_matches.get_one::<bool>("QUIET").unwrap();
 
-            if *ui_only {
-                build::compile_and_copy_ui(&package_dir, verbose)
-            } else if *ui {
-                build::compile_package_and_ui(&package_dir, verbose).await
-            } else {
-                build::compile_package(&package_dir, verbose).await
-            }
+            build::execute(&package_dir, *ui_only, verbose).await
         },
         Some(("inject-message", inject_message_matches)) => {
             let url: &String = inject_message_matches.get_one("URL").unwrap();
@@ -75,6 +68,7 @@ async fn execute(
             let publisher = new_matches.get_one::<String>("PUBLISHER").unwrap();
             let language: new::Language = new_matches.get_one::<String>("LANGUAGE").unwrap().into();
             let template: new::Template = new_matches.get_one::<String>("TEMPLATE").unwrap().into();
+            let ui = new_matches.get_one::<bool>("UI").unwrap_or(&false);
 
             new::execute(
                 new_dir,
@@ -82,6 +76,7 @@ async fn execute(
                 publisher.clone(),
                 language.clone(),
                 template.clone(),
+                *ui,
             )
         },
         Some(("run-tests", run_tests_matches)) => {
@@ -203,12 +198,6 @@ async fn main() -> anyhow::Result<()> {
                 .help("The package directory to build")
                 .default_value(&current_dir)
             )
-            .arg(Arg::new("UI")
-                .action(ArgAction::SetTrue)
-                .long("ui")
-                .help("If set, build the web UI for the process")
-                .required(false)
-            )
             .arg(Arg::new("UI_ONLY")
                 .action(ArgAction::SetTrue)
                 .long("ui-only")
@@ -296,6 +285,12 @@ async fn main() -> anyhow::Result<()> {
                 .help("Template to create")
                 .value_parser(["chat"])
                 .default_value("chat")
+            )
+            .arg(Arg::new("UI")
+                .action(ArgAction::SetTrue)
+                .long("ui")
+                .help("If set, use the template with UI")
+                .required(false)
             )
         )
         .subcommand(Command::new("run-tests")
