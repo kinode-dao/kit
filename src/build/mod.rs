@@ -101,33 +101,6 @@ pub async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Resul
     Ok(())
 }
 
-//pub async fn compile_package(
-//    package_dir: &Path,
-//    language: new::Language,
-//    verbose: bool,
-//) -> anyhow::Result<()> {
-//    // Look for subdirectories containing appropriate extension'd files
-//    let (src_path, compile_wasm_process): (String, Box<dyn Fn(PathBuf, bool) -> std::pin::Pin<Box<dyn std::future::Future<Output = anyhow::Result<()>>>>>) = match language {
-//        new::Language::Rust => (
-//            "src/lib.rs".to_string(),
-//            Box::new(|process_dir, verbose| Box::pin(compile_rust_wasm_process(process_dir, verbose)))
-//        ),
-//        new::Language::Python => (
-//            "src/lib.py".to_string(),
-//            Box::new(|process_dir, verbose| Box::pin(compile_python_wasm_process(process_dir, verbose)))
-//        ),
-//    };
-//    for entry in package_dir.read_dir()? {
-//        let entry = entry?;
-//        let path = entry.path();
-//        if path.is_dir() && path.join(&src_path).exists() {
-//            compile_wasm_process(path, verbose).await?;
-//        }
-//    }
-//
-//    Ok(())
-//}
-
 async fn compile_python_wasm_process(
     process_dir: &Path,
     verbose: bool,
