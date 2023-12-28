@@ -46,61 +46,6 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
-    let ui_path = package_dir.join("ui");
-    println!("Building UI in {:?}...", ui_path);
-
-    if ui_path.exists() && ui_path.is_dir() && ui_path.join("package.json").exists() {
-        println!("UI directory found, running npm install...");
-
-        // Set the current directory to 'ui_path' for the command
-        run_command(Command::new("npm")
-            .arg("install")
-            .current_dir(&ui_path) // Set the working directory
-            .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-            .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
-        )?;
-
-        println!("Running npm run build:copy...");
-
-        // Similarly for 'npm run build:copy'
-        run_command(Command::new("npm")
-            .args(["run", "build:copy"])
-            .current_dir(&ui_path) // Set the working directory
-            .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-            .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
-        )?;
-    } else {
-        println!("'ui' directory not found or 'ui/package.json' does not exist");
-    }
-
-    Ok(())
-}
-
-pub async fn compile_package_and_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
-    compile_package(package_dir, verbose).await?;
-    compile_and_copy_ui(package_dir, verbose)?;
-    Ok(())
-}
-
-pub async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
-    let rust_src_path = "src/lib.rs";
-    let python_src_path = "src/lib.py";
-    for entry in package_dir.read_dir()? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            if path.join(&rust_src_path).exists() {
-                compile_rust_wasm_process(&path, verbose).await?;
-            } else if path.join(&python_src_path).exists() {
-                compile_python_wasm_process(&path, verbose).await?;
-            }
-        }
-    }
-
-    Ok(())
-}
-
 async fn compile_python_wasm_process(
     process_dir: &Path,
     verbose: bool,
@@ -248,4 +193,76 @@ async fn compile_rust_wasm_process(
 
     println!("Done compiling Rust Uqbar process in {:?}.", process_dir);
     Ok(())
+}
+
+fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
+    let ui_path = package_dir.join("ui");
+    println!("Building UI in {:?}...", ui_path);
+
+    if ui_path.exists() && ui_path.is_dir() && ui_path.join("package.json").exists() {
+        println!("UI directory found, running npm install...");
+
+        // Set the current directory to 'ui_path' for the command
+        run_command(Command::new("npm")
+            .arg("install")
+            .current_dir(&ui_path) // Set the working directory
+            .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+            .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+        )?;
+
+        println!("Running npm run build:copy...");
+
+        // Similarly for 'npm run build:copy'
+        run_command(Command::new("npm")
+            .args(["run", "build:copy"])
+            .current_dir(&ui_path) // Set the working directory
+            .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+            .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+        )?;
+    } else {
+        println!("'ui' directory not found or 'ui/package.json' does not exist");
+    }
+
+    Ok(())
+}
+
+async fn compile_package_and_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
+    compile_package(package_dir, verbose).await?;
+    compile_and_copy_ui(package_dir, verbose)?;
+    Ok(())
+}
+
+async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
+    let rust_src_path = "src/lib.rs";
+    let python_src_path = "src/lib.py";
+    for entry in package_dir.read_dir()? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            if path.join(&rust_src_path).exists() {
+                compile_rust_wasm_process(&path, verbose).await?;
+            } else if path.join(&python_src_path).exists() {
+                compile_python_wasm_process(&path, verbose).await?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn execute(package_dir: &Path, ui_only: bool, verbose: bool) -> anyhow::Result<()> {
+    let ui_dir = package_dir.join("ui");
+    if !ui_dir.exists() {
+        if ui_only {
+            return Err(anyhow::anyhow!("uqdev build: can't build UI: no ui directory exists"));
+        } else {
+            compile_package(package_dir, verbose).await
+        }
+    } else {
+        if ui_only {
+            compile_and_copy_ui(package_dir, verbose)
+        } else {
+            compile_package_and_ui(package_dir, verbose).await
+        }
+    }
 }
