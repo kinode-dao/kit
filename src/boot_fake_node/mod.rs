@@ -1,4 +1,3 @@
-use std::io::Read;
 use std::{fs, io, thread, time};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;

@@ -8,6 +8,7 @@ mod inject_message;
 mod new;
 mod remove_package;
 mod run_tests;
+mod setup;
 mod start_package;
 
 async fn execute(
@@ -110,6 +111,7 @@ async fn execute(
             let is_delete = !remove_package_matches.get_one::<bool>("UNINSTALL_ONLY").unwrap();
             remove_package::execute(package_dir, url, node, package_name, publisher, is_delete).await
         },
+        Some(("setup", _setup_matches)) => setup::execute(),
         Some(("start-package", start_package_matches)) => {
             let package_dir = PathBuf::from(start_package_matches.get_one::<String>("DIR").unwrap());
             let url: &String = start_package_matches.get_one("URL").unwrap();
@@ -342,6 +344,9 @@ async fn main() -> anyhow::Result<()> {
                 .help("Only uninstall the package; don't delete it from node")
                 .long("uninstall-only")
             )
+        )
+        .subcommand(Command::new("setup")
+            .about("Fetch & setup Uqdev dependencies")
         )
         .subcommand(Command::new("start-package")
             .about("Start a built Uqbar process")

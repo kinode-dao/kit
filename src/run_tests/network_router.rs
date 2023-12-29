@@ -70,7 +70,7 @@ async fn handle_connection(
 
 pub async fn execute(
     port: u16,
-    defects: NetworkRouterDefects,
+    _defects: NetworkRouterDefects,
     mut recv_kill_in_router: BroadcastRecvBool,
 ) -> anyhow::Result<()> {
     let (send_to_loop, mut recv_in_loop): (Sender, Receiver) = mpsc::channel(32);

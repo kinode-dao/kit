@@ -1,12 +1,9 @@
 use std::fs;
 use std::io;
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process;
 
 use serde_json::json;
-use walkdir::WalkDir;
-use zip::write::FileOptions;
 
 use super::inject_message;
 
