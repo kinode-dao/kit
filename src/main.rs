@@ -237,7 +237,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
                 .help("The package directory to build (must contain a `ui` directory)")
-                .default_value(&current_dir)
+                .default_value(current_dir)
             )
             .arg(Arg::new("URL")
                 .action(ArgAction::Set)
