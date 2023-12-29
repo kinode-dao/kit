@@ -12,6 +12,14 @@ If you have multiple processes in `manifest.json`, make sure the first process w
 
 Run `npm i` and then `npm start` to start working on the UI.
 
+You may see an error:
+
+```
+[vite] Pre-transform error: Failed to load url /our.js (resolved id: /our.js). Does the file exist?
+```
+
+You can safely ignore this error. The file will be served by the node via the proxy.
+
 ## public vs assets
 
 The `public/assets` folder contains files that are referenced in `index.html`, `src/assets` is for asset files that are only referenced in `src` code.
