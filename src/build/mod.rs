@@ -1,10 +1,13 @@
 use std::fs::{self, File};
-use std::io;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
 use reqwest;
 use serde::{Serialize, Deserialize};
+
+use super::setup::{get_python_version, REQUIRED_PY_PACKAGE};
+
+const PY_VENV_NAME: &str = "process_env";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
@@ -23,12 +26,17 @@ struct Metadata {
     version: [u32; 3],
 }
 
-pub fn run_command(cmd: &mut Command) -> io::Result<()> {
+pub fn run_command(cmd: &mut Command) -> anyhow::Result<()> {
     let status = cmd.status()?;
     if status.success() {
         Ok(())
     } else {
-        Err(io::Error::new(io::ErrorKind::Other, "Command failed"))
+        Err(anyhow::anyhow!(
+            "Command `{} {:?}` failed with exit code {}",
+            cmd.get_program().to_str().unwrap(),
+            cmd.get_args().map(|a| a.to_str().unwrap()).collect::<Vec<_>>(),
+            status.code().unwrap(),
+        ))
     }
 }
 
@@ -61,12 +69,18 @@ async fn compile_python_wasm_process(
         .and_then(|s| s.to_str())
         .unwrap();
 
-    run_command(Command::new("componentize-py")
+    let python = get_python_version(None, None)?
+        .ok_or(anyhow::anyhow!("uqdev requires Python 3.10 or newer"))?;
+    run_command(Command::new(python)
+        .args(&["-m", "venv", PY_VENV_NAME])
+        .current_dir(process_dir)
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+    )?;
+    run_command(Command::new("bash")
         .args(&[
-            "-d", "../wit/",
-            "-w", "process",
-            "componentize", "lib",
-            "-o", &format!("../../pkg/{wasm_file_name}.wasm")
+            "-c",
+            &format!("source ../{PY_VENV_NAME}/bin/activate && pip install {REQUIRED_PY_PACKAGE} && componentize-py -d ../wit/ -w process componentize lib -o ../../pkg/{wasm_file_name}.wasm"),
         ])
         .current_dir(process_dir.join("src"))
         .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
@@ -154,13 +168,9 @@ async fn compile_rust_wasm_process(
 
     let wasm_file_prefix = Path::new("target/wasm32-wasi/release");
     let wasm_file = wasm_file_prefix
-        .clone()
         .join(&format!("{}.wasm", wasm_file_name));
-        // .join(&format!("{}.wasm", process_dir.file_name().unwrap().to_str().unwrap()));
     let adapted_wasm_file = wasm_file_prefix
-        .clone()
         .join(&format!("{}_adapted.wasm", wasm_file_name));
-        // .join(&format!("{}_adapted.wasm", process_dir.file_name().unwrap().to_str().unwrap()));
 
     let wasi_snapshot_file = Path::new("wasi_snapshot_preview1.wasm");
 

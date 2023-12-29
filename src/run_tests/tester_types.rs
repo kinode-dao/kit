@@ -1,8 +1,7 @@
 use serde::{Serialize, Deserialize};
 
-use uqbar_process_lib::{Address, Response};
+use uqbar_process_lib::Address;
 use uqbar_process_lib::kernel_types as kt;
-// use uqbar_process_lib::uqbar::process::standard as wit;
 
 type Rsvp = Option<Address>;
 

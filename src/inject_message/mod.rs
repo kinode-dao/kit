@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::{self, Read};
 
+#[allow(deprecated)]
 use base64::encode;
 use reqwest;
 use serde_json::{Value, json};
@@ -36,6 +37,7 @@ pub fn make_message(
     raw_bytes: Option<&[u8]>,
     bytes_path: Option<&str>,
 ) -> io::Result<Value> {
+    #[allow(deprecated)]
     let data = match (raw_bytes, bytes_path) {
         (Some(bytes), None) => Some(encode(bytes)),
         (None, Some(path)) => {

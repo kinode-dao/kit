@@ -9,7 +9,22 @@ mod inject_message;
 mod new;
 mod remove_package;
 mod run_tests;
+mod setup;
 mod start_package;
+
+const FIRST_RUN_DIR: &str = "/tmp/uqdev-first-run";
+
+fn handle_first_run() -> anyhow::Result<()> {
+    let first_run_dir = PathBuf::from(FIRST_RUN_DIR);
+    let first_run_file_path = first_run_dir.join(format!("{}.txt", env!("CARGO_PKG_VERSION")));
+    if !first_run_file_path.exists() {
+        setup::execute()?;
+
+        std::fs::create_dir_all(&first_run_dir)?;
+        std::fs::File::create(&first_run_file_path)?;
+    }
+    Ok(())
+}
 
 async fn execute(
     usage: clap::builder::StyledStr,
@@ -114,9 +129,9 @@ async fn execute(
             let node: Option<&str> = remove_package_matches
                 .get_one("NODE_NAME")
                 .and_then(|s: &String| Some(s.as_str()));
-            let is_delete = !remove_package_matches.get_one::<bool>("UNINSTALL_ONLY").unwrap();
-            remove_package::execute(package_dir, url, node, package_name, publisher, is_delete).await
+            remove_package::execute(package_dir, url, node, package_name, publisher).await
         },
+        Some(("setup", _setup_matches)) => setup::execute(),
         Some(("start-package", start_package_matches)) => {
             let package_dir = PathBuf::from(start_package_matches.get_one::<String>("DIR").unwrap());
             let url: &String = start_package_matches.get_one("URL").unwrap();
@@ -132,10 +147,8 @@ async fn execute(
     }
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let current_dir = env::current_dir()?.into_os_string();
-    let mut app = command!()
+fn make_app(current_dir: &std::ffi::OsString) -> Command {
+    command!()
         .name("UqDev")
         .version("0.1.0")
         .about("Development tools for Uqbar")
@@ -203,7 +216,7 @@ async fn main() -> anyhow::Result<()> {
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
                 .help("The package directory to build")
-                .default_value(&current_dir)
+                .default_value(current_dir)
             )
             .arg(Arg::new("UI_ONLY")
                 .action(ArgAction::SetTrue)
@@ -334,7 +347,6 @@ async fn main() -> anyhow::Result<()> {
             )
             .arg(Arg::new("PUBLISHER")
                 .action(ArgAction::Set)
-                .short('u')
                 .long("publisher")
                 .help("Name of the publisher (Overrides DIR)")
                 .required(false)
@@ -342,7 +354,7 @@ async fn main() -> anyhow::Result<()> {
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
                 .help("The package directory to remove (Overridden by PACKAGE/PUBLISHER)")
-                .default_value(&current_dir)
+                .default_value(current_dir)
             )
             .arg(Arg::new("URL")
                 .action(ArgAction::Set)
@@ -358,19 +370,16 @@ async fn main() -> anyhow::Result<()> {
                 .help("Node ID (default: our)")
                 .required(false)
             )
-            .arg(Arg::new("UNINSTALL_ONLY")
-                .action(ArgAction::SetTrue)
-                .short('u')
-                .help("Only uninstall the package; don't delete it from node")
-                .long("uninstall-only")
-            )
+        )
+        .subcommand(Command::new("setup")
+            .about("Fetch & setup Uqdev dependencies")
         )
         .subcommand(Command::new("start-package")
             .about("Start a built Uqbar process")
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
                 .help("The package directory to build")
-                .default_value(&current_dir)
+                .default_value(current_dir)
             )
             .arg(Arg::new("URL")
                 .action(ArgAction::Set)
@@ -386,7 +395,15 @@ async fn main() -> anyhow::Result<()> {
                 .help("Node ID (default: our)")
                 .required(false)
             )
-        );
+        )
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    handle_first_run()?;
+
+    let current_dir = env::current_dir()?.into_os_string();
+    let mut app = make_app(&current_dir);
 
     let usage = app.render_usage();
     let matches = app.get_matches();
