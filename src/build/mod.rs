@@ -168,13 +168,9 @@ async fn compile_rust_wasm_process(
 
     let wasm_file_prefix = Path::new("target/wasm32-wasi/release");
     let wasm_file = wasm_file_prefix
-        .clone()
         .join(&format!("{}.wasm", wasm_file_name));
-        // .join(&format!("{}.wasm", process_dir.file_name().unwrap().to_str().unwrap()));
     let adapted_wasm_file = wasm_file_prefix
-        .clone()
         .join(&format!("{}_adapted.wasm", wasm_file_name));
-        // .join(&format!("{}_adapted.wasm", process_dir.file_name().unwrap().to_str().unwrap()));
 
     let wasi_snapshot_file = Path::new("wasi_snapshot_preview1.wasm");
 
