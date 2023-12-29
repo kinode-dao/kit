@@ -57,13 +57,6 @@ uqdev start-package -u http://localhost:8080
 # Print usage
 
 uqdev --help
-uqdev new --help
-uqdev build --help
-uqdev dev-ui --help
-uqdev inject-message --help
-uqdev boot-fake-node --help
-uqdev start-package --help
-uqdev run-tests --help
 ```
 
 `uqdev boot-fake-node` can also accept a `--runtime-path` argument that compiles the fake node binary from a local Uqbar core repository.

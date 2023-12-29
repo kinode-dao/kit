@@ -5,9 +5,11 @@ use std::process::{Command, Stdio};
 use reqwest;
 use serde::{Serialize, Deserialize};
 
-use super::setup::{get_python_version, REQUIRED_PY_PACKAGE};
+use super::setup::{check_py_deps, check_ui_deps, get_deps, REQUIRED_PY_PACKAGE};
 
 const PY_VENV_NAME: &str = "process_env";
+const RUST_SRC_PATH: &str = "src/lib.rs";
+const PYTHON_SRC_PATH: &str = "src/lib.py";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
@@ -56,6 +58,7 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
 
 async fn compile_python_wasm_process(
     process_dir: &Path,
+    python: &str,
     verbose: bool,
 ) -> anyhow::Result<()> {
     println!("Compiling Python Uqbar process in {:?}...", process_dir);
@@ -69,8 +72,6 @@ async fn compile_python_wasm_process(
         .and_then(|s| s.to_str())
         .unwrap();
 
-    let python = get_python_version(None, None)?
-        .ok_or(anyhow::anyhow!("uqdev requires Python 3.10 or newer"))?;
     run_command(Command::new(python)
         .args(&["-m", "venv", PY_VENV_NAME])
         .current_dir(process_dir)
@@ -243,16 +244,15 @@ async fn compile_package_and_ui(package_dir: &Path, verbose: bool) -> anyhow::Re
 }
 
 async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
-    let rust_src_path = "src/lib.rs";
-    let python_src_path = "src/lib.py";
     for entry in package_dir.read_dir()? {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir() {
-            if path.join(&rust_src_path).exists() {
+            if path.join(RUST_SRC_PATH).exists() {
                 compile_rust_wasm_process(&path, verbose).await?;
-            } else if path.join(&python_src_path).exists() {
-                compile_python_wasm_process(&path, verbose).await?;
+            } else if path.join(PYTHON_SRC_PATH).exists() {
+                let python = check_py_deps()?;
+                compile_python_wasm_process(&path, &python, verbose).await?;
             }
         }
     }
@@ -269,6 +269,8 @@ pub async fn execute(package_dir: &Path, ui_only: bool, verbose: bool) -> anyhow
             compile_package(package_dir, verbose).await
         }
     } else {
+        let deps = check_ui_deps()?;
+        get_deps(deps)?;
         if ui_only {
             compile_and_copy_ui(package_dir, verbose)
         } else {

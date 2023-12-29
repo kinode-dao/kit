@@ -2,8 +2,11 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use super::build::run_command;
+use super::setup::{check_ui_deps, get_deps};
 
 pub fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
+    let deps = check_ui_deps()?;
+    get_deps(deps)?;
     let ui_path = package_dir.join("ui");
     println!("Starting development UI in {:?}...", ui_path);
 

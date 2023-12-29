@@ -12,20 +12,6 @@ mod run_tests;
 mod setup;
 mod start_package;
 
-const FIRST_RUN_DIR: &str = "/tmp/uqdev-first-run";
-
-fn handle_first_run() -> anyhow::Result<()> {
-    let first_run_dir = PathBuf::from(FIRST_RUN_DIR);
-    let first_run_file_path = first_run_dir.join(format!("{}.txt", env!("CARGO_PKG_VERSION")));
-    if !first_run_file_path.exists() {
-        setup::execute()?;
-
-        std::fs::create_dir_all(&first_run_dir)?;
-        std::fs::File::create(&first_run_file_path)?;
-    }
-    Ok(())
-}
-
 async fn execute(
     usage: clap::builder::StyledStr,
     matches: Option<(&str, &clap::ArgMatches)>,
@@ -400,8 +386,6 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    handle_first_run()?;
-
     let current_dir = env::current_dir()?.into_os_string();
     let mut app = make_app(&current_dir);
 

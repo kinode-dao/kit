@@ -15,13 +15,30 @@ pub const REQUIRED_PY_MAJOR: u32 = 3;
 pub const MINIMUM_PY_MINOR: u32 = 10;
 pub const REQUIRED_PY_PACKAGE: &str = "componentize-py==0.7.1";
 
-fn check_and_install_nvm() -> anyhow::Result<()> {
-    if !is_nvm_installed()? {
-        install_nvm()?;
-    } else {
-        println!("Found nvm.");
+#[derive(Clone)]
+pub enum Dependency {
+    Nvm,
+    Npm,
+    Node,
+}
+
+impl std::fmt::Display for Dependency {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Dependency::Nvm =>  write!(f, "nvm"),
+            Dependency::Npm =>  write!(f, "npm"),
+            Dependency::Node => write!(f, "node"),
+        }
     }
-    Ok(())
+}
+
+// hack to allow definition of Display
+struct Dependencies(Vec<Dependency>);
+impl std::fmt::Display for Dependencies {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let deps: Vec<String> = self.0.iter().map(|d| d.to_string()).collect();
+        write!(f, "{}", deps.join(", "))
+    }
 }
 
 fn is_nvm_installed() -> anyhow::Result<bool> {
@@ -44,32 +61,8 @@ fn install_nvm() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn check_and_install_node() -> anyhow::Result<()> {
-    if !is_command_installed("node")? || !is_version_correct("node", (REQUIRED_NODE_MAJOR, MINIMUM_NODE_MINOR))? {
-        let node_version = format!("{}.{}", REQUIRED_NODE_MAJOR, MINIMUM_NODE_MINOR);
-        println!("Installing or updating Node.js to version {}...", node_version);
-        call_nvm(&format!("install {}", node_version))?;
-        println!("Done installing or updating Node.js to version {}.", node_version);
-    } else {
-        println!("Found node.");
-    }
-    Ok(())
-}
-
-fn check_and_install_npm() -> anyhow::Result<()> {
-    if !is_command_installed("npm")? || !is_version_correct("npm", (REQUIRED_NPM_MAJOR, MINIMUM_NODE_MINOR))? {
-        let npm_version = format!("{}.{}", REQUIRED_NPM_MAJOR, MINIMUM_NPM_MINOR);
-        println!("Installing or updating npm to version {}...", npm_version);
-        call_nvm(&format!("install-latest-npm"))?;
-        println!("Done installing or updating npm to version {}...", npm_version);
-    } else {
-        println!("Found npm.");
-    }
-    Ok(())
-}
-
 fn check_python_venv(python: &str) -> anyhow::Result<()> {
-    println!("Testing python venv capability...");
+    println!("Checking for python venv...");
     let venv_result = run_command(Command::new(python)
         .args(&["-m", "venv", "uqbar-test-venv"])
         .current_dir("/tmp")
@@ -80,10 +73,10 @@ fn check_python_venv(python: &str) -> anyhow::Result<()> {
     }
     match venv_result {
         Ok(_) => {
-            println!("Done testing python venv capability.");
+            println!("Found python venv.");
             Ok(())
         },
-        Err(_) => Err(anyhow::anyhow!("Done testing python venv capability: could not create python venv.")),
+        Err(_) => Err(anyhow::anyhow!("Check for python venv failed.")),
     }
 }
 
@@ -182,12 +175,45 @@ pub fn get_python_version(
     Ok(newest_python)
 }
 
-pub fn execute() -> anyhow::Result<()> {
-    println!("Setting up...");
+/// Check for Python deps, erroring if not found: python deps cannot be automatically fetched
+pub fn check_py_deps() -> anyhow::Result<String> {
     let python = get_python_version(Some(REQUIRED_PY_MAJOR), Some(MINIMUM_PY_MINOR))?
         .ok_or(anyhow::anyhow!("uqdev requires Python 3.10 or newer"))?;
+    check_python_venv(&python)?;
+
+    Ok(python)
+}
+
+/// Check for UI deps, returning a Vec of not found: can be automatically fetched
+pub fn check_ui_deps() -> anyhow::Result<Vec<Dependency>> {
+    let mut missing_deps = Vec::new();
+    if !is_nvm_installed()? {
+        missing_deps.push(Dependency::Nvm);
+    }
+    if !is_command_installed("node")?
+    || !is_version_correct("node", (REQUIRED_NODE_MAJOR, MINIMUM_NODE_MINOR))? {
+        missing_deps.push(Dependency::Node);
+    }
+    if !is_command_installed("npm")?
+    || !is_version_correct("npm", (REQUIRED_NPM_MAJOR, MINIMUM_NPM_MINOR))? {
+        missing_deps.push(Dependency::Npm);
+    }
+
+    Ok(missing_deps)
+}
+
+pub fn get_deps(deps: Vec<Dependency>) -> anyhow::Result<()> {
+    if deps.is_empty() {
+        return Ok(());
+    }
+
     // If setup required, request user permission
-    print!("Do you want to check Uqdev dependencies and install any that are not found (nvm, npm, node, componentize-py)? [Y/n]: ");
+    print!(
+        "Uqdev requires {} missing {}: {}. Install? [Y/n]: ",
+        if deps.len() == 1 { "this" } else { "these" },
+        if deps.len() == 1 { "dependency" } else { "dependencies" },
+        Dependencies(deps.clone()),
+    );
     // Flush to ensure the prompt is displayed before input
     io::stdout().flush().unwrap();
 
@@ -196,16 +222,38 @@ pub fn execute() -> anyhow::Result<()> {
     io::stdin().read_line(&mut response).unwrap();
 
     // Process the response
-    let response = response.trim().to_lowercase(); // Normalize the input
+    let response = response.trim().to_lowercase();
     match response.as_str() {
         "y" | "yes" | "" => {
-            check_and_install_nvm()?;
-            check_and_install_node()?;
-            check_and_install_npm()?;
-            check_python_venv(&python)?;
-            println!("Done setting up.");
+            for dep in deps {
+                match dep {
+                    Dependency::Nvm =>  install_nvm()?,
+                    Dependency::Npm =>  call_nvm(&format!("install-latest-npm"))?,
+                    Dependency::Node => {
+                        call_nvm(&format!(
+                            "install {}.{}",
+                            REQUIRED_NODE_MAJOR,
+                            MINIMUM_NODE_MINOR,
+                        ))?
+                    },
+                }
+            }
         },
-        _ => println!("Skipped setting up."),
+        r => println!("Got '{}'; not getting deps.", r),
     }
+    Ok(())
+}
+
+pub fn execute() -> anyhow::Result<()> {
+    println!("Setting up...");
+
+    // Check if missing deps
+    check_py_deps()?;
+
+    let missing_deps = check_ui_deps()?;
+
+    get_deps(missing_deps)?;
+    println!("Done setting up.");
+
     Ok(())
 }
