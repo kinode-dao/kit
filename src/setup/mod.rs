@@ -183,10 +183,11 @@ pub fn get_python_version(
 }
 
 pub fn execute() -> anyhow::Result<()> {
+    println!("Setting up...");
     let python = get_python_version(Some(REQUIRED_PY_MAJOR), Some(MINIMUM_PY_MINOR))?
         .ok_or(anyhow::anyhow!("uqdev requires Python 3.10 or newer"))?;
     // If setup required, request user permission
-    print!("Do you want to fetch Uqdev dependencies (nvm, npm, node, componentize-py)?\nWill install automatically if yes: [y/N]: ");
+    print!("Do you want to check Uqdev dependencies and install any that are not found (nvm, npm, node, componentize-py)? [Y/n]: ");
     // Flush to ensure the prompt is displayed before input
     io::stdout().flush().unwrap();
 
@@ -202,8 +203,9 @@ pub fn execute() -> anyhow::Result<()> {
             check_and_install_node()?;
             check_and_install_npm()?;
             check_python_venv(&python)?;
+            println!("Done setting up.");
         },
-        _ => println!("Function execution cancelled."), // Do not execute otherwise
+        _ => println!("Skipped setting up."),
     }
     Ok(())
 }
