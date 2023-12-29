@@ -122,8 +122,7 @@ async fn execute(
             let node: Option<&str> = remove_package_matches
                 .get_one("NODE_NAME")
                 .and_then(|s: &String| Some(s.as_str()));
-            let is_delete = !remove_package_matches.get_one::<bool>("UNINSTALL_ONLY").unwrap();
-            remove_package::execute(package_dir, url, node, package_name, publisher, is_delete).await
+            remove_package::execute(package_dir, url, node, package_name, publisher).await
         },
         Some(("setup", _setup_matches)) => setup::execute(),
         Some(("start-package", start_package_matches)) => {
@@ -326,7 +325,6 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             )
             .arg(Arg::new("PUBLISHER")
                 .action(ArgAction::Set)
-                .short('u')
                 .long("publisher")
                 .help("Name of the publisher (Overrides DIR)")
                 .required(false)
@@ -349,12 +347,6 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .long("node")
                 .help("Node ID (default: our)")
                 .required(false)
-            )
-            .arg(Arg::new("UNINSTALL_ONLY")
-                .action(ArgAction::SetTrue)
-                .short('u')
-                .help("Only uninstall the package; don't delete it from node")
-                .long("uninstall-only")
             )
         )
         .subcommand(Command::new("setup")
