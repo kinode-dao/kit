@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 mod boot_fake_node;
 mod build;
+mod dev_ui;
 mod inject_message;
 mod new;
 mod remove_package;
@@ -60,6 +61,12 @@ async fn execute(
             let verbose = !build_matches.get_one::<bool>("QUIET").unwrap();
 
             build::execute(&package_dir, *ui_only, verbose).await
+        },
+        Some(("dev-ui", dev_ui_matches)) => {
+            let package_dir = PathBuf::from(dev_ui_matches.get_one::<String>("DIR").unwrap());
+            let url: &String = dev_ui_matches.get_one("URL").unwrap();
+
+            dev_ui::execute(&package_dir, url)
         },
         Some(("inject-message", inject_message_matches)) => {
             let url: &String = inject_message_matches.get_one("URL").unwrap();
@@ -225,14 +232,29 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .required(false)
             )
         )
+        .subcommand(Command::new("dev-ui")
+            .about("Start the web UI development server with hot reloading (same as `cd ui && npm i && npm start`)")
+            .arg(Arg::new("DIR")
+                .action(ArgAction::Set)
+                .help("The package directory to build (must contain a `ui` directory)")
+                .default_value(&current_dir)
+            )
+            .arg(Arg::new("URL")
+                .action(ArgAction::Set)
+                .short('u')
+                .long("url")
+                .help("Node URL")
+                .default_value("http://localhost:8080")
+            )
+        )
         .subcommand(Command::new("inject-message")
             .about("Inject a message to a running Uqbar node")
             .arg(Arg::new("URL")
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
-                .help("URL node is running at")
-                .required(true)
+                .help("Node URL")
+                .default_value("http://localhost:8080")
             )
             .arg(Arg::new("PROCESS")
                 .action(ArgAction::Set)
@@ -338,8 +360,8 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
-                .help("URL node is running at")
-                .required(true)
+                .help("Node URL")
+                .default_value("http://localhost:8080")
             )
             .arg(Arg::new("NODE_NAME")
                 .action(ArgAction::Set)
@@ -363,8 +385,8 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
-                .help("URL node is running at")
-                .required(true)
+                .help("Node URL")
+                .default_value("http://localhost:8080")
             )
             .arg(Arg::new("NODE_NAME")
                 .action(ArgAction::Set)

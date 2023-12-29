@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import reactLogo from "./assets/react.svg";
-import viteLogo from "/assets/vite.svg";
+import viteLogo from "./assets/vite.svg";
 import UqbarEncryptorApi from "@uqbar/client-encryptor-api";
 import "./App.css";
 import { SendChatMessage } from "./types/Chat";
@@ -9,9 +9,11 @@ import useChatStore from "./store/chat";
 const BASE_URL = import.meta.env.BASE_URL;
 if (window.our) window.our.process = BASE_URL?.replace("/", "");
 
+const PROXY_TARGET = `${(import.meta.env.VITE_NODE_URL || "http://localhost:8080")}${BASE_URL}`;
+
 // This env also has BASE_URL which should match the process + package name
 const WEBSOCKET_URL = import.meta.env.DEV
-  ? `ws://localhost:${import.meta.env.VITE_NODE_PORT || 8080}${BASE_URL}`
+  ? `${PROXY_TARGET.replace('http', 'ws')}`
   : undefined;
 
 function App() {
@@ -33,6 +35,7 @@ function App() {
       .catch((error) => console.error(error));
 
     // Connect to the uqbar node via websocket
+    console.log('WEBSOCKET URL', WEBSOCKET_URL)
     if (window.our?.node && window.our?.process) {
       const api = new UqbarEncryptorApi({
         uri: WEBSOCKET_URL,
@@ -130,8 +133,7 @@ function App() {
         <div className="node-not-connected">
           <h2 style={{ color: "red" }}>Node not connected</h2>
           <h4>
-            You need to start a node at http://localhost:
-            {import.meta.env.VITE_NODE_PORT || 8080} before you can use this UI
+            You need to start a node at {PROXY_TARGET} before you can use this UI
             in development.
           </h4>
         </div>

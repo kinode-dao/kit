@@ -40,7 +40,7 @@ pub async fn execute(
         process::exit(1);
     }
 
-    println!("Successfully removed package: {}:{}", package_name, publisher);
+    println!("Successfully removed package {}:{} on node at {}", package_name, publisher, url);
 
     Ok(())
 }
