@@ -21,6 +21,19 @@ nvm install-latest-npm
 cargo install --git https://github.com/uqbar-dao/uqdev
 ```
 
+### Updating
+
+To update, re-run
+
+```bash
+cargo install --git https://github.com/uqbar-dao/uqdev
+```
+
+or use
+```bash
+uqdev update
+```
+
 ## Usage
 
 ```bash

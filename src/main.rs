@@ -151,7 +151,15 @@ async fn execute(
                 .and_then(|s: &String| Some(s.as_str()));
             start_package::execute(package_dir, &url, node).await
         },
-        Some(("update", _update_matches)) => update::execute(),
+        Some(("update", update_matches)) => {
+            let args = update_matches.get_many::<String>("ARGUMENTS")
+                .unwrap_or_default()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>();
+            let branch = update_matches.get_one::<String>("BRANCH").unwrap();
+
+            update::execute(args, branch)
+        },
         _ => {
             println!("Invalid subcommand. Usage:\n{}", usage);
             Ok(())
@@ -459,6 +467,17 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
         )
         .subcommand(Command::new("update")
             .about("Fetch the most recent version of UqDev")
+            .arg(Arg::new("ARGUMENTS")
+                .action(ArgAction::Append)
+                .help("Additional arguments (e.g. `--branch next-release`)")
+                .required(false)
+            )
+            .arg(Arg::new("BRANCH")
+                .action(ArgAction::Set)
+                .long("branch")
+                .help("Branch name (e.g. `next-release`)")
+                .default_value("master")
+            )
         )
 }
 
