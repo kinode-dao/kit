@@ -209,7 +209,7 @@ pub fn get_deps(deps: Vec<Dependency>) -> anyhow::Result<()> {
 
     // If setup required, request user permission
     print!(
-        "Uqdev requires {} missing {}: {}. Install? [Y/n]: ",
+        "UqDev requires {} missing {}: {}. Install? [Y/n]: ",
         if deps.len() == 1 { "this" } else { "these" },
         if deps.len() == 1 { "dependency" } else { "dependencies" },
         Dependencies(deps.clone()),

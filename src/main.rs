@@ -50,12 +50,24 @@ async fn execute(
         },
         Some(("dev-ui", dev_ui_matches)) => {
             let package_dir = PathBuf::from(dev_ui_matches.get_one::<String>("DIR").unwrap());
-            let url: &String = dev_ui_matches.get_one("URL").unwrap();
+            let url: String = match dev_ui_matches.get_one::<String>("URL") {
+                Some(url) => url.clone(),
+                None => {
+                    let port = dev_ui_matches.get_one::<u16>("NODE_PORT").unwrap();
+                    format!("http://localhost:{}", port)
+                },
+            };
 
-            dev_ui::execute(&package_dir, url)
+            dev_ui::execute(&package_dir, &url)
         },
         Some(("inject-message", inject_message_matches)) => {
-            let url: &String = inject_message_matches.get_one("URL").unwrap();
+            let url: String = match inject_message_matches.get_one::<String>("URL") {
+                Some(url) => url.clone(),
+                None => {
+                    let port = inject_message_matches.get_one::<u16>("NODE_PORT").unwrap();
+                    format!("http://localhost:{}", port)
+                },
+            };
             let process: &String = inject_message_matches.get_one("PROCESS").unwrap();
             let ipc: &String = inject_message_matches.get_one("IPC").unwrap();
             let node: Option<&str> = inject_message_matches
@@ -64,7 +76,7 @@ async fn execute(
             let bytes: Option<&str> = inject_message_matches
                 .get_one("PATH")
                 .and_then(|s: &String| Some(s.as_str()));
-            inject_message::execute(url, process, ipc, node, bytes).await
+            inject_message::execute(&url, process, ipc, node, bytes).await
         },
         Some(("new", new_matches)) => {
             let new_dir = PathBuf::from(new_matches.get_one::<String>("DIR").unwrap());
@@ -111,20 +123,32 @@ async fn execute(
             let publisher = remove_package_matches.get_one::<String>("PUBLISHER")
                 .and_then(|s: &String| Some(s.as_str()));
             let package_dir = PathBuf::from(remove_package_matches.get_one::<String>("DIR").unwrap());
-            let url: &String = remove_package_matches.get_one("URL").unwrap();
+            let url: String = match remove_package_matches.get_one::<String>("URL") {
+                Some(url) => url.clone(),
+                None => {
+                    let port = remove_package_matches.get_one::<u16>("NODE_PORT").unwrap();
+                    format!("http://localhost:{}", port)
+                },
+            };
             let node: Option<&str> = remove_package_matches
                 .get_one("NODE_NAME")
                 .and_then(|s: &String| Some(s.as_str()));
-            remove_package::execute(package_dir, url, node, package_name, publisher).await
+            remove_package::execute(package_dir, &url, node, package_name, publisher).await
         },
         Some(("setup", _setup_matches)) => setup::execute(),
         Some(("start-package", start_package_matches)) => {
             let package_dir = PathBuf::from(start_package_matches.get_one::<String>("DIR").unwrap());
-            let url: &String = start_package_matches.get_one("URL").unwrap();
+            let url: String = match start_package_matches.get_one::<String>("URL") {
+                Some(url) => url.clone(),
+                None => {
+                    let port = start_package_matches.get_one::<u16>("NODE_PORT").unwrap();
+                    format!("http://localhost:{}", port)
+                },
+            };
             let node: Option<&str> = start_package_matches
                 .get_one("NODE_NAME")
                 .and_then(|s: &String| Some(s.as_str()));
-            start_package::execute(package_dir, url, node).await
+            start_package::execute(package_dir, &url, node).await
         },
         _ => {
             println!("Invalid subcommand. Usage:\n{}", usage);
@@ -136,7 +160,7 @@ async fn execute(
 fn make_app(current_dir: &std::ffi::OsString) -> Command {
     command!()
         .name("UqDev")
-        .version("0.1.0")
+        .version(env!("CARGO_PKG_VERSION"))
         .about("Development tools for Uqbar")
         .subcommand_required(true)
         .arg_required_else_help(true)
@@ -238,26 +262,44 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .help("The package directory to build (must contain a `ui` directory)")
                 .default_value(current_dir)
             )
+            .arg(Arg::new("NODE_PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("Node port: for use on localhost (overridden by URL)")
+                .default_value("8080")
+                .value_parser(value_parser!(u16))
+            )
             .arg(Arg::new("URL")
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
-                .help("Node URL")
-                .default_value("http://localhost:8080")
+                .help("Node URL (overrides NODE_PORT)")
+                .required(false)
+                //.default_value("http://localhost:8080")
             )
         )
         .subcommand(Command::new("inject-message")
             .about("Inject a message to a running Uqbar node")
+            .arg(Arg::new("NODE_PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("Node port: for use on localhost (overridden by URL)")
+                .default_value("8080")
+                .value_parser(value_parser!(u16))
+            )
             .arg(Arg::new("URL")
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
-                .help("Node URL")
-                .default_value("http://localhost:8080")
+                .help("Node URL (overrides NODE_PORT)")
+                .required(false)
+                //.default_value("http://localhost:8080")
             )
             .arg(Arg::new("PROCESS")
                 .action(ArgAction::Set)
-                .short('p')
+                .short('r')
                 .long("process")
                 .help("Process to send message to")
                 .required(true)
@@ -355,12 +397,21 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .help("The package directory to remove (Overridden by PACKAGE/PUBLISHER)")
                 .default_value(current_dir)
             )
+            .arg(Arg::new("NODE_PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("Node port: for use on localhost (overridden by URL)")
+                .default_value("8080")
+                .value_parser(value_parser!(u16))
+            )
             .arg(Arg::new("URL")
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
-                .help("Node URL")
-                .default_value("http://localhost:8080")
+                .help("Node URL (overrides NODE_PORT)")
+                .required(false)
+                //.default_value("http://localhost:8080")
             )
             .arg(Arg::new("NODE_NAME")
                 .action(ArgAction::Set)
@@ -380,12 +431,21 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .help("The package directory to build")
                 .default_value(current_dir)
             )
+            .arg(Arg::new("NODE_PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("Node port: for use on localhost (overridden by URL)")
+                .default_value("8080")
+                .value_parser(value_parser!(u16))
+            )
             .arg(Arg::new("URL")
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
-                .help("Node URL")
-                .default_value("http://localhost:8080")
+                .help("Node URL (overrides NODE_PORT)")
+                .required(false)
+                //.default_value("http://localhost:8080")
             )
             .arg(Arg::new("NODE_NAME")
                 .action(ArgAction::Set)
