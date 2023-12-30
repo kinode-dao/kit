@@ -33,26 +33,26 @@ uqdev build my_package
 # Start a fake node, by default, on port 8080:
 uqdev boot-fake-node
 
-# Start the package in a running node (requires a node or fake node running at port given in --url):
-uqdev start-package my_package --url http://localhost:8080
+# Start the package in a running node (requires a node or fake node running at, default, localhost:8080; can specify port of a localhost node with `--port` or can specify entire URL with `--url`):
+uqdev start-package my_package
 
 # Or build, start a node, and start a package from inside the project...
 cd my_package
 uqdev build
 uqdev boot-fake-node
-uqdev start-package -u http://localhost:8080
+uqdev start-package
 
 # Bonus: create a Python package template (it `build`s & `start-package`s just like a Rust package!):
 uqdev new my_py_package -l python
 cd my_py_package
 uqdev build
-uqdev start-package -u http://localhost:8080
+uqdev start-package
 
 # Bonus: create a Rust package template with UI (it `build`s & `start-package`s just like a Rust package!):
 uqdev new my_package_with_ui --ui
 cd my_package_with_ui
 uqdev build
-uqdev start-package -u http://localhost:8080
+uqdev start-package
 
 # Print usage
 
