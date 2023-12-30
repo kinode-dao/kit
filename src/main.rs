@@ -11,6 +11,7 @@ mod remove_package;
 mod run_tests;
 mod setup;
 mod start_package;
+mod update;
 
 async fn execute(
     usage: clap::builder::StyledStr,
@@ -150,6 +151,7 @@ async fn execute(
                 .and_then(|s: &String| Some(s.as_str()));
             start_package::execute(package_dir, &url, node).await
         },
+        Some(("update", _update_matches)) => update::execute(),
         _ => {
             println!("Invalid subcommand. Usage:\n{}", usage);
             Ok(())
@@ -454,6 +456,9 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .help("Node ID (default: our)")
                 .required(false)
             )
+        )
+        .subcommand(Command::new("update")
+            .about("Fetch the most recent version of UqDev")
         )
 }
 
