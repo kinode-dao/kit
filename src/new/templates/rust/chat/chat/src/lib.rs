@@ -8,7 +8,7 @@ use uqbar_process_lib::{
         bind_http_path, send_response, send_ws_push,
         serve_ui, HttpServerRequest, IncomingHttpRequest, StatusCode, WsMessageType, bind_ws_path,
     },
-    print_to_terminal, Address, Message, Payload, ProcessId, Request, Response,
+    println, Address, Message, Payload, ProcessId, Request, Response,
 };
 
 wit_bindgen::generate!({
@@ -151,7 +151,7 @@ fn handle_chat_request(
             // If the target is not us, send a request to the target
 
             if target != &our.node {
-                print_to_terminal(0, &format!("new message from {}: {}", source.node, message));
+                println!("new message from {}: {}", source.node, message);
 
                 match Request::new()
                     .target(Address {
@@ -162,7 +162,7 @@ fn handle_chat_request(
                     .send_and_await_response(5) {
                         Ok(_) => {}
                         Err(e) => {
-                            print_to_terminal(0, format!("testing: send request error: {:?}", e,).as_str());
+                            println!("testing: send request error: {:?}", e);
                             return Ok(());
                         }
                     };
@@ -248,7 +248,7 @@ fn handle_message(
 
     match message {
         Message::Response { .. } => {
-            print_to_terminal(0, &format!("{package_name}: got response - {:?}", message));
+            println!("{package_name}: got response - {:?}", message);
             return Ok(());
         }
         Message::Request {
@@ -269,7 +269,7 @@ fn handle_message(
 struct Component;
 impl Guest for Component {
     fn init(our: String) {
-        print_to_terminal(0, "{package_name}: begin");
+        println!("{package_name}: begin");
 
         let our = Address::from_str(&our).unwrap();
         let mut message_archive: MessageArchive = HashMap::new();
@@ -288,7 +288,7 @@ impl Guest for Component {
             match handle_message(&our, &mut message_archive, &mut channel_id) {
                 Ok(()) => {}
                 Err(e) => {
-                    print_to_terminal(0, format!("{package_name}: error: {:?}", e).as_str());
+                    println!("{package_name}: error: {:?}", e);
                 }
             };
         }
