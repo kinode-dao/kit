@@ -110,25 +110,31 @@ pub async fn execute(project_dir: PathBuf, url: &str, node: Option<&str>) -> any
         publisher,
         zip_filename.to_str().unwrap(),
     )?;
-    let response = inject_message::send_request(
-        url,
-        new_pkg_request,
-    ).await?;
-    if response.status() != 200 {
-        process::exit(1);
+    let response = inject_message::send_request(url, new_pkg_request).await?;
+    let inject_message::Response { ref ipc, .. } = inject_message::parse_response(response).await?;
+    let ipc = serde_json::from_str::<serde_json::Value>(ipc)?;
+    let new_package_response = ipc.get("NewPackageResponse");
+
+    if new_package_response != Some(&serde_json::Value::String("Success".to_string())) {
+        let error_message = format!("Failed to add package. Got response from node: {}", ipc);
+        println!("{}", error_message);
+        return Err(anyhow::anyhow!(error_message));
     }
 
     // Install package
     let install_request = interact_with_package("Install", node, package_name, publisher)?;
-    let response = inject_message::send_request(
-        url,
-        install_request,
-    ).await?;
-    if response.status() != 200 {
-        process::exit(1);
-    }
+    let response = inject_message::send_request(url, install_request).await?;
+    let inject_message::Response { ref ipc, .. } = inject_message::parse_response(response).await?;
+    let ipc = serde_json::from_str::<serde_json::Value>(ipc)?;
+    let install_response = ipc.get("InstallResponse");
 
-    println!("Successfully installed package {} on node at {}", pkg_publisher, url);
+    if install_response == Some(&serde_json::Value::String("Success".to_string())) {
+        println!("Successfully installed package {} on node at {}", pkg_publisher, url);
+    } else {
+        let error_message = format!("Failed to start package. Got response from node: {}", ipc);
+        println!("{}", error_message);
+        return Err(anyhow::anyhow!(error_message));
+    }
 
     Ok(())
 }

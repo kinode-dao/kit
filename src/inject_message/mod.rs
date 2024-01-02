@@ -6,28 +6,9 @@ use base64::encode;
 use reqwest;
 use serde_json::{Value, json};
 
-pub async fn send_request(
-    url: &str,
-    json_data: Value,
-) -> anyhow::Result<reqwest::Response> {
-    let endpoint = "/rpc:sys:uqbar/message";
-    let mut url = url.to_string();
-    let url =
-        if url.ends_with(endpoint) {
-            url
-        } else {
-            if url.ends_with('/') {
-                url.pop();
-            }
-            format!("{}{}", url, endpoint)
-        };
-    let client = reqwest::Client::new();
-    let response = client.post(&url)
-        .json(&json_data)
-        .send()
-        .await?;
-
-    Ok(response)
+pub struct Response {
+    pub ipc: String,
+    pub payload: Option<Vec<u8>>,
 }
 
 pub fn make_message(
@@ -66,6 +47,78 @@ pub fn make_message(
     });
 
     Ok(request)
+}
+
+pub async fn send_request(
+    url: &str,
+    json_data: Value,
+) -> anyhow::Result<reqwest::Response> {
+    let endpoint = "/rpc:sys:uqbar/message";
+    let mut url = url.to_string();
+    let url =
+        if url.ends_with(endpoint) {
+            url
+        } else {
+            if url.ends_with('/') {
+                url.pop();
+            }
+            format!("{}{}", url, endpoint)
+        };
+    let client = reqwest::Client::new();
+    let response = client.post(&url)
+        .json(&json_data)
+        .send()
+        .await?;
+
+    Ok(response)
+}
+
+pub async fn parse_response(response: reqwest::Response) -> anyhow::Result<Response> {
+    if response.status() != 200 {
+        println!("Failed with status code: {}", response.status());
+        return Err(anyhow::anyhow!("Failed with status code: {}", response.status()))
+    } else {
+        let content: String = response.text().await?;
+        let data: Value = serde_json::from_str(&content)?;
+
+        let ipc = data
+            .get("ipc")
+            .map(|ipc| {
+                if let serde_json::Value::Array(ipc_bytes_val) = ipc {
+                    let ipc_bytes: Vec<u8> = ipc_bytes_val
+                        .iter()
+                        .map(|n| n.as_u64().unwrap() as u8)
+                        .collect();
+                    let ipc_string: String = String::from_utf8(ipc_bytes)?;
+                    Ok(ipc_string)
+                } else {
+                    return Err(anyhow::anyhow!("Response `ipc` was not bytes."))
+                }
+            })
+            .ok_or_else(|| anyhow::anyhow!("Response did not contain `ipc` field."))??;
+
+        let payload = data
+            .get("payload")
+            .and_then(|p| {
+                match p {
+                    serde_json::Value::Null => None,
+                    serde_json::Value::Array(payload_bytes_val) => {
+                        let payload_bytes: Vec<u8> = payload_bytes_val
+                            .iter()
+                            .map(|n| n.as_u64().unwrap() as u8)
+                            .collect();
+                        Some(Ok(payload_bytes))
+                    },
+                    _ => return Some(Err(anyhow::anyhow!("Response did not contain `payload` bytes field."))),
+                }
+            })
+            .transpose()?;
+
+        Ok(Response {
+            ipc,
+            payload,
+        })
+    }
 }
 
 pub async fn execute(

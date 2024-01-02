@@ -6,7 +6,6 @@ use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 
 use dirs::home_dir;
-use serde_json::Value;
 use toml;
 
 use super::boot_fake_node::{compile_runtime, get_runtime_binary, run_runtime};
@@ -162,7 +161,7 @@ async fn load_tests(test_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> 
     Ok(())
 }
 
-async fn run_tests(test_batch: &str, mut ports: Vec<u16>, node_names: Vec<String>, test_timeout: u64) -> anyhow::Result<()> {
+async fn run_tests(_test_batch: &str, mut ports: Vec<u16>, node_names: Vec<String>, test_timeout: u64) -> anyhow::Result<()> {
     let master_port = ports.remove(0);
 
     // Set up non-master nodes.
@@ -209,38 +208,28 @@ async fn run_tests(test_batch: &str, mut ports: Vec<u16>, node_names: Vec<String
         request,
     ).await?;
 
-    if response.status() != 200 {
-        println!("Failed with status code: {}", response.status());
-        return Err(anyhow::anyhow!("Failed with status code: {}", response.status()))
-    } else {
-        let content: String = response.text().await?;
-
-        let mut data: Option<Value> = serde_json::from_str(&content).ok();
-
-        println!("Done running tests ({}):", test_batch);
-
-        if let Some(ref mut data_map) = data {
-            if let Some(serde_json::Value::Array(ipc_bytes_val)) = data_map.get("ipc") {
-                let ipc_bytes: Vec<u8> = ipc_bytes_val.iter().map(|n| n.as_u64().unwrap() as u8).collect();
-                let ipc_string: String = String::from_utf8(ipc_bytes)?;
-                match serde_json::from_str(&ipc_string)? {
-                    tt::TesterResponse::Pass => println!("PASS"),
-                    tt::TesterResponse::Fail { test, file, line, column } => {
-                        let s = format!("FAIL: {} {}:{}:{}", test, file, line, column);
-                        println!("{}", s);
-                        return Err(anyhow::anyhow!(s));
-                    },
-                    tt::TesterResponse::GetFullMessage(_) => {
-                        let s = "FAIL: Unexpected Response";
-                        println!("{}", s);
-                        return Err(anyhow::anyhow!(s))
-                    },
-                }
-            } else {
-                println!("Test FAIL: unexpected Response: {:?}", data);
+    match inject_message::parse_response(response).await {
+        Ok(inject_message::Response { ref ipc, .. }) => {
+            match serde_json::from_str(ipc)? {
+                tt::TesterResponse::Pass => println!("PASS"),
+                tt::TesterResponse::Fail { test, file, line, column } => {
+                    let s = format!("FAIL: {} {}:{}:{}", test, file, line, column);
+                    println!("{}", s);
+                    return Err(anyhow::anyhow!(s));
+                },
+                tt::TesterResponse::GetFullMessage(_) => {
+                    let s = "FAIL: Unexpected Response";
+                    println!("{}", s);
+                    return Err(anyhow::anyhow!(s));
+                },
             }
-        }
-    }
+        },
+        Err(e) => {
+            let s = format!("FAIL: {}", e);
+            println!("{}", s);
+            return Err(anyhow::anyhow!(s));
+        },
+    };
 
     Ok(())
 }
