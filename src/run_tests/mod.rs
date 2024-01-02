@@ -1,8 +1,9 @@
-use std::cell::RefCell;
-use std::{fs, thread, time};
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::rc::Rc;
+use std::sync::Arc;
+
+use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
 
 use dirs::home_dir;
 use serde_json::Value;
@@ -13,6 +14,8 @@ use super::build;
 use super::inject_message;
 use super::start_package;
 
+pub mod cleanup;
+use cleanup::{cleanup, cleanup_on_signal};
 pub mod network_router;
 pub mod types;
 use types::*;
@@ -81,7 +84,11 @@ impl Config {
     }
 }
 
-async fn wait_until_booted(port: u16, max_waits: u16) -> anyhow::Result<()> {
+async fn wait_until_booted(
+    port: u16,
+    max_waits: u16,
+    mut recv_kill_in_wait: BroadcastRecvBool,
+) -> anyhow::Result<()> {
     for _ in 0..max_waits {
         let request = inject_message::make_message(
             "vfs:sys:uqbar",
@@ -102,7 +109,12 @@ async fn wait_until_booted(port: u16, max_waits: u16) -> anyhow::Result<()> {
             _ => ()
         }
 
-        thread::sleep(time::Duration::from_secs(1));
+        tokio::select! {
+            _ = sleep(Duration::from_secs(1)) => {}
+            _ = recv_kill_in_wait.recv() => {
+                return Err(anyhow::anyhow!("received exit"));
+            }
+        };
     }
     Err(anyhow::anyhow!("uqdev run-tests: could not connect to Uqbar node"))
 }
@@ -234,6 +246,8 @@ async fn run_tests(test_batch: &str, mut ports: Vec<u16>, node_names: Vec<String
 }
 
 pub async fn execute(config_path: &str) -> anyhow::Result<()> {
+    let detached = true; // TODO: to arg?
+
     let config_content = fs::read_to_string(config_path)?;
     let config = toml::from_str::<Config>(&config_content)?.expand_home_paths();
 
@@ -265,19 +279,38 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
 
     for test in config.tests {
         for setup_package_path in &test.setup_package_paths {
-            build::compile_package(&setup_package_path, test.package_build_verbose).await?;
+            build::execute(&setup_package_path, false, test.package_build_verbose).await?;
         }
         for test_package_path in &test.test_package_paths {
-            build::compile_package(&test_package_path, test.package_build_verbose).await?;
+            build::execute(&test_package_path, false, test.package_build_verbose).await?;
         }
 
         // Initialize variables for master node and nodes list
         let mut master_node_port = None;
-        let nodes = Rc::new(RefCell::new(Vec::new()));
+        let mut task_handles = Vec::new();
+        let node_handles = Arc::new(Mutex::new(Vec::new()));
+        let node_cleanup_infos = Arc::new(Mutex::new(Vec::new()));
 
         // Cleanup, boot check, test loading, and running
-        let (send_to_kill_router, recv_kill_in_router) = tokio::sync::mpsc::unbounded_channel();
-        let _cleanup_context = CleanupContext::new(Rc::clone(&nodes), send_to_kill_router);
+        let (send_to_cleanup, recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
+        let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
+        let recv_kill_in_cos = send_to_kill.subscribe();
+        let recv_kill_in_router = send_to_kill.subscribe();
+        let node_cleanup_infos_for_cleanup = Arc::clone(&node_cleanup_infos);
+        let node_handles_for_cleanup = Arc::clone(&node_handles);
+        let send_to_kill_for_cleanup = send_to_kill.clone();
+        let handle = tokio::spawn(cleanup(
+            recv_in_cleanup,
+            send_to_kill_for_cleanup,
+            node_cleanup_infos_for_cleanup,
+            Some(node_handles_for_cleanup),
+            detached,
+        ));
+        task_handles.push(handle);
+        let send_to_cleanup_for_signal = send_to_cleanup.clone();
+        let handle = tokio::spawn(cleanup_on_signal(send_to_cleanup_for_signal, recv_kill_in_cos));
+        task_handles.push(handle);
+        let _cleanup_context = CleanupContext::new(send_to_cleanup.clone());
 
         // Process each node
         for node in &test.nodes {
@@ -306,35 +339,42 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                 test.network_router.port,
                 &args[..],
                 node.runtime_verbose,
-                true,
+                detached,
             )?;
 
-            let node_info = NodeInfo {
-                process_handle: runtime_process,
+            let mut node_cleanup_infos = node_cleanup_infos.lock().await;
+            node_cleanup_infos.push(NodeCleanupInfo {
                 master_fd,
-                port: node.port,
+                process_id: runtime_process.id() as i32,
                 home: node_home.clone(),
-            };
+            });
 
             if master_node_port.is_none() {
-                master_node_port = Some(node_info.port.clone());
+                master_node_port = Some(node.port.clone());
             }
-            nodes.borrow_mut().push(node_info);
+
+            let mut node_handles = node_handles.lock().await;
+            node_handles.push(runtime_process);
         }
 
-        tokio::task::spawn(network_router::execute(
-            test.network_router.port.clone(),
-            test.network_router.defects.clone(),
-            recv_kill_in_router,
-        ));
+        let network_router_port_for_router = test.network_router.port.clone();
+        let network_router_defects_for_router = test.network_router.defects.clone();
+        let handle = tokio::spawn(async move {
+            let _ = network_router::execute(
+                network_router_port_for_router,
+                network_router_defects_for_router,
+                recv_kill_in_router,
+            ).await;
+        });
+        task_handles.push(handle);
 
         let mut ports = Vec::new();
 
-        // Cleanup, boot check, test loading, and running
-        for node in nodes.borrow().iter() {
+        for node in &test.nodes {
             let node_home = fs::canonicalize(&node.home)?;
             println!("Setting up node {:?}...", node_home);
-            wait_until_booted(node.port, 5).await?;
+            let recv_kill_in_wait = send_to_kill.subscribe();
+            wait_until_booted(node.port, 5, recv_kill_in_wait).await?;
             ports.push(node.port);
             println!("Done setting up node {:?} on port {}.", node_home, node.port);
         }
@@ -344,12 +384,19 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
         }
         load_tests(&test.test_package_paths, master_node_port.unwrap().clone()).await?;
 
-        run_tests(
+        let tests_result = run_tests(
             &format!("{:?}", test.test_package_paths),
             ports,
             make_node_names(test.nodes)?,
             test.timeout_secs,
-        ).await?;
+        ).await;
+
+        let _ = send_to_cleanup.send(true);
+        for handle in task_handles {
+            handle.await.unwrap();
+        }
+
+        tests_result?;
     }
 
     Ok(())

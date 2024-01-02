@@ -18,7 +18,6 @@ struct Connection {
 }
 
 type Connections = HashMap<String, Connection>;
-type KillReceiver = tokio::sync::mpsc::UnboundedReceiver<bool>;
 
 async fn handshake(stream: TcpStream) -> anyhow::Result<(String, WebSocketStream<TcpStream>)> {
     let ws_stream = accept_async(stream).await?;
@@ -71,8 +70,8 @@ async fn handle_connection(
 
 pub async fn execute(
     port: u16,
-    defects: NetworkRouterDefects,
-    mut recv_kill_in_router: KillReceiver,
+    _defects: NetworkRouterDefects,
+    mut recv_kill_in_router: BroadcastRecvBool,
 ) -> anyhow::Result<()> {
     let (send_to_loop, mut recv_in_loop): (Sender, Receiver) = mpsc::channel(32);
     let mut connections: Connections = HashMap::new();

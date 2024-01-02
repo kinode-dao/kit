@@ -10,7 +10,7 @@ use zip::write::FileOptions;
 
 use super::inject_message;
 
-pub fn new_package(
+fn new_package(
     node: Option<&str>,
     package_name: &str,
     publisher_node: &str,
@@ -32,13 +32,14 @@ pub fn new_package(
     )
 }
 
-pub fn install_package(
+pub fn interact_with_package(
+    request_type: &str,
     node: Option<&str>,
     package_name: &str,
     publisher_node: &str,
 ) -> io::Result<serde_json::Value> {
     let message = json!({
-        "Install": {
+        request_type: {
             "package_name": package_name,
             "publisher_node": publisher_node,
         }
@@ -118,16 +119,16 @@ pub async fn execute(project_dir: PathBuf, url: &str, node: Option<&str>) -> any
     }
 
     // Install package
-    let install_pkg_request = install_package(node, package_name, publisher)?;
+    let install_request = interact_with_package("Install", node, package_name, publisher)?;
     let response = inject_message::send_request(
         url,
-        install_pkg_request,
+        install_request,
     ).await?;
     if response.status() != 200 {
         process::exit(1);
     }
 
-    println!("Successfully installed package: {}", pkg_publisher);
+    println!("Successfully installed package {} on node at {}", pkg_publisher, url);
 
     Ok(())
 }

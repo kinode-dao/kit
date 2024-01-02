@@ -12,9 +12,13 @@ If you have multiple processes in `manifest.json`, make sure the first process w
 
 Run `npm i` and then `npm start` to start working on the UI.
 
-#### Http Proxying in Development
+You may see an error:
 
-You must add any proxied routes to `vite.config.ts`. There is a commented example with debug logging.
+```
+[vite] Pre-transform error: Failed to load url /our.js (resolved id: /our.js). Does the file exist?
+```
+
+You can safely ignore this error. The file will be served by the node via the proxy.
 
 ## public vs assets
 

@@ -16,7 +16,9 @@ The format is "/" + "process_name:package_name:publisher_node"
 const BASE_URL = `/${manifest[0].process_name}:${metadata.package}:${metadata.publisher}`;
 
 // This is the proxy URL, it must match the node you are developing against
-const PROXY_URL = process.env.VITE_API_URL || 'http://127.0.0.1:8080';
+const PROXY_URL = (process.env.VITE_NODE_URL || 'http://127.0.0.1:8080').replace('localhost', '127.0.0.1');
+
+console.log('process.env.VITE_NODE_URL', process.env.VITE_NODE_URL, PROXY_URL);
 
 export default defineConfig({
   plugins: [react()],
@@ -39,7 +41,7 @@ export default defineConfig({
         rewrite: (path) => path.replace(BASE_URL, ''),
       },
       // This route will match all other HTTP requests to the backend
-      [`^/(?!$)`]: {
+      [`^${BASE_URL}/(?!(@vite/client|src/.*|node_modules/.*|@react-refresh|$))`]: {
         target: PROXY_URL,
         changeOrigin: true,
       },
