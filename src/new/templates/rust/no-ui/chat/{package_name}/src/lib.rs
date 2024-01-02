@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use uqbar_process_lib::{await_message, print_to_terminal, Address, Message, ProcessId, Request, Response};
+use uqbar_process_lib::{await_message, println, Address, Message, ProcessId, Request, Response};
 
 wit_bindgen::generate!({
     path: "wit",
@@ -32,14 +32,14 @@ fn handle_message (
 
     match message {
         Message::Response { .. } => {
-            print_to_terminal(0, &format!("{package_name}: unexpected Response: {:?}", message));
+            println!("{package_name}: unexpected Response: {:?}", message);
             panic!("");
         },
         Message::Request { ref source, ref ipc, .. } => {
             match serde_json::from_slice(ipc)? {
                 ChatRequest::Send { ref target, ref message } => {
                     if target == &our.node {
-                        print_to_terminal(0, &format!("{package_name}|{}: {}", source.node, message));
+                        println!("{package_name}|{}: {}", source.node, message);
                         message_archive.push((source.node.clone(), message.clone()));
                     } else {
                         let _ = Request::new()
@@ -73,7 +73,7 @@ fn handle_message (
 struct Component;
 impl Guest for Component {
     fn init(our: String) {
-        print_to_terminal(0, "{package_name}: begin");
+        println!("{package_name}: begin");
 
         let our = Address::from_str(&our).unwrap();
         let mut message_archive: MessageArchive = Vec::new();
@@ -82,10 +82,7 @@ impl Guest for Component {
             match handle_message(&our, &mut message_archive) {
                 Ok(()) => {},
                 Err(e) => {
-                    print_to_terminal(0, format!(
-                        "{package_name}: error: {:?}",
-                        e,
-                    ).as_str());
+                    println!("{package_name}: error: {:?}", e);
                 },
             };
         }
