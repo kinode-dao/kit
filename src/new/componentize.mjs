@@ -11,6 +11,6 @@ if (!processName) {
 const jsSource = await readFile('src/lib.js', 'utf8');
 const witPath = 'wit/uqbar.wit';
 
-const { component } = await componentize(jsSource, { witPath: witPath, worldName: 'process', debug: true });
+const { component } = await componentize(jsSource, { witPath: witPath, worldName: 'process', debug: false });
 
 await writeFile(`../pkg/${processName}.wasm`, component);
