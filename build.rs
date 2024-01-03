@@ -11,6 +11,13 @@ fn main() -> io::Result<()> {
 
     writeln!(&mut output_file, "const PATH_TO_CONTENT: &[(&str, &str)] = &[")?;
 
+    writeln!(
+        output_file,
+        "    (\"{}\", include_str!(\"{}\")),",
+        "componentize.mjs",
+        "componentize.mjs",
+    )?;
+
     visit_dirs(Path::new(TEMPLATES_DIR), &mut output_file)?;
 
     writeln!(&mut output_file, "];")?;
@@ -37,7 +44,8 @@ fn visit_dirs(dir: &Path, output_file: &mut File) -> io::Result<()> {
                 writeln!(
                     output_file,
                     "    (\"{}\", include_str!(\"{}\")),",
-                    path_str, path_str_from_includes
+                    path_str,
+                    path_str_from_includes,
                 )?;
             }
         }

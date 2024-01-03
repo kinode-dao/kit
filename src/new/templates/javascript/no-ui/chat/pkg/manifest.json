@@ -1,0 +1,13 @@
+[
+    {
+        "process_name": "{package_name}",
+        "process_wasm_path": "/{package_name}.wasm",
+        "on_exit": "Restart",
+        "request_networking": true,
+        "request_messaging": [
+            "net:sys:uqbar"
+        ],
+        "grant_messaging": [],
+        "public": true
+    }
+]

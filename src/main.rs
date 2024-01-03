@@ -361,7 +361,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .short('l')
                 .long("language")
                 .help("Programming language of the template")
-                .value_parser(["rust", "python"])
+                .value_parser(["rust", "python", "javascript"])
                 .default_value("rust")
             )
             .arg(Arg::new("TEMPLATE")

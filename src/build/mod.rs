@@ -8,8 +8,9 @@ use serde::{Serialize, Deserialize};
 use super::setup::{check_py_deps, check_ui_deps, get_deps, REQUIRED_PY_PACKAGE};
 
 const PY_VENV_NAME: &str = "process_env";
-const RUST_SRC_PATH: &str = "src/lib.rs";
+const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
 const PYTHON_SRC_PATH: &str = "src/lib.py";
+const RUST_SRC_PATH: &str = "src/lib.rs";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
@@ -53,6 +54,39 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
     let content = response.bytes().await?;
 
     fs::write(path, &content)?;
+    Ok(())
+}
+
+async fn compile_javascript_wasm_process(
+    process_dir: &Path,
+    verbose: bool,
+) -> anyhow::Result<()> {
+    println!("Compiling Javascript Uqbar process in {:?}...", process_dir);
+    let wit_dir = process_dir.join("wit");
+    fs::create_dir_all(&wit_dir)?;
+    let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/uqbar.wit";
+    download_file(uqbar_wit_url, &wit_dir.join("uqbar.wit")).await?;
+
+    let wasm_file_name = process_dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap();
+
+    run_command(Command::new("npm")
+        .arg("install")
+        .current_dir(process_dir)
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+    )?;
+
+    run_command(Command::new("node")
+        .args(&["componentize.mjs", wasm_file_name])
+        .current_dir(process_dir)
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+    )?;
+
+    println!("Done compiling Javascript Uqbar process in {:?}.", process_dir);
     Ok(())
 }
 
@@ -160,12 +194,10 @@ async fn compile_rust_wasm_process(
     // Adapt the module using wasm-tools
 
     // For use inside of process_dir
-    let wasm_file_name = {
-        let cargo_path = process_dir.join("Cargo.toml");
-        let cargo_contents = fs::read_to_string(cargo_path)?;
-        let cargo_parsed = toml::from_str::<CargoFile>(&cargo_contents)?;
-        cargo_parsed.package.name
-    };
+    let wasm_file_name = process_dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap();
 
     let wasm_file_prefix = Path::new("target/wasm32-wasi/release");
     let wasm_file = wasm_file_prefix
@@ -253,6 +285,8 @@ async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Result<()
             } else if path.join(PYTHON_SRC_PATH).exists() {
                 let python = check_py_deps()?;
                 compile_python_wasm_process(&path, &python, verbose).await?;
+            } else if path.join(JAVASCRIPT_SRC_PATH).exists() {
+                compile_javascript_wasm_process(&path, verbose).await?;
             }
         }
     }
