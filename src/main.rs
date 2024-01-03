@@ -369,7 +369,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .short('t')
                 .long("template")
                 .help("Template to create")
-                .value_parser(["chat"])
+                .value_parser(["chat", "fibonacci"])
                 .default_value("chat")
             )
             .arg(Arg::new("UI")

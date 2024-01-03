@@ -12,6 +12,7 @@ pub enum Language {
 #[derive(Clone)]
 pub enum Template {
     Chat,
+    Fibonacci,
 }
 
 impl Language {
@@ -28,6 +29,7 @@ impl Template {
     fn to_string(&self) -> String {
         match self {
             Template::Chat => "chat",
+            Template::Fibonacci => "fibonacci",
         }.to_string()
     }
 }
@@ -47,6 +49,7 @@ impl From<&String> for Template {
     fn from(s: &String) -> Self {
         match s.as_str() {
             "chat" => Template::Chat,
+            "fibonacci" => Template::Fibonacci,
             _ => panic!("uqdev: template must be 'chat'; not '{s}'"),
         }
     }
