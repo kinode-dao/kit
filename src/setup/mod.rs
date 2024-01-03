@@ -184,8 +184,8 @@ pub fn check_py_deps() -> anyhow::Result<String> {
     Ok(python)
 }
 
-/// Check for UI deps, returning a Vec of not found: can be automatically fetched
-pub fn check_ui_deps() -> anyhow::Result<Vec<Dependency>> {
+/// Check for Javascript deps, returning a Vec of not found: can be automatically fetched
+pub fn check_js_deps() -> anyhow::Result<Vec<Dependency>> {
     let mut missing_deps = Vec::new();
     if !is_nvm_installed()? {
         missing_deps.push(Dependency::Nvm);
@@ -250,7 +250,7 @@ pub fn execute() -> anyhow::Result<()> {
     // Check if missing deps
     check_py_deps()?;
 
-    let missing_deps = check_ui_deps()?;
+    let missing_deps = check_js_deps()?;
 
     get_deps(missing_deps)?;
     println!("Done setting up.");

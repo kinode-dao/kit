@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 use reqwest;
 use serde::{Serialize, Deserialize};
 
-use super::setup::{check_py_deps, check_ui_deps, get_deps, REQUIRED_PY_PACKAGE};
+use super::setup::{check_js_deps, check_py_deps, get_deps, REQUIRED_PY_PACKAGE};
 
 const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
@@ -286,6 +286,8 @@ async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Result<()
                 let python = check_py_deps()?;
                 compile_python_wasm_process(&path, &python, verbose).await?;
             } else if path.join(JAVASCRIPT_SRC_PATH).exists() {
+                let deps = check_js_deps()?;
+                get_deps(deps)?;
                 compile_javascript_wasm_process(&path, verbose).await?;
             }
         }
@@ -303,7 +305,7 @@ pub async fn execute(package_dir: &Path, ui_only: bool, verbose: bool) -> anyhow
             compile_package(package_dir, verbose).await
         }
     } else {
-        let deps = check_ui_deps()?;
+        let deps = check_js_deps()?;
         get_deps(deps)?;
         if ui_only {
             compile_and_copy_ui(package_dir, verbose)
