@@ -87,7 +87,7 @@ fn handle_message (our: &Address) -> anyhow::Result<()> {
                         .ipc(serde_json::to_vec(&FibonacciResponse::Numbers((
                             result,
                             number_trials,
-                        )).unwrap())
+                        ))).unwrap())
                         .send()
                         .unwrap();
                 },

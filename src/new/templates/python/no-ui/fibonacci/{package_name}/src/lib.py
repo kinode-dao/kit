@@ -31,7 +31,7 @@ def fibonacci(n):
 def handle_message(our_node):
     result = receive()
     if isinstance(result, Err):
-        exit(1)
+        raise Exception(f"{result}")
     source, message = result
 
     match message:
@@ -63,7 +63,7 @@ def handle_message(our_node):
                     duration = time.perf_counter_ns() - start
                     durations.append(duration)
                 mean = sum(durations) / number_trials
-                absolute_deviation = sum(abs(mean - item) for item in durations) / number_trials
+                absolute_deviation = sum(abs(item - mean) for item in durations) / number_trials
                 print_to_terminal(
                     0,
                     f"{package_name}: fibonacci({number}) = {result}; {duration}±{absolute_deviation}ns averaged over {number_trials} trials",

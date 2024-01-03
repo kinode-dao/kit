@@ -23,7 +23,6 @@ function inputBytesToString(byteObject) {
 }
 
 function handleMessage(ourNode, messageArchive) {
-    printToTerminal(0, `{package_name}: 0 '${ourNode}'`);
     const [source, message] = receive();
 
     if (message.tag == 'response') {
