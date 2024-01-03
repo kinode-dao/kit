@@ -87,8 +87,8 @@ fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
 
 pub async fn execute(project_dir: PathBuf, url: &str, node: Option<&str>) -> anyhow::Result<()> {
     let pkg_dir = project_dir.join("pkg").canonicalize()?;
-    let metadata: serde_json::Value = serde_json::from_reader(fs::File::open(pkg_dir
-        .join("metadata.json")
+    let metadata: serde_json::Value = serde_json::from_reader(fs::File::open(
+        pkg_dir.join("metadata.json")
     )?)?;
     let package_name = metadata["package"].as_str().unwrap();
     let publisher = metadata["publisher"].as_str().unwrap();

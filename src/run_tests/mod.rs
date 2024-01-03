@@ -142,7 +142,7 @@ async fn load_tests(test_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> 
             "vfs:sys:uqbar",
             &serde_json::to_string(&serde_json::json!({
                 "path": format!("/tester:uqbar/tests/{basename}.wasm"),
-                "action": "ReWrite",
+                "action": "Write",
             })).unwrap(),
             None,
             None,
