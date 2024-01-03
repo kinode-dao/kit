@@ -19,6 +19,7 @@ enum FibonacciRequest {
 #[derive(Debug, Serialize, Deserialize)]
 enum FibonacciResponse {
     Number(u64),
+    Numbers((u64, u32)),
 }
 
 fn fibonacci(n: u32) -> u64 {
@@ -34,12 +35,11 @@ fn handle_message (our: &Address) -> anyhow::Result<()> {
 
     match message {
         Message::Response { .. } => {
-            print_to_terminal(0, &format!("{package_name}: unexpected Response: {:?}", message));
-            panic!("");
+            return Err(anyhow::anyhow!("unexpected Response: {:?}", message))
         },
         Message::Request { ref source, ref ipc, .. } => {
             if source.node != our.node {
-                print_to_terminal(0, &format!("{package_name}: dropping Request from {}", source));
+                return Err(anyhow::anyhow!("dropping foreign Request from {}", source));
             }
             match serde_json::from_slice(ipc)? {
                 FibonacciRequest::Number(number) => {
@@ -66,7 +66,7 @@ fn handle_message (our: &Address) -> anyhow::Result<()> {
                         durations.push(duration);
                     }
                     let result = fibonacci(number);
-                    let mean =  durations
+                    let mean = durations
                         .iter()
                         .fold(0, |sum, item| sum + item.as_nanos()) / number_trials as u128;
                     let absolute_deviation = durations
@@ -84,7 +84,10 @@ fn handle_message (our: &Address) -> anyhow::Result<()> {
                         number_trials,
                     ));
                     Response::new()
-                        .ipc(serde_json::to_vec(&FibonacciResponse::Number(result)).unwrap())
+                        .ipc(serde_json::to_vec(&FibonacciResponse::Numbers((
+                            result,
+                            number_trials,
+                        )).unwrap())
                         .send()
                         .unwrap();
                 },
