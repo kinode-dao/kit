@@ -6,6 +6,7 @@ include!("includes.rs");
 pub enum Language {
     Rust,
     Python,
+    Javascript,
 }
 
 #[derive(Clone)]
@@ -18,6 +19,7 @@ impl Language {
         match self {
             Language::Rust => "rust",
             Language::Python => "python",
+            Language::Javascript => "javascript",
         }.to_string()
     }
 }
@@ -35,6 +37,7 @@ impl From<&String> for Language {
         match s.as_str() {
             "rust" => Language::Rust,
             "python" => Language::Python,
+            "javascript" => Language::Javascript,
             _ => panic!("uqdev: language must be 'rust' or 'python'; not '{s}'"),
         }
     }
@@ -47,6 +50,13 @@ impl From<&String> for Template {
             _ => panic!("uqdev: template must be 'chat'; not '{s}'"),
         }
     }
+}
+
+fn replace_vars(input: &str, package_name: &str, publisher: &str) -> String {
+    input
+        .replace("{package_name}", package_name)
+        .replace("{publisher}", publisher)
+        .to_string()
 }
 
 pub fn execute(
@@ -79,20 +89,15 @@ pub fn execute(
         ui_infix,
         template.to_string(),
     );
-    let path_to_content: HashMap<String, String> = PATH_TO_CONTENT
+    let mut path_to_content: HashMap<String, String> = PATH_TO_CONTENT
         .iter()
         .filter_map(|(k, v)| {
             k
                 .strip_prefix(&template_prefix)
                 .or_else(|| k.strip_prefix(&ui_prefix))
                 .and_then(|stripped| {
-                    let key = stripped
-                        .replace("{package_name}", &package_name)
-                        .to_string();
-                    let val = v
-                        .replace("{package_name}", &package_name)
-                        .replace("{publisher}", &publisher)
-                        .to_string();
+                    let key = replace_vars(stripped, &package_name, &publisher);
+                    let val = replace_vars(v, &package_name, &publisher);
                     Some((key, val))
                 })
         })
@@ -104,6 +109,15 @@ pub fn execute(
             language.to_string(),
             template.to_string(),
         ));
+    }
+    match language {
+        Language::Javascript => {
+            path_to_content.insert(
+                format!("{}/{}", package_name, PATH_TO_CONTENT[0].0),
+                replace_vars(PATH_TO_CONTENT[0].1, &package_name, &publisher),
+            );
+        },
+        _ => {},
     }
 
     // Create the template directory and subdirectories

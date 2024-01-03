@@ -44,7 +44,7 @@ def handle_message(our_node, message_archive):
                     send_and_await_response(
                         Address(
                             target,
-                            ProcessId("{[package_name}", "{package_name}", "{publisher}"),
+                            ProcessId("{package_name}", "{package_name}", "{publisher}"),
                         ),
                         Request(False, 5, message.value.ipc, None),
                         None,
