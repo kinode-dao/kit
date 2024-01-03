@@ -149,12 +149,13 @@ async fn load_tests(test_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> 
             test_path.join("pkg").join(format!("{basename}.wasm")).to_str(),
         )?;
 
-        match inject_message::send_request(
+        let response = inject_message::send_request(
             &format!("http://localhost:{}", port),
             request,
-        ).await {
-            Ok(response) if response.status() != 200 => println!("Failed with status code: {}", response.status()),
-            _ => ()
+        ).await?;
+        match inject_message::parse_response(response).await {
+            Ok(_) => {},
+            Err(e) => return Err(anyhow::anyhow!("Failed to load tests: {}", e)),
         }
     }
     println!("Done loading tests.");
