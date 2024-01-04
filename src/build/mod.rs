@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 use reqwest;
 use serde::{Serialize, Deserialize};
 
-use super::setup::{check_js_deps, check_py_deps, get_deps, REQUIRED_PY_PACKAGE};
+use super::setup::{check_js_deps, check_py_deps, check_rust_deps, get_deps, REQUIRED_PY_PACKAGE};
 
 const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
@@ -281,6 +281,8 @@ async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Result<()
         let path = entry.path();
         if path.is_dir() {
             if path.join(RUST_SRC_PATH).exists() {
+                let deps = check_rust_deps()?;
+                get_deps(deps)?;
                 compile_rust_wasm_process(&path, verbose).await?;
             } else if path.join(PYTHON_SRC_PATH).exists() {
                 let python = check_py_deps()?;
