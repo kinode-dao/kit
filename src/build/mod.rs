@@ -242,30 +242,42 @@ fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> 
     let ui_path = package_dir.join("ui");
     println!("Building UI in {:?}...", ui_path);
 
-    if ui_path.exists() && ui_path.is_dir() && ui_path.join("package.json").exists() {
-        println!("UI directory found, running npm install...");
+    if ui_path.exists() && ui_path.is_dir() {
+        if ui_path.join("package.json").exists() {
+            println!("UI directory found, running npm install...");
 
-        // Set the current directory to 'ui_path' for the command
-        run_command(Command::new("npm")
-            .arg("install")
-            .current_dir(&ui_path) // Set the working directory
-            .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-            .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
-        )?;
+            run_command(Command::new("npm")
+                .arg("install")
+                .current_dir(&ui_path)
+                .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+                .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+            )?;
 
-        println!("Running npm run build:copy...");
+            println!("Running npm run build:copy...");
 
-        // Similarly for 'npm run build:copy'
-        run_command(Command::new("npm")
-            .args(["run", "build:copy"])
-            .current_dir(&ui_path) // Set the working directory
-            .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-            .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
-        )?;
+            run_command(Command::new("npm")
+                .args(["run", "build:copy"])
+                .current_dir(&ui_path)
+                .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+                .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+            )?;
+        } else {
+            let pkg_ui_path = package_dir.join("pkg/ui");
+            if pkg_ui_path.exists() {
+                fs::remove_dir_all(&pkg_ui_path)?;
+            }
+            run_command(Command::new("cp")
+                .args(["-r", "ui", "pkg/ui"])
+                .current_dir(&package_dir)
+                .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+                .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+            )?;
+        }
     } else {
-        println!("'ui' directory not found or 'ui/package.json' does not exist");
+        println!("'ui' directory not found");
     }
 
+    println!("Done building UI in {:?}.", ui_path);
     Ok(())
 }
 
@@ -299,6 +311,12 @@ async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Result<()
 }
 
 pub async fn execute(package_dir: &Path, ui_only: bool, verbose: bool) -> anyhow::Result<()> {
+    if !package_dir.join("pkg").exists() {
+        return Err(anyhow::anyhow!(
+            "Required `pkg/` dir not found within given input dir {:?} (or cwd, if none given). Please re-run targeting a package.",
+            package_dir,
+        ));
+    }
     let ui_dir = package_dir.join("ui");
     if !ui_dir.exists() {
         if ui_only {

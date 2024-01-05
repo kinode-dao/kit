@@ -85,8 +85,14 @@ fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn execute(project_dir: PathBuf, url: &str, node: Option<&str>) -> anyhow::Result<()> {
-    let pkg_dir = project_dir.join("pkg").canonicalize()?;
+pub async fn execute(package_dir: PathBuf, url: &str, node: Option<&str>) -> anyhow::Result<()> {
+    if !package_dir.join("pkg").exists() {
+        return Err(anyhow::anyhow!(
+            "Required `pkg/` dir not found within given input dir {:?} (or cwd, if none given). Please re-run targeting a package.",
+            package_dir,
+        ));
+    }
+    let pkg_dir = package_dir.join("pkg").canonicalize()?;
     let metadata: serde_json::Value = serde_json::from_reader(fs::File::open(
         pkg_dir.join("metadata.json")
     )?)?;
