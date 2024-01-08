@@ -282,8 +282,8 @@ fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> 
 }
 
 async fn compile_package_and_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
-    compile_package(package_dir, verbose).await?;
     compile_and_copy_ui(package_dir, verbose)?;
+    compile_package(package_dir, verbose).await?;
     Ok(())
 }
 
