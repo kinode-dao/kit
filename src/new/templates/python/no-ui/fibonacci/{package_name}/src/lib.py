@@ -40,9 +40,9 @@ def handle_message(our_node):
         case MessageRequest():
             if source.node != our_node:
                 raise Exception(f"dropping foreign Request from {source}")
-            ipc = json.loads(message.value.ipc.decode("utf-8"))
-            if "Number" in ipc:
-                number = ipc["Number"]
+            body = json.loads(message.value.body.decode("utf-8"))
+            if "Number" in body:
+                number = body["Number"]
                 start = time.perf_counter_ns()
                 result = fibonacci(number)
                 duration = time.perf_counter_ns() - start
@@ -54,8 +54,8 @@ def handle_message(our_node):
                     Response(False, json.dumps({"Number": result}).encode("utf-8"), None),
                     None,
                 )
-            elif "Numbers" in ipc:
-                number, number_trials = ipc["Numbers"]
+            elif "Numbers" in body:
+                number, number_trials = body["Numbers"]
                 durations = []
                 for _ in range(number_trials):
                     start = time.perf_counter_ns()
@@ -77,7 +77,7 @@ def handle_message(our_node):
                     None,
                 )
             else:
-                raise Exception(f"Unexpected Request: {ipc}")
+                raise Exception(f"Unexpected Request: {body}")
 
 class Process(process.Process):
     def init(self, our):

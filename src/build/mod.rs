@@ -11,6 +11,7 @@ const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
 const PYTHON_SRC_PATH: &str = "src/lib.py";
 const RUST_SRC_PATH: &str = "src/lib.rs";
+const NECTAR_WIT_URL: &str = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/nectar.wit";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
@@ -61,11 +62,10 @@ async fn compile_javascript_wasm_process(
     process_dir: &Path,
     verbose: bool,
 ) -> anyhow::Result<()> {
-    println!("Compiling Javascript Uqbar process in {:?}...", process_dir);
+    println!("Compiling Javascript Nectar process in {:?}...", process_dir);
     let wit_dir = process_dir.join("wit");
     fs::create_dir_all(&wit_dir)?;
-    let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/uqbar.wit";
-    download_file(uqbar_wit_url, &wit_dir.join("uqbar.wit")).await?;
+    download_file(NECTAR_WIT_URL, &wit_dir.join("nectar.wit")).await?;
 
     let wasm_file_name = process_dir
         .file_name()
@@ -86,7 +86,7 @@ async fn compile_javascript_wasm_process(
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling Javascript Uqbar process in {:?}.", process_dir);
+    println!("Done compiling Javascript Nectar process in {:?}.", process_dir);
     Ok(())
 }
 
@@ -95,11 +95,10 @@ async fn compile_python_wasm_process(
     python: &str,
     verbose: bool,
 ) -> anyhow::Result<()> {
-    println!("Compiling Python Uqbar process in {:?}...", process_dir);
+    println!("Compiling Python Nectar process in {:?}...", process_dir);
     let wit_dir = process_dir.join("wit");
     fs::create_dir_all(&wit_dir)?;
-    let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/uqbar.wit";
-    download_file(uqbar_wit_url, &wit_dir.join("uqbar.wit")).await?;
+    download_file(NECTAR_WIT_URL, &wit_dir.join("nectar.wit")).await?;
 
     let wasm_file_name = process_dir
         .file_name()
@@ -122,7 +121,7 @@ async fn compile_python_wasm_process(
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling Python Uqbar process in {:?}.", process_dir);
+    println!("Done compiling Python Nectar process in {:?}.", process_dir);
     Ok(())
 }
 
@@ -130,7 +129,7 @@ async fn compile_rust_wasm_process(
     process_dir: &Path,
     verbose: bool,
 ) -> anyhow::Result<()> {
-    println!("Compiling Rust Uqbar process in {:?}...", process_dir);
+    println!("Compiling Rust Nectar process in {:?}...", process_dir);
 
     // Paths
     let bindings_dir = process_dir
@@ -142,11 +141,10 @@ async fn compile_rust_wasm_process(
     // Ensure the bindings directory exists
     fs::create_dir_all(&bindings_dir)?;
 
-    // Check and download uqbar.wit if wit_dir does not exist
+    // Check and download nectar.wit if wit_dir does not exist
     //if !wit_dir.exists() { // TODO: do a smarter check; this check will fail when remote has updated v
     fs::create_dir_all(&wit_dir)?;
-    let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/uqbar.wit";
-    download_file(uqbar_wit_url, &wit_dir.join("uqbar.wit")).await?;
+    download_file(NECTAR_WIT_URL, &wit_dir.join("nectar.wit")).await?;
 
     // Check and download wasi_snapshot_preview1.wasm if it does not exist
     let wasi_snapshot_file = process_dir.join("wasi_snapshot_preview1.wasm");
@@ -234,7 +232,7 @@ async fn compile_rust_wasm_process(
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling Rust Uqbar process in {:?}.", process_dir);
+    println!("Done compiling Rust Nectar process in {:?}.", process_dir);
     Ok(())
 }
 

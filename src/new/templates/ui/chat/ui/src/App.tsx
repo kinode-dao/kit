@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import reactLogo from "./assets/react.svg";
 import viteLogo from "./assets/vite.svg";
-import UqbarEncryptorApi from "@uqbar/client-encryptor-api";
+import NectarEncryptorApi from "@uqbar/client-encryptor-api";
 import "./App.css";
 import { SendChatMessage } from "./types/Chat";
 import useChatStore from "./store/chat";
@@ -23,7 +23,7 @@ function App() {
   const [target, setTarget] = useState("");
   const [message, setMessage] = useState("");
   const [nodeConnected, setNodeConnected] = useState(true);
-  const [api, setApi] = useState<UqbarEncryptorApi | undefined>();
+  const [api, setApi] = useState<NectarEncryptorApi | undefined>();
 
   useEffect(() => {
     // Get message history using http
@@ -34,15 +34,15 @@ function App() {
       })
       .catch((error) => console.error(error));
 
-    // Connect to the uqbar node via websocket
+    // Connect to the nectar node via websocket
     console.log('WEBSOCKET URL', WEBSOCKET_URL)
     if (window.our?.node && window.our?.process) {
-      const api = new UqbarEncryptorApi({
+      const api = new NectarEncryptorApi({
         uri: WEBSOCKET_URL,
         nodeId: window.our.node,
         processId: window.our.process,
         onOpen: (_event, _api) => {
-          console.log("Connected to uqbar node");
+          console.log("Connected to nectar node");
           // api.send({ data: "Hello World" });
         },
         onMessage: (json, _api) => {
@@ -138,7 +138,7 @@ function App() {
           </h4>
         </div>
       )}
-      <h2>Simple Chat on Uqbar</h2>
+      <h2>Simple Chat on Nectar</h2>
       <div className="card">
         <div
           style={{

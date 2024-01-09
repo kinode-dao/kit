@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 /*
-If you are developing a UI outside of an Uqbar project,
+If you are developing a UI outside of a Nectar project,
 comment out the following 2 lines:
 */
 import manifest from '../pkg/manifest.json'

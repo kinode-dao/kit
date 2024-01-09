@@ -9,7 +9,7 @@ if (!processName) {
 }
 
 const jsSource = await readFile('src/lib.js', 'utf8');
-const witPath = 'wit/uqbar.wit';
+const witPath = 'wit/nectar.wit';
 
 const { component } = await componentize(jsSource, { witPath: witPath, worldName: 'process', debug: false });
 

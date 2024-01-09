@@ -1,4 +1,4 @@
-import { printToTerminal, receive, sendAndAwaitResponse, sendResponse } from "uqbar:process/standard@0.5.0";
+import { printToTerminal, receive, sendAndAwaitResponse, sendResponse } from "nectar:process/standard@0.7.0";
 
 function parseAddress(addressString) {
     const [node, rest] = addressString.split('@');
@@ -29,11 +29,11 @@ function handleMessage(ourNode, messageArchive) {
         printToTerminal(0, `{package_name}: unexpected Response: ${JSON.stringify(message.val)}`);
         process.exit(1);
     } else if (message.tag == 'request') {
-        const { bytes: ipcBytes, string: ipc0 } = inputBytesToString(message.val.ipc)
-        const ipc = JSON.parse(ipc0);
+        const { bytes: bodyBytes, string: body0 } = inputBytesToString(message.val.body)
+        const body = JSON.parse(body0);
         const encoder = new TextEncoder();
-        if (ipc.Send) {
-            const { target, message: messageText } = ipc.Send;
+        if (body.Send) {
+            const { target, message: messageText } = body.Send;
             if (target === ourNode) {
                 printToTerminal(0, `{package_name}|${source.node}: ${messageText}`);
                 messageArchive[source.node] = messageText;
@@ -50,7 +50,7 @@ function handleMessage(ourNode, messageArchive) {
                     {
                         inherit: false,
                         expectsResponse: 5,
-                        ipc: ipcBytes,
+                        body: bodyBytes,
                         metadata: null
                     },
                     null
@@ -59,16 +59,16 @@ function handleMessage(ourNode, messageArchive) {
             sendResponse(
                 {
                     inherit: false,
-                    ipc: encoder.encode(JSON.stringify({ Ack: null })),
+                    body: encoder.encode(JSON.stringify({ Ack: null })),
                     metadata: null
                 },
                 null
             );
-        } else if (ipc.History) {
+        } else if (body.History) {
             sendResponse(
                 {
                     inherit: false,
-                    ipc: encoder.encode(JSON.stringify({ History: { messages: messageArchive } })),
+                    body: encoder.encode(JSON.stringify({ History: { messages: messageArchive } })),
                     metadata: null
                 },
                 null

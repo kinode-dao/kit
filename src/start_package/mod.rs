@@ -23,7 +23,7 @@ fn new_package(
     });
 
     inject_message::make_message(
-        "main:app_store:uqbar",
+        "main:app_store:nectar",
         &message.to_string(),
         node,
         None,
@@ -45,7 +45,7 @@ pub fn interact_with_package(
     });
 
     inject_message::make_message(
-        "main:app_store:uqbar",
+        "main:app_store:nectar",
         &message.to_string(),
         node,
         None,
@@ -116,12 +116,12 @@ pub async fn execute(package_dir: PathBuf, url: &str, node: Option<&str>) -> any
         zip_filename.to_str().unwrap(),
     )?;
     let response = inject_message::send_request(url, new_pkg_request).await?;
-    let inject_message::Response { ref ipc, .. } = inject_message::parse_response(response).await?;
-    let ipc = serde_json::from_str::<serde_json::Value>(ipc)?;
-    let new_package_response = ipc.get("NewPackageResponse");
+    let inject_message::Response { ref body, .. } = inject_message::parse_response(response).await?;
+    let body = serde_json::from_str::<serde_json::Value>(body)?;
+    let new_package_response = body.get("NewPackageResponse");
 
     if new_package_response != Some(&serde_json::Value::String("Success".to_string())) {
-        let error_message = format!("Failed to add package. Got response from node: {}", ipc);
+        let error_message = format!("Failed to add package. Got response from node: {}", body);
         println!("{}", error_message);
         return Err(anyhow::anyhow!(error_message));
     }
@@ -129,14 +129,14 @@ pub async fn execute(package_dir: PathBuf, url: &str, node: Option<&str>) -> any
     // Install package
     let install_request = interact_with_package("Install", node, package_name, publisher)?;
     let response = inject_message::send_request(url, install_request).await?;
-    let inject_message::Response { ref ipc, .. } = inject_message::parse_response(response).await?;
-    let ipc = serde_json::from_str::<serde_json::Value>(ipc)?;
-    let install_response = ipc.get("InstallResponse");
+    let inject_message::Response { ref body, .. } = inject_message::parse_response(response).await?;
+    let body = serde_json::from_str::<serde_json::Value>(body)?;
+    let install_response = body.get("InstallResponse");
 
     if install_response == Some(&serde_json::Value::String("Success".to_string())) {
         println!("Successfully installed package {} on node at {}", pkg_publisher, url);
     } else {
-        let error_message = format!("Failed to start package. Got response from node: {}", ipc);
+        let error_message = format!("Failed to start package. Got response from node: {}", body);
         println!("{}", error_message);
         return Err(anyhow::anyhow!(error_message));
     }

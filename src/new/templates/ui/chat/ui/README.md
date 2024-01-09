@@ -1,4 +1,4 @@
-# Uqbar UI Template
+# Nectar UI Template
 
 Based on the Vite React Typescript template.
 

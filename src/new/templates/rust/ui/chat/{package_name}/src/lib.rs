@@ -1,14 +1,14 @@
 use std::collections::HashMap;
+use std::str::FromStr;
 
-use anyhow::{self};
 use serde::{Deserialize, Serialize};
-use uqbar_process_lib::{
-    await_message, get_payload,
+use nectar_process_lib::{
+    await_message, get_blob,
     http::{
         bind_http_path, send_response, send_ws_push,
         serve_ui, HttpServerRequest, IncomingHttpRequest, StatusCode, WsMessageType, bind_ws_path,
     },
-    print_to_terminal, Address, Message, Payload, ProcessId, Request, Response,
+    print_to_terminal, Address, LazyLoadBlob, Message, ProcessId, Request, Response,
 };
 
 wit_bindgen::generate!({
@@ -51,9 +51,9 @@ fn handle_http_server_request(
     message_archive: &mut MessageArchive,
     our_channel_id: &mut u32,
     source: &Address,
-    ipc: &[u8],
+    body: &[u8],
 ) -> anyhow::Result<()> {
-    let Ok(server_request) = serde_json::from_slice::<HttpServerRequest>(ipc) else {
+    let Ok(server_request) = serde_json::from_slice::<HttpServerRequest>(body) else {
         // Fail silently if we can't parse the request
         return Ok(());
     };
@@ -65,7 +65,7 @@ fn handle_http_server_request(
             *our_channel_id = channel_id;
         }
         HttpServerRequest::WebSocketPush { .. } => {
-            let Some(payload) = get_payload() else {
+            let Some(blob) = get_blob() else {
                 return Ok(());
             };
 
@@ -74,7 +74,7 @@ fn handle_http_server_request(
                 message_archive,
                 our_channel_id,
                 source,
-                &payload.bytes,
+                &blob.bytes,
                 false,
             )?;
         }
@@ -97,7 +97,7 @@ fn handle_http_server_request(
                 }
                 // Send a message
                 "POST" => {
-                    let Some(payload) = get_payload() else {
+                    let Some(blob) = get_blob() else {
                         return Ok(());
                     };
                     handle_chat_request(
@@ -105,7 +105,7 @@ fn handle_http_server_request(
                         message_archive,
                         our_channel_id,
                         source,
-                        &payload.bytes,
+                        &blob.bytes,
                         true,
                     )?;
 
@@ -128,10 +128,10 @@ fn handle_chat_request(
     message_archive: &mut MessageArchive,
     channel_id: &mut u32,
     source: &Address,
-    ipc: &[u8],
+    body: &[u8],
     is_http: bool,
 ) -> anyhow::Result<()> {
-    let Ok(chat_request) = serde_json::from_slice::<ChatRequest>(ipc) else {
+    let Ok(chat_request) = serde_json::from_slice::<ChatRequest>(body) else {
         // Fail silently if we can't parse the request
         return Ok(());
     };
@@ -158,7 +158,7 @@ fn handle_chat_request(
                         node: target.clone(),
                         process: ProcessId::from_str("{package_name}:{package_name}:{publisher}")?,
                     })
-                    .ipc(ipc)
+                    .body(body)
                     .send_and_await_response(5) {
                         Ok(_) => {}
                         Err(e) => {
@@ -191,15 +191,15 @@ fn handle_chat_request(
 
             // If this is not an HTTP request, send a response to the other node
             Response::new()
-                .ipc(serde_json::to_vec(&ChatResponse::Ack).unwrap())
+                .body(serde_json::to_vec(&ChatResponse::Ack).unwrap())
                 .send()
                 .unwrap();
 
             // Add the new message to the archive
             messages.push(new_message);
 
-            // Generate a Payload for the new message
-            let payload = Payload {
+            // Generate a blob for the new message
+            let blob = LazyLoadBlob {
                 mime: Some("application/json".to_string()),
                 bytes: serde_json::json!({
                     "NewMessage": NewMessage {
@@ -218,14 +218,14 @@ fn handle_chat_request(
                 our.node.clone(),
                 channel_id.clone(),
                 WsMessageType::Text,
-                payload,
+                blob,
             )?;
         }
         ChatRequest::History => {
             // If this is an HTTP request, send a response to the http server
 
             Response::new()
-                .ipc(
+                .body(
                     serde_json::to_vec(&ChatResponse::History {
                         messages: message_archive.clone(),
                     })
@@ -253,13 +253,13 @@ fn handle_message(
         }
         Message::Request {
             ref source,
-            ref ipc,
+            ref body,
             ..
         } => {
             // Requests that come from other nodes running this app
-            handle_chat_request(our, message_archive, channel_id, source, &ipc, false)?;
+            handle_chat_request(our, message_archive, channel_id, source, body, false)?;
             // Requests that come from our http server
-            handle_http_server_request(our, message_archive, channel_id, source, ipc)?;
+            handle_http_server_request(our, message_archive, channel_id, source, body)?;
         }
     }
 

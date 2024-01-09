@@ -1,6 +1,6 @@
 // 240103: Date.now() always returns 0, so this timing does not currently work.
 
-import { printToTerminal, receive, sendResponse } from "uqbar:process/standard@0.5.0";
+import { printToTerminal, receive, sendResponse } from "nectar:process/standard@0.7.0";
 
 function parseAddress(addressString) {
     const [node, rest] = addressString.split('@');
@@ -37,11 +37,11 @@ function handleMessage(ourNode) {
         printToTerminal(0, `{package_name}: unexpected Response: ${JSON.stringify(message.val)}`);
         process.exit(1);
     } else if (message.tag == 'request') {
-        const { bytes: ipcBytes, string: ipc0 } = inputBytesToString(message.val.ipc)
-        const ipc = JSON.parse(ipc0);
+        const { bytes: bodyBytes, string: body0 } = inputBytesToString(message.val.body)
+        const body = JSON.parse(body0);
         const encoder = new TextEncoder();
-        if (ipc.Number) {
-            const number = ipc.Number;
+        if (body.Number) {
+            const number = body.Number;
             const start = Date.now();
             const result = fibonacci(number);
             const duration = (Date.now() - start) * 1000000;
@@ -49,13 +49,13 @@ function handleMessage(ourNode) {
             sendResponse(
                 {
                     inherit: false,
-                    ipc: encoder.encode(JSON.stringify({ Number: result })),
+                    body: encoder.encode(JSON.stringify({ Number: result })),
                     metadata: null
                 },
                 null
             );
-        } else if (ipc.Numbers) {
-            const [number, numberTrials] = ipc.Numbers;
+        } else if (body.Numbers) {
+            const [number, numberTrials] = body.Numbers;
             let durations = [];
             for (let i = 0; i < numberTrials; i++) {
                 const start = Date.now();
@@ -75,13 +75,13 @@ function handleMessage(ourNode) {
             sendResponse(
                 {
                     inherit: false,
-                    ipc: encoder.encode(JSON.stringify({ Numbers: [result, numberTrials] })),
+                    body: encoder.encode(JSON.stringify({ Numbers: [result, numberTrials] })),
                     metadata: null
                 },
                 null
             );
         } else {
-            throw new Error(`Unexpected Request: ${ipc}`)
+            throw new Error(`Unexpected Request: ${body}`)
         }
     }
 }

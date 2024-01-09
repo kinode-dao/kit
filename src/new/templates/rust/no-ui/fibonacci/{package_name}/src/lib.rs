@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use uqbar_process_lib::{await_message, print_to_terminal, Address, Message, Response};
+use nectar_process_lib::{await_message, print_to_terminal, Address, Message, Response};
 
 wit_bindgen::generate!({
     path: "wit",
@@ -37,11 +37,11 @@ fn handle_message (our: &Address) -> anyhow::Result<()> {
         Message::Response { .. } => {
             return Err(anyhow::anyhow!("unexpected Response: {:?}", message))
         },
-        Message::Request { ref source, ref ipc, .. } => {
+        Message::Request { ref source, ref body, .. } => {
             if source.node != our.node {
                 return Err(anyhow::anyhow!("dropping foreign Request from {}", source));
             }
-            match serde_json::from_slice(ipc)? {
+            match serde_json::from_slice(body)? {
                 FibonacciRequest::Number(number) => {
                     let start = std::time::Instant::now();
                     let result = fibonacci(number);
@@ -53,7 +53,7 @@ fn handle_message (our: &Address) -> anyhow::Result<()> {
                         duration.as_nanos(),
                     ));
                     Response::new()
-                        .ipc(serde_json::to_vec(&FibonacciResponse::Number(result)).unwrap())
+                        .body(serde_json::to_vec(&FibonacciResponse::Number(result)).unwrap())
                         .send()
                         .unwrap();
                 },
@@ -84,7 +84,7 @@ fn handle_message (our: &Address) -> anyhow::Result<()> {
                         number_trials,
                     ));
                     Response::new()
-                        .ipc(serde_json::to_vec(&FibonacciResponse::Numbers((
+                        .body(serde_json::to_vec(&FibonacciResponse::Numbers((
                             result,
                             number_trials,
                         ))).unwrap())

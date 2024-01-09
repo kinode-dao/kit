@@ -1,6 +1,7 @@
+use std::str::FromStr;
 use serde::{Serialize, Deserialize};
 
-use uqbar_process_lib::{await_message, print_to_terminal, Address, Message, ProcessId, Request, Response};
+use nectar_process_lib::{await_message, print_to_terminal, Address, Message, ProcessId, Request, Response};
 
 wit_bindgen::generate!({
     path: "wit",
@@ -35,8 +36,8 @@ fn handle_message (
             print_to_terminal(0, &format!("{package_name}: unexpected Response: {:?}", message));
             panic!("");
         },
-        Message::Request { ref source, ref ipc, .. } => {
-            match serde_json::from_slice(ipc)? {
+        Message::Request { ref source, ref body, .. } => {
+            match serde_json::from_slice(body)? {
                 ChatRequest::Send { ref target, ref message } => {
                     if target == &our.node {
                         print_to_terminal(0, &format!("{package_name}|{}: {}", source.node, message));
@@ -47,18 +48,18 @@ fn handle_message (
                                 node: target.clone(),
                                 process: ProcessId::from_str("{package_name}:{package_name}:{publisher}")?,
                             })
-                            .ipc(ipc.clone())
+                            .body(body.clone())
                             .send_and_await_response(5)?
                             .unwrap();
                     }
                     Response::new()
-                        .ipc(serde_json::to_vec(&ChatResponse::Ack).unwrap())
+                        .body(serde_json::to_vec(&ChatResponse::Ack).unwrap())
                         .send()
                         .unwrap();
                 },
                 ChatRequest::History => {
                     Response::new()
-                        .ipc(serde_json::to_vec(&ChatResponse::History {
+                        .body(serde_json::to_vec(&ChatResponse::History {
                             messages: message_archive.clone(),
                         }).unwrap())
                         .send()

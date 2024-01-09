@@ -171,7 +171,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
     command!()
         .name("UqDev")
         .version(env!("CARGO_PKG_VERSION"))
-        .about("Development tools for Uqbar")
+        .about("Development tools for Nectar OS")
         .subcommand_required(true)
         .arg_required_else_help(true)
         .disable_version_flag(true)
@@ -187,13 +187,13 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             .arg(Arg::new("PATH")
                 .action(ArgAction::Set)
                 .long("runtime-path")
-                .help("Path to Uqbar core repo or runtime binary (overrides --version)")
+                .help("Path to Nectar core repo or runtime binary (overrides --version)")
             )
             .arg(Arg::new("VERSION")
                 .action(ArgAction::Set)
                 .short('v')
                 .long("version")
-                .help("Version of Uqbar binary to use (overridden by --runtime-path)")
+                .help("Version of Nectar binary to use (overridden by --runtime-path)")
                 .default_value("0.4.0")
             )
             .arg(Arg::new("HOME")
@@ -201,7 +201,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .short('h')
                 .long("home")
                 .help("Where to place the home directory for the fake node")
-                .default_value("/tmp/uqbar-fake-node")
+                .default_value("/tmp/nectar-fake-node")
             )
             .arg(Arg::new("NODE_PORT")
                 .action(ArgAction::Set)
@@ -245,7 +245,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             )
         )
         .subcommand(Command::new("build")
-            .about("Build an Uqbar process")
+            .about("Build a Nectar process")
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
                 .help("The package directory to build")
@@ -290,7 +290,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             )
         )
         .subcommand(Command::new("inject-message")
-            .about("Inject a message to a running Uqbar node")
+            .about("Inject a message to a running Nectar node")
             .arg(Arg::new("NODE_PORT")
                 .action(ArgAction::Set)
                 .short('p')
@@ -337,7 +337,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             )
         )
         .subcommand(Command::new("new")
-            .about("Create an Uqbar template package")
+            .about("Create a Nectar template package")
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
                 .help("Path to create template directory at")
@@ -380,7 +380,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             )
         )
         .subcommand(Command::new("run-tests")
-            .about("Run Uqbar tests")
+            .about("Run Nectar tests")
             .arg(Arg::new("PATH")
                 .action(ArgAction::Set)
                 .help("Path to tests configuration file")
@@ -435,7 +435,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             .about("Fetch & setup Uqdev dependencies")
         )
         .subcommand(Command::new("start-package")
-            .about("Start a built Uqbar process")
+            .about("Start a built Nectar process")
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
                 .help("The package directory to build")
@@ -498,7 +498,7 @@ async fn main() -> anyhow::Result<()> {
                 None => {},
                 Some(e) => {
                     if e.is_connect() {
-                        println!("uqdev: error connecting; is Uqbar node running?");
+                        println!("uqdev: error connecting; is Nectar node running?");
                         return Ok(());
                     }
                 },

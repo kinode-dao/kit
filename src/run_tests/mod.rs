@@ -90,9 +90,9 @@ async fn wait_until_booted(
 ) -> anyhow::Result<()> {
     for _ in 0..max_waits {
         let request = inject_message::make_message(
-            "vfs:sys:uqbar",
+            "vfs:sys:nectar",
             &serde_json::to_string(&serde_json::json!({
-                "path": "/tester:uqbar/pkg",
+                "path": "/tester:nectar/pkg",
                 "action": "ReadDir",
             })).unwrap(),
             None,
@@ -115,7 +115,7 @@ async fn wait_until_booted(
             }
         };
     }
-    Err(anyhow::anyhow!("uqdev run-tests: could not connect to Uqbar node"))
+    Err(anyhow::anyhow!("uqdev run-tests: could not connect to Nectar node"))
 }
 
 async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> {
@@ -139,9 +139,9 @@ async fn load_tests(test_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> 
     for test_path in test_paths {
         let basename = get_basename(&test_path).unwrap();
         let request = inject_message::make_message(
-            "vfs:sys:uqbar",
+            "vfs:sys:nectar",
             &serde_json::to_string(&serde_json::json!({
-                "path": format!("/tester:uqbar/tests/{basename}.wasm"),
+                "path": format!("/tester:nectar/tests/{basename}.wasm"),
                 "action": "Write",
             })).unwrap(),
             None,
@@ -168,7 +168,7 @@ async fn run_tests(_test_batch: &str, mut ports: Vec<u16>, node_names: Vec<Strin
     // Set up non-master nodes.
     for port in ports {
         let request = inject_message::make_message(
-            "tester:tester:uqbar",
+            "tester:tester:nectar",
             &serde_json::to_string(&serde_json::json!({
                 "Run": {
                     "input_node_names": node_names,
@@ -193,7 +193,7 @@ async fn run_tests(_test_batch: &str, mut ports: Vec<u16>, node_names: Vec<Strin
     // Set up master node & start tests.
     println!("Running tests...");
     let request = inject_message::make_message(
-        "tester:tester:uqbar",
+        "tester:tester:nectar",
         &serde_json::to_string(&serde_json::json!({
             "Run": {
                 "input_node_names": node_names,
@@ -210,8 +210,8 @@ async fn run_tests(_test_batch: &str, mut ports: Vec<u16>, node_names: Vec<Strin
     ).await?;
 
     match inject_message::parse_response(response).await {
-        Ok(inject_message::Response { ref ipc, .. }) => {
-            match serde_json::from_str(ipc)? {
+        Ok(inject_message::Response { ref body, .. }) => {
+            match serde_json::from_str(body)? {
                 tt::TesterResponse::Pass => println!("PASS"),
                 tt::TesterResponse::Fail { test, file, line, column } => {
                     let s = format!("FAIL: {} {}:{}:{}", test, file, line, column);
@@ -252,7 +252,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
             }
             if runtime_path.is_file() {
                 // TODO: make loading/finding base processes more robust
-                panic!("uqdev run-tests: path to binary not yet implemented; please pass path to Uqbar core repo (or use --version)")
+                panic!("uqdev run-tests: path to binary not yet implemented; please pass path to Nectar core repo (or use --version)")
                 // runtime_path
             } else if runtime_path.is_dir() {
                 // Compile the runtime binary
@@ -260,7 +260,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                     &runtime_path,
                     config.runtime_build_verbose,
                 )?;
-                runtime_path.join("target/release/uqbar")
+                runtime_path.join("target/release/nectar")
             } else {
                 panic!("uqdev run-tests: RepoPath {:?} must be a directory (the repo) or a binary.", runtime_path);
             }

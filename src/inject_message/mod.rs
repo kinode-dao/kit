@@ -7,13 +7,13 @@ use reqwest;
 use serde_json::{Value, json};
 
 pub struct Response {
-    pub ipc: String,
-    pub payload: Option<Vec<u8>>,
+    pub body: String,
+    pub lazy_load_blob: Option<Vec<u8>>,
 }
 
 pub fn make_message(
     process: &str,
-    ipc: &str,
+    body: &str,
     node: Option<&str>,
     raw_bytes: Option<&[u8]>,
     bytes_path: Option<&str>,
@@ -39,7 +39,7 @@ pub fn make_message(
         "process": process,
         "inherit": false,
         "expects_response": Option::<bool>::None,
-        "ipc": ipc,
+        "body": body,
         "metadata": Option::<serde_json::Value>::None,
         "context": Option::<serde_json::Value>::None,
         "mime": "application/octet-stream",
@@ -53,7 +53,7 @@ pub async fn send_request(
     url: &str,
     json_data: Value,
 ) -> anyhow::Result<reqwest::Response> {
-    let endpoint = "/rpc:sys:uqbar/message";
+    let endpoint = "/rpc:sys:nectar/message";
     let mut url = url.to_string();
     let url =
         if url.ends_with(endpoint) {
@@ -81,42 +81,42 @@ pub async fn parse_response(response: reqwest::Response) -> anyhow::Result<Respo
         let content: String = response.text().await?;
         let data: Value = serde_json::from_str(&content)?;
 
-        let ipc = data
-            .get("ipc")
-            .map(|ipc| {
-                if let serde_json::Value::Array(ipc_bytes_val) = ipc {
-                    let ipc_bytes: Vec<u8> = ipc_bytes_val
+        let body = data
+            .get("body")
+            .map(|body| {
+                if let serde_json::Value::Array(body_bytes_val) = body {
+                    let body_bytes: Vec<u8> = body_bytes_val
                         .iter()
                         .map(|n| n.as_u64().unwrap() as u8)
                         .collect();
-                    let ipc_string: String = String::from_utf8(ipc_bytes)?;
-                    Ok(ipc_string)
+                    let body_string: String = String::from_utf8(body_bytes)?;
+                    Ok(body_string)
                 } else {
-                    return Err(anyhow::anyhow!("Response `ipc` was not bytes."))
+                    return Err(anyhow::anyhow!("Response `body` was not bytes."))
                 }
             })
-            .ok_or_else(|| anyhow::anyhow!("Response did not contain `ipc` field."))??;
+            .ok_or_else(|| anyhow::anyhow!("Response did not contain `body` field."))??;
 
-        let payload = data
-            .get("payload")
-            .and_then(|p| {
-                match p {
+        let blob = data
+            .get("lazy_load_blob")
+            .and_then(|b| {
+                match b {
                     serde_json::Value::Null => None,
-                    serde_json::Value::Array(payload_bytes_val) => {
-                        let payload_bytes: Vec<u8> = payload_bytes_val
+                    serde_json::Value::Array(blob_bytes_val) => {
+                        let blob_bytes: Vec<u8> = blob_bytes_val
                             .iter()
                             .map(|n| n.as_u64().unwrap() as u8)
                             .collect();
-                        Some(Ok(payload_bytes))
+                        Some(Ok(blob_bytes))
                     },
-                    _ => return Some(Err(anyhow::anyhow!("Response did not contain `payload` bytes field."))),
+                    _ => return Some(Err(anyhow::anyhow!("Response did not contain `lazy_load_blob` bytes field."))),
                 }
             })
             .transpose()?;
 
         Ok(Response {
-            ipc,
-            payload,
+            body,
+            lazy_load_blob: blob,
         })
     }
 }
@@ -124,11 +124,11 @@ pub async fn parse_response(response: reqwest::Response) -> anyhow::Result<Respo
 pub async fn execute(
     url: &str,
     process: &str,
-    ipc: &str,
+    body: &str,
     node: Option<&str>,
     bytes_path: Option<&str>,
 ) -> anyhow::Result<()> {
-    let request = make_message(process, ipc, node, None, bytes_path)?;
+    let request = make_message(process, body, node, None, bytes_path)?;
     let response = send_request(url, request).await?;
 
     if response.status() == 200 {
@@ -136,9 +136,9 @@ pub async fn execute(
         let mut data: Option<Value> = serde_json::from_str(&content).ok();
 
         if let Some(ref mut data_map) = data {
-            if let Some(ipc_str) = data_map["ipc"].as_str() {
-                let ipc_json: Value = serde_json::from_str(ipc_str).unwrap_or(Value::Null);
-                data_map["ipc"] = ipc_json;
+            if let Some(body_str) = data_map["body"].as_str() {
+                let body_json: Value = serde_json::from_str(body_str).unwrap_or(Value::Null);
+                data_map["body"] = body_json;
             }
 
             if let Some(payload_str) = data_map["payload"].as_str() {
