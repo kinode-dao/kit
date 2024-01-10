@@ -378,9 +378,13 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
     }
 
     for port in &ports {
+        println!("run_tests: loading setups onto port {:?}...", port);
         load_setups(&test.setup_package_paths, port.clone()).await?;
+        println!("run_tests: done loading setups onto port {:?}.", port);
     }
+    println!("run_tests: loading tests...");
     load_tests(&test.test_packages, master_node_port.unwrap().clone()).await?;
+    println!("run_tests: done loading tests.");
 
     let tests_result = run_tests(
         &format!("{:?}", test.test_packages),
