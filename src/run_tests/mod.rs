@@ -302,6 +302,20 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
     task_handles.push(handle);
     let _cleanup_context = CleanupContext::new(send_to_cleanup.clone());
 
+    let network_router_port_for_router = test.network_router.port.clone();
+    let network_router_defects_for_router = test.network_router.defects.clone();
+    let handle = tokio::spawn(async move {
+        let _ = network_router::execute(
+            network_router_port_for_router,
+            network_router_defects_for_router,
+            recv_kill_in_router,
+        ).await;
+    });
+    task_handles.push(handle);
+
+    // TODO: can remove?
+   std:: thread::sleep(std::time::Duration::from_secs(1));
+
     // Process each node
     for node in &test.nodes {
         fs::create_dir_all(&node.home)?;
@@ -348,17 +362,6 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
         let mut node_handles = node_handles.lock().await;
         node_handles.push(runtime_process);
     }
-
-    let network_router_port_for_router = test.network_router.port.clone();
-    let network_router_defects_for_router = test.network_router.defects.clone();
-    let handle = tokio::spawn(async move {
-        let _ = network_router::execute(
-            network_router_port_for_router,
-            network_router_defects_for_router,
-            recv_kill_in_router,
-        ).await;
-    });
-    task_handles.push(handle);
 
     let mut ports = Vec::new();
 
