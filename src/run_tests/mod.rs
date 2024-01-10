@@ -109,8 +109,11 @@ async fn wait_until_booted(
             &format!("http://localhost:{}", port),
             request,
         ).await {
-            Ok(response) if response.status() == 200 => return Ok(()),
-            _ => ()
+            Ok(response) => match inject_message::parse_response(response).await {
+                Ok(_) => return Ok(()),
+                _ => (),
+            }
+            _ => (),
         }
 
         tokio::select! {
@@ -314,7 +317,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
     task_handles.push(handle);
 
     // TODO: can remove?
-   std:: thread::sleep(std::time::Duration::from_secs(1));
+    std::thread::sleep(std::time::Duration::from_secs(1));
 
     // Process each node
     for node in &test.nodes {
