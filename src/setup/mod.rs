@@ -287,7 +287,7 @@ pub fn get_python_version(
 /// Check for Python deps, erroring if not found: python deps cannot be automatically fetched
 pub fn check_py_deps() -> anyhow::Result<String> {
     let python = get_python_version(Some(REQUIRED_PY_MAJOR), Some(MINIMUM_PY_MINOR))?
-        .ok_or(anyhow::anyhow!("uqdev requires Python 3.10 or newer"))?;
+        .ok_or(anyhow::anyhow!("necdev requires Python 3.10 or newer"))?;
     check_python_venv(&python)?;
 
     Ok(python)

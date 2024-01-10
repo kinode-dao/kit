@@ -71,9 +71,14 @@ impl Config {
             },
         };
         for test in self.tests.iter_mut() {
-            test.test_package_paths = test.test_package_paths
+            test.test_packages = test.test_packages
                 .iter()
-                .map(|tpp| expand_home_path(&tpp).unwrap_or_else(|| tpp.clone()))
+                .map(|tp| {
+                    TestPackage {
+                        path: expand_home_path(&tp.path).unwrap_or_else(|| tp.path.clone()),
+                        grant_capabilities: tp.grant_capabilities.clone(),
+                    }
+                })
                 .collect();
             for node in test.nodes.iter_mut() {
                 node.home = expand_home_path(&node.home).unwrap_or_else(|| node.home.clone());
@@ -115,7 +120,7 @@ async fn wait_until_booted(
             }
         };
     }
-    Err(anyhow::anyhow!("uqdev run-tests: could not connect to Nectar node"))
+    Err(anyhow::anyhow!("necdev run-tests: could not connect to Nectar node"))
 }
 
 async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> {
@@ -133,11 +138,11 @@ async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()
     Ok(())
 }
 
-async fn load_tests(test_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> {
+async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Result<()> {
     println!("Loading tests...");
 
-    for test_path in test_paths {
-        let basename = get_basename(&test_path).unwrap();
+    for TestPackage { ref path, .. } in test_packages {
+        let basename = get_basename(path).unwrap();
         let request = inject_message::make_message(
             "vfs:sys:nectar",
             &serde_json::to_string(&serde_json::json!({
@@ -146,7 +151,7 @@ async fn load_tests(test_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> 
             })).unwrap(),
             None,
             None,
-            test_path.join("pkg").join(format!("{basename}.wasm")).to_str(),
+            path.join("pkg").join(format!("{basename}.wasm")).to_str(),
         )?;
 
         let response = inject_message::send_request(
@@ -158,6 +163,34 @@ async fn load_tests(test_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> 
             Err(e) => return Err(anyhow::anyhow!("Failed to load tests: {}", e)),
         }
     }
+
+    let mut grant_caps = std::collections::HashMap::new();
+    for TestPackage { ref path, ref grant_capabilities } in test_packages {
+        grant_caps.insert(path, grant_capabilities);
+    }
+    let grant_caps = serde_json::to_vec(&grant_caps)?;
+
+    let request = inject_message::make_message(
+        "vfs:sys:nectar",
+        &serde_json::to_string(&serde_json::json!({
+            "path": format!("/tester:nectar/tests/grant_capabilities.json"),
+            "action": "Write",
+        })).unwrap(),
+        None,
+        Some(&grant_caps),
+        None,
+    )?;
+
+    let response = inject_message::send_request(
+        &format!("http://localhost:{}", port),
+        request,
+    ).await?;
+    match inject_message::parse_response(response).await {
+        Ok(_) => {},
+        Err(e) => return Err(anyhow::anyhow!("Failed to load tests capabilities: {}", e)),
+    }
+
+
     println!("Done loading tests.");
     Ok(())
 }
@@ -248,11 +281,11 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
         Runtime::FetchVersion(ref version) => get_runtime_binary(version).await?,
         Runtime::RepoPath(runtime_path) => {
             if !runtime_path.exists() {
-                panic!("uqdev run-tests: RepoPath {:?} does not exist.", runtime_path);
+                panic!("necdev run-tests: RepoPath {:?} does not exist.", runtime_path);
             }
             if runtime_path.is_file() {
                 // TODO: make loading/finding base processes more robust
-                panic!("uqdev run-tests: path to binary not yet implemented; please pass path to Nectar core repo (or use --version)")
+                panic!("necdev run-tests: path to binary not yet implemented; please pass path to Nectar core repo (or use --version)")
                 // runtime_path
             } else if runtime_path.is_dir() {
                 // Compile the runtime binary
@@ -262,7 +295,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                 )?;
                 runtime_path.join("target/release/nectar")
             } else {
-                panic!("uqdev run-tests: RepoPath {:?} must be a directory (the repo) or a binary.", runtime_path);
+                panic!("necdev run-tests: RepoPath {:?} must be a directory (the repo) or a binary.", runtime_path);
             }
         },
     };
@@ -271,8 +304,8 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
         for setup_package_path in &test.setup_package_paths {
             build::execute(&setup_package_path, false, test.package_build_verbose).await?;
         }
-        for test_package_path in &test.test_package_paths {
-            build::execute(&test_package_path, false, test.package_build_verbose).await?;
+        for TestPackage { ref path, .. } in &test.test_packages {
+            build::execute(path, false, test.package_build_verbose).await?;
         }
 
         // Initialize variables for master node and nodes list
@@ -372,10 +405,10 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
         for port in &ports {
             load_setups(&test.setup_package_paths, port.clone()).await?;
         }
-        load_tests(&test.test_package_paths, master_node_port.unwrap().clone()).await?;
+        load_tests(&test.test_packages, master_node_port.unwrap().clone()).await?;
 
         let tests_result = run_tests(
-            &format!("{:?}", test.test_package_paths),
+            &format!("{:?}", test.test_packages),
             ports,
             make_node_names(test.nodes)?,
             test.timeout_secs,

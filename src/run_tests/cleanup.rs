@@ -10,24 +10,24 @@ pub async fn cleanup_on_signal(
     send_to_cleanup: SendBool,
     mut recv_kill_in_cos: BroadcastRecvBool,
 ) {
-    let mut sigalrm = signal(SignalKind::alarm()).expect("uqdev run-tests: failed to set up SIGALRM handler");
-    let mut sighup = signal(SignalKind::hangup()).expect("uqdev run-tests: failed to set up SIGHUP handler");
-    let mut sigint = signal(SignalKind::interrupt()).expect("uqdev run-tests: failed to set up SIGINT handler");
-    let mut sigpipe = signal(SignalKind::pipe()).expect("uqdev run-tests: failed to set up SIGPIPE handler");
-    let mut sigquit = signal(SignalKind::quit()).expect("uqdev run-tests: failed to set up SIGQUIT handler");
-    let mut sigterm = signal(SignalKind::terminate()).expect("uqdev run-tests: failed to set up SIGTERM handler");
-    let mut sigusr1 = signal(SignalKind::user_defined1()).expect("uqdev run-tests: failed to set up SIGUSR1 handler");
-    let mut sigusr2 = signal(SignalKind::user_defined2()).expect("uqdev run-tests: failed to set up SIGUSR2 handler");
+    let mut sigalrm = signal(SignalKind::alarm()).expect("necdev run-tests: failed to set up SIGALRM handler");
+    let mut sighup = signal(SignalKind::hangup()).expect("necdev run-tests: failed to set up SIGHUP handler");
+    let mut sigint = signal(SignalKind::interrupt()).expect("necdev run-tests: failed to set up SIGINT handler");
+    let mut sigpipe = signal(SignalKind::pipe()).expect("necdev run-tests: failed to set up SIGPIPE handler");
+    let mut sigquit = signal(SignalKind::quit()).expect("necdev run-tests: failed to set up SIGQUIT handler");
+    let mut sigterm = signal(SignalKind::terminate()).expect("necdev run-tests: failed to set up SIGTERM handler");
+    let mut sigusr1 = signal(SignalKind::user_defined1()).expect("necdev run-tests: failed to set up SIGUSR1 handler");
+    let mut sigusr2 = signal(SignalKind::user_defined2()).expect("necdev run-tests: failed to set up SIGUSR2 handler");
 
     tokio::select! {
-        _ = sigalrm.recv() => println!("uqdev cleanup got SIGALRM\r"),
-        _ = sighup.recv() =>  println!("uqdev cleanup got SIGHUP\r"),
-        _ = sigint.recv() =>  println!("uqdev cleanup got SIGINT\r"),
-        _ = sigpipe.recv() => println!("uqdev cleanup got SIGPIPE\r"),
-        _ = sigquit.recv() => println!("uqdev cleanup got SIGQUIT\r"),
-        _ = sigterm.recv() => println!("uqdev cleanup got SIGTERM\r"),
-        _ = sigusr1.recv() => println!("uqdev cleanup got SIGUSR1\r"),
-        _ = sigusr2.recv() => println!("uqdev cleanup got SIGUSR2\r"),
+        _ = sigalrm.recv() => println!("necdev cleanup got SIGALRM\r"),
+        _ = sighup.recv() =>  println!("necdev cleanup got SIGHUP\r"),
+        _ = sigint.recv() =>  println!("necdev cleanup got SIGINT\r"),
+        _ = sigpipe.recv() => println!("necdev cleanup got SIGPIPE\r"),
+        _ = sigquit.recv() => println!("necdev cleanup got SIGQUIT\r"),
+        _ = sigterm.recv() => println!("necdev cleanup got SIGTERM\r"),
+        _ = sigusr1.recv() => println!("necdev cleanup got SIGUSR1\r"),
+        _ = sigusr2.recv() => println!("necdev cleanup got SIGUSR2\r"),
         _ = recv_kill_in_cos.recv() => {},
     }
 

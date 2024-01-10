@@ -120,13 +120,13 @@ async fn get_runtime_binary_inner(
 pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     let uname = Command::new("uname").output()?;
     if !uname.status.success() {
-        panic!("uqdev: Could not determine OS.");
+        panic!("necdev: Could not determine OS.");
     }
     let os_name = std::str::from_utf8(&uname.stdout)?.trim();
 
     let uname_p = Command::new("uname").arg("-p").output()?;
     if !uname_p.status.success() {
-        panic!("uqdev: Could not determine architecture.");
+        panic!("necdev: Could not determine architecture.");
     }
     let architecture_name = std::str::from_utf8(&uname_p.stdout)?.trim();
 
@@ -225,7 +225,7 @@ pub async fn execute(
         None => get_runtime_binary(&version).await?,
         Some(runtime_path) => {
             if !runtime_path.exists() {
-                panic!("uqdev boot-fake-node: RepoPath {:?} does not exist.", runtime_path);
+                panic!("necdev boot-fake-node: RepoPath {:?} does not exist.", runtime_path);
             }
             if runtime_path.is_file() {
                 runtime_path
@@ -234,7 +234,7 @@ pub async fn execute(
                 compile_runtime(&runtime_path, true)?;
                 runtime_path.join("target/release/nectar")
             } else {
-                panic!("uqdev boot-fake-node: --runtime-path {:?} must be a directory (the repo) or a binary.", runtime_path);
+                panic!("necdev boot-fake-node: --runtime-path {:?} must be a directory (the repo) or a binary.", runtime_path);
             }
         },
     };

@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 use nectar_process_lib::kernel_types as kt;
 use nectar_process_lib::{Address, Response};
-// use nectar_process_lib::nectar::process::standard as wit;
 
 type Rsvp = Option<Address>;
 
@@ -15,7 +13,6 @@ pub struct KernelMessage {
     pub rsvp: Rsvp,
     pub message: kt::Message,
     pub lazy_load_blob: Option<kt::LazyLoadBlob>,
-    pub signed_capabilities: HashMap<kt::Capability, Vec<u8>>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

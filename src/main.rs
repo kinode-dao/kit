@@ -169,9 +169,9 @@ async fn execute(
 
 fn make_app(current_dir: &std::ffi::OsString) -> Command {
     command!()
-        .name("UqDev")
+        .name("NecDev")
         .version(env!("CARGO_PKG_VERSION"))
-        .about("Development tools for Nectar OS")
+        .about("Development tools for NectarOS")
         .subcommand_required(true)
         .arg_required_else_help(true)
         .disable_version_flag(true)
@@ -432,7 +432,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             )
         )
         .subcommand(Command::new("setup")
-            .about("Fetch & setup Uqdev dependencies")
+            .about("Fetch & setup NecDev dependencies")
         )
         .subcommand(Command::new("start-package")
             .about("Start a built Nectar process")
@@ -466,7 +466,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             )
         )
         .subcommand(Command::new("update")
-            .about("Fetch the most recent version of UqDev")
+            .about("Fetch the most recent version of NecDev")
             .arg(Arg::new("ARGUMENTS")
                 .action(ArgAction::Append)
                 .help("Additional arguments (e.g. `--branch next-release`)")
@@ -498,7 +498,7 @@ async fn main() -> anyhow::Result<()> {
                 None => {},
                 Some(e) => {
                     if e.is_connect() {
-                        println!("uqdev: error connecting; is Nectar node running?");
+                        println!("necdev: error connecting; is Nectar node running?");
                         return Ok(());
                     }
                 },

@@ -40,7 +40,7 @@ impl From<&String> for Language {
             "rust" => Language::Rust,
             "python" => Language::Python,
             "javascript" => Language::Javascript,
-            _ => panic!("uqdev: language must be 'rust' or 'python'; not '{s}'"),
+            _ => panic!("necdev: language must be 'rust' or 'python'; not '{s}'"),
         }
     }
 }
@@ -50,7 +50,7 @@ impl From<&String> for Template {
         match s.as_str() {
             "chat" => Template::Chat,
             "fibonacci" => Template::Fibonacci,
-            _ => panic!("uqdev: template must be 'chat'; not '{s}'"),
+            _ => panic!("necdev: template must be 'chat'; not '{s}'"),
         }
     }
 }
@@ -108,7 +108,7 @@ pub fn execute(
     if ui && path_to_content.keys().filter(|p| !p.starts_with("ui")).count() == 0 {
         // Only `ui/` exists
         return Err(anyhow::anyhow!(
-            "uqdev new: cannot use `--ui` for {} {}; template does not exist",
+            "necdev new: cannot use `--ui` for {} {}; template does not exist",
             language.to_string(),
             template.to_string(),
         ));

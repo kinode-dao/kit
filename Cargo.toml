@@ -1,5 +1,5 @@
 [package]
-name = "uqdev"
+name = "necdev"
 version = "0.1.0"
 edition = "2021"
 
@@ -25,5 +25,5 @@ walkdir = "2.4"
 zip = "0.6"
 
 [[bin]]
-name = "uqdev"
+name = "necdev"
 path = "src/main.rs"
