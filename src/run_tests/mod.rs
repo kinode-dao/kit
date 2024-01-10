@@ -306,9 +306,11 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
     for node in &test.nodes {
         fs::create_dir_all(&node.home)?;
         let node_home = fs::canonicalize(&node.home)?;
-        let home_fs = Path::new(node_home.to_str().unwrap()).join("fs");
-        if home_fs.exists() {
-            fs::remove_dir_all(home_fs).unwrap();
+        for dir in &["kernel", "kv", "sqlite", "vfs"] {
+            let dir = node_home.join(dir);
+            if dir.exists() {
+                fs::remove_dir_all(&node_home.join(dir)).unwrap();
+            }
         }
 
         let mut args = vec![];
