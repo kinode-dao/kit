@@ -49,8 +49,8 @@ fn make_node_names(nodes: Vec<Node>) -> anyhow::Result<Vec<String>> {
         .map(|node| get_basename(&node.home)
             .and_then(|base| Some(base.to_string()))
             .and_then(|mut base| {
-                if !base.ends_with(".uq") {
-                    base.push_str(".uq");
+                if !base.ends_with(".nec") {
+                    base.push_str(".nec");
                 }
                 Some(base)
             })
