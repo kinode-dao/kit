@@ -70,14 +70,14 @@ async fn execute(
                 },
             };
             let process: &String = inject_message_matches.get_one("PROCESS").unwrap();
-            let ipc: &String = inject_message_matches.get_one("IPC").unwrap();
+            let body: &String = inject_message_matches.get_one("BODY_JSON").unwrap();
             let node: Option<&str> = inject_message_matches
                 .get_one("NODE_NAME")
                 .and_then(|s: &String| Some(s.as_str()));
             let bytes: Option<&str> = inject_message_matches
                 .get_one("PATH")
                 .and_then(|s: &String| Some(s.as_str()));
-            inject_message::execute(&url, process, ipc, node, bytes).await
+            inject_message::execute(&url, process, body, node, bytes).await
         },
         Some(("new", new_matches)) => {
             let new_dir = PathBuf::from(new_matches.get_one::<String>("DIR").unwrap());
@@ -131,10 +131,7 @@ async fn execute(
                     format!("http://localhost:{}", port)
                 },
             };
-            let node: Option<&str> = remove_package_matches
-                .get_one("NODE_NAME")
-                .and_then(|s: &String| Some(s.as_str()));
-            remove_package::execute(package_dir, &url, node, package_name, publisher).await
+            remove_package::execute(package_dir, &url, package_name, publisher).await
         },
         Some(("setup", _setup_matches)) => setup::execute(),
         Some(("start-package", start_package_matches)) => {
@@ -146,10 +143,7 @@ async fn execute(
                     format!("http://localhost:{}", port)
                 },
             };
-            let node: Option<&str> = start_package_matches
-                .get_one("NODE_NAME")
-                .and_then(|s: &String| Some(s.as_str()));
-            start_package::execute(package_dir, &url, node).await
+            start_package::execute(package_dir, &url).await
         },
         Some(("update", update_matches)) => {
             let args = update_matches.get_many::<String>("ARGUMENTS")
@@ -261,7 +255,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .action(ArgAction::SetTrue)
                 .short('q')
                 .long("quiet")
-                .help("If set, do not print `cargo` stdout/stderr")
+                .help("If set, do not print build stdout/stderr")
                 .required(false)
             )
         )
@@ -291,6 +285,16 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
         )
         .subcommand(Command::new("inject-message")
             .about("Inject a message to a running Nectar node")
+            .arg(Arg::new("ADDRESS")
+                .action(ArgAction::Set)
+                .help("Address to send message to")
+                .required(true)
+            )
+            .arg(Arg::new("BODY_JSON")
+                .action(ArgAction::Set)
+                .help("Body in JSON format")
+                .required(true)
+            )
             .arg(Arg::new("NODE_PORT")
                 .action(ArgAction::Set)
                 .short('p')
@@ -305,21 +309,6 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .long("url")
                 .help("Node URL (overrides NODE_PORT)")
                 .required(false)
-                //.default_value("http://localhost:8080")
-            )
-            .arg(Arg::new("PROCESS")
-                .action(ArgAction::Set)
-                .short('r')
-                .long("process")
-                .help("Process to send message to")
-                .required(true)
-            )
-            .arg(Arg::new("IPC")
-                .action(ArgAction::Set)
-                .short('i')
-                .long("ipc")
-                .help("IPC in JSON format")
-                .required(true)
             )
             .arg(Arg::new("NODE_NAME")
                 .action(ArgAction::Set)
@@ -331,8 +320,8 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             .arg(Arg::new("PATH")
                 .action(ArgAction::Set)
                 .short('b')
-                .long("bytes")
-                .help("Send bytes from path on Unix system")
+                .long("blob")
+                .help("Send file at Unix path as bytes blob")
                 .required(false)
             )
         )
@@ -423,13 +412,6 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .required(false)
                 //.default_value("http://localhost:8080")
             )
-            .arg(Arg::new("NODE_NAME")
-                .action(ArgAction::Set)
-                .short('n')
-                .long("node")
-                .help("Node ID (default: our)")
-                .required(false)
-            )
         )
         .subcommand(Command::new("setup")
             .about("Fetch & setup NecDev dependencies")
@@ -456,13 +438,6 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .help("Node URL (overrides NODE_PORT)")
                 .required(false)
                 //.default_value("http://localhost:8080")
-            )
-            .arg(Arg::new("NODE_NAME")
-                .action(ArgAction::Set)
-                .short('n')
-                .long("node")
-                .help("Node ID (default: our)")
-                .required(false)
             )
         )
         .subcommand(Command::new("update")

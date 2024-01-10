@@ -85,7 +85,7 @@ fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn execute(package_dir: PathBuf, url: &str, node: Option<&str>) -> anyhow::Result<()> {
+pub async fn execute(package_dir: PathBuf, url: &str) -> anyhow::Result<()> {
     if !package_dir.join("pkg").exists() {
         return Err(anyhow::anyhow!(
             "Required `pkg/` dir not found within given input dir {:?} (or cwd, if none given). Please re-run targeting a package.",
@@ -110,7 +110,7 @@ pub async fn execute(package_dir: PathBuf, url: &str, node: Option<&str>) -> any
 
     // Create and send new package request
     let new_pkg_request = new_package(
-        node,
+        None,
         package_name,
         publisher,
         zip_filename.to_str().unwrap(),
@@ -127,7 +127,7 @@ pub async fn execute(package_dir: PathBuf, url: &str, node: Option<&str>) -> any
     }
 
     // Install package
-    let install_request = interact_with_package("Install", node, package_name, publisher)?;
+    let install_request = interact_with_package("Install", None, package_name, publisher)?;
     let response = inject_message::send_request(url, install_request).await?;
     let inject_message::Response { ref body, .. } = inject_message::parse_response(response).await?;
     let body = serde_json::from_str::<serde_json::Value>(body)?;

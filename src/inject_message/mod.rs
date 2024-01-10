@@ -11,6 +11,17 @@ pub struct Response {
     pub lazy_load_blob: Option<Vec<u8>>,
 }
 
+impl std::fmt::Display for Response {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Response:\nbody: {}\nblob: {:?}",
+            self.body,
+            self.lazy_load_blob,
+        )
+    }
+}
+
 pub fn make_message(
     process: &str,
     body: &str,
@@ -130,26 +141,8 @@ pub async fn execute(
 ) -> anyhow::Result<()> {
     let request = make_message(process, body, node, None, bytes_path)?;
     let response = send_request(url, request).await?;
-
-    if response.status() == 200 {
-        let content: String = response.text().await?;
-        let mut data: Option<Value> = serde_json::from_str(&content).ok();
-
-        if let Some(ref mut data_map) = data {
-            if let Some(body_str) = data_map["body"].as_str() {
-                let body_json: Value = serde_json::from_str(body_str).unwrap_or(Value::Null);
-                data_map["body"] = body_json;
-            }
-
-            if let Some(payload_str) = data_map["payload"].as_str() {
-                let payload_json: Value = serde_json::from_str(payload_str).unwrap_or(Value::Null);
-                data_map["bytes"] = payload_json;
-            }
-        }
-        println!("{:?}", content);
-    } else {
-        println!("Failed with status code: {}", response.status());
-    }
+    let response = parse_response(response).await?;
+    println!("{}", response);
 
     Ok(())
 }
