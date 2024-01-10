@@ -339,7 +339,7 @@ pub fn get_deps(deps: Vec<Dependency>) -> anyhow::Result<()> {
 
     // If setup required, request user permission
     print!(
-        "UqDev requires {} missing {}: {}. Install? [Y/n]: ",
+        "NecDev requires {} missing {}: {}. Install? [Y/n]: ",
         if deps.len() == 1 { "this" } else { "these" },
         if deps.len() == 1 { "dependency" } else { "dependencies" },
         Dependencies(deps.clone()),
@@ -368,9 +368,9 @@ pub fn get_deps(deps: Vec<Dependency>) -> anyhow::Result<()> {
                     },
                     Dependency::Rust => install_rust()?,
                     Dependency::RustNightly => call_rustup("install nightly")?,
-                    Dependency::RustWasm32Wasi => call_rustup("rustup target add wasm32-wasi")?,
+                    Dependency::RustWasm32Wasi => call_rustup("target add wasm32-wasi")?,
                     Dependency::RustNightlyWasm32Wasi => {
-                        call_rustup("rustup target add wasm32-wasi --toolchain nightly")?
+                        call_rustup("target add wasm32-wasi --toolchain nightly")?
                     },
                     Dependency::WasmTools => call_cargo("install wasm-tools")?,
                 }
