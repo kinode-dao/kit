@@ -89,10 +89,25 @@ impl Config {
 }
 
 async fn wait_until_booted(
+    pid: &i32,
     port: u16,
     max_waits: u16,
     mut recv_kill_in_wait: BroadcastRecvBool,
 ) -> anyhow::Result<()> {
+    let pid = nix::unistd::Pid::from_raw(*pid);
+    for _ in 0..max_waits {
+        match nix::sys::wait::waitpid(pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
+            Ok(nix::sys::wait::WaitStatus::StillAlive) => {},
+            _ => {
+                tokio::select! {
+                    _ = sleep(Duration::from_secs(1)) => {}
+                    _ = recv_kill_in_wait.recv() => {
+                        return Err(anyhow::anyhow!("received exit"));
+                    }
+                };
+            },
+        }
+    }
     for _ in 0..max_waits {
         let request = inject_message::make_message(
             "vfs:sys:nectar",
@@ -320,6 +335,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
     std::thread::sleep(std::time::Duration::from_secs(1));
 
     // Process each node
+    let mut pids = std::collections::HashMap::new();
     for node in &test.nodes {
         fs::create_dir_all(&node.home)?;
         let node_home = fs::canonicalize(&node.home)?;
@@ -352,9 +368,11 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
         )?;
 
         let mut node_cleanup_infos = node_cleanup_infos.lock().await;
+        let pid = runtime_process.id() as i32;
+        pids.insert(node.clone(), pid.clone());
         node_cleanup_infos.push(NodeCleanupInfo {
             master_fd,
-            process_id: runtime_process.id() as i32,
+            process_id: pid,
             home: node_home.clone(),
         });
 
@@ -372,7 +390,8 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
         let node_home = fs::canonicalize(&node.home)?;
         println!("Setting up node {:?}...\r", node_home);
         let recv_kill_in_wait = send_to_kill.subscribe();
-        wait_until_booted(node.port, 5, recv_kill_in_wait).await?;
+        let pid = pids.get(node).unwrap();
+        wait_until_booted(pid, node.port, 5, recv_kill_in_wait).await?;
         ports.push(node.port);
         println!("Done setting up node {:?} on port {}.\r", node_home, node.port);
     }

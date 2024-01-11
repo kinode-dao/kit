@@ -48,7 +48,7 @@ pub enum NetworkRouterDefects {
     // TODO: add Latency, Dropping, ..., All
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, std::cmp::Eq)]
 pub struct Node {
     pub port: u16,
     pub home: PathBuf,
