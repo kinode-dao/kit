@@ -197,10 +197,21 @@ pub fn run_runtime(
 
     let fds = nix::pty::openpty(None, None)?;
 
+    // Create a pipe
+    let (mut reader, writer) = nix::unistd::pipe().expect("Failed to create a pipe");
+
+    // Convert the read end of the pipe to a File, and then to Stdio
+    let reader_file = unsafe { std::fs::File::from_raw_fd(reader) };
+    let stdin = Stdio::from(reader_file);
+
+    // Close the write end of the pipe
+    drop(unsafe { std::fs::File::from_raw_fd(writer) });
+
     let process = Command::new(path)
         .args(&full_args)
         .current_dir(path.parent().unwrap())
-        .stdin(if !detached { Stdio::inherit() } else { Stdio::null() })
+        .stdin(if !detached { Stdio::inherit() } else { stdin })
+        //.stdin(if !detached { Stdio::inherit() } else { Stdio::null() })
         .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
         //.stdin(if !detached { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
