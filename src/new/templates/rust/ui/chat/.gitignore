@@ -1,4 +1,5 @@
 */target/
+/target
 pkg/*.wasm
 pkg/ui
 *.swp
