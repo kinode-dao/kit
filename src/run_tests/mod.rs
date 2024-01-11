@@ -127,7 +127,7 @@ async fn wait_until_booted(
 }
 
 async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> {
-    println!("Loading setup packages...");
+    println!("Loading setup packages...\r");
 
     for setup_path in setup_paths {
         start_package::execute(
@@ -136,12 +136,12 @@ async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()
         ).await?;
     }
 
-    println!("Done loading setup packages.");
+    println!("Done loading setup packages.\r");
     Ok(())
 }
 
 async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Result<()> {
-    println!("Loading tests...");
+    println!("Loading tests...\r");
 
     for TestPackage { ref path, .. } in test_packages {
         let basename = get_basename(path).unwrap();
@@ -193,7 +193,7 @@ async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Resu
     }
 
 
-    println!("Done loading tests.");
+    println!("Done loading tests.\r");
     Ok(())
 }
 
@@ -220,13 +220,13 @@ async fn run_tests(_test_batch: &str, mut ports: Vec<u16>, node_names: Vec<Strin
         ).await?;
 
         if response.status() != 200 {
-            println!("Failed with status code: {}", response.status());
+            println!("Failed with status code: {}\r", response.status());
             return Err(anyhow::anyhow!("Failed with status code: {}", response.status()))
         }
     }
 
     // Set up master node & start tests.
-    println!("Running tests...");
+    println!("Running tests...\r");
     let request = inject_message::make_message(
         "tester:tester:nectar",
         &serde_json::to_string(&serde_json::json!({
@@ -247,22 +247,22 @@ async fn run_tests(_test_batch: &str, mut ports: Vec<u16>, node_names: Vec<Strin
     match inject_message::parse_response(response).await {
         Ok(inject_message::Response { ref body, .. }) => {
             match serde_json::from_str(body)? {
-                tt::TesterResponse::Pass => println!("PASS"),
+                tt::TesterResponse::Pass => println!("PASS\r"),
                 tt::TesterResponse::Fail { test, file, line, column } => {
                     let s = format!("FAIL: {} {}:{}:{}", test, file, line, column);
-                    println!("{}", s);
+                    println!("{}\r", s);
                     return Err(anyhow::anyhow!(s));
                 },
                 tt::TesterResponse::GetFullMessage(_) => {
                     let s = "FAIL: Unexpected Response";
-                    println!("{}", s);
+                    println!("{}\r", s);
                     return Err(anyhow::anyhow!(s));
                 },
             }
         },
         Err(e) => {
             let s = format!("FAIL: {}", e);
-            println!("{}", s);
+            println!("{}\r", s);
             return Err(anyhow::anyhow!(s));
         },
     };
@@ -330,7 +330,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
             }
         }
 
-        let mut args = vec![];
+        let mut args = vec!["--detached"];
         if let Some(ref rpc) = node.rpc {
             args.extend_from_slice(&["--rpc", rpc]);
         };
@@ -370,21 +370,21 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
 
     for node in &test.nodes {
         let node_home = fs::canonicalize(&node.home)?;
-        println!("Setting up node {:?}...", node_home);
+        println!("Setting up node {:?}...\r", node_home);
         let recv_kill_in_wait = send_to_kill.subscribe();
         wait_until_booted(node.port, 5, recv_kill_in_wait).await?;
         ports.push(node.port);
-        println!("Done setting up node {:?} on port {}.", node_home, node.port);
+        println!("Done setting up node {:?} on port {}.\r", node_home, node.port);
     }
 
     for port in &ports {
-        println!("run_tests: loading setups onto port {:?}...", port);
+        println!("run_tests: loading setups onto port {:?}...\r", port);
         load_setups(&test.setup_package_paths, port.clone()).await?;
-        println!("run_tests: done loading setups onto port {:?}.", port);
+        println!("run_tests: done loading setups onto port {:?}.\r", port);
     }
-    println!("run_tests: loading tests...");
+    println!("run_tests: loading tests...\r");
     load_tests(&test.test_packages, master_node_port.unwrap().clone()).await?;
-    println!("run_tests: done loading tests.");
+    println!("run_tests: done loading tests.\r");
 
     let tests_result = run_tests(
         &format!("{:?}", test.test_packages),

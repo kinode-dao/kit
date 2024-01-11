@@ -40,7 +40,7 @@ pub fn make_message(
         },
         (None, None) => None,
         _ => {
-            println!("Cannot accept both raw_bytes and bytes_path");
+            println!("Cannot accept both raw_bytes and bytes_path\r");
             std::process::exit(1);
         }
     };
@@ -86,7 +86,7 @@ pub async fn send_request(
 
 pub async fn parse_response(response: reqwest::Response) -> anyhow::Result<Response> {
     if response.status() != 200 {
-        println!("Failed with status code: {}", response.status());
+        println!("Failed with status code: {}\r", response.status());
         return Err(anyhow::anyhow!("Failed with status code: {}", response.status()))
     } else {
         let content: String = response.text().await?;
@@ -142,7 +142,7 @@ pub async fn execute(
     let request = make_message(process, body, node, None, bytes_path)?;
     let response = send_request(url, request).await?;
     let response = parse_response(response).await?;
-    println!("{}", response);
+    println!("{}\r", response);
 
     Ok(())
 }

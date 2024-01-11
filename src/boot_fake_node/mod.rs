@@ -82,7 +82,7 @@ async fn fetch_local_commit_hash(commit_path: &PathBuf) -> anyhow::Result<Option
 }
 
 pub fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
-    println!("Compiling Nectar runtime...");
+    println!("Compiling Nectar runtime...\r");
 
     build::run_command(Command::new("cargo")
         .args(&["+nightly", "build", "--release", "--features", "simulation-mode"])
@@ -91,7 +91,7 @@ pub fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling Nectar runtime.");
+    println!("Done compiling Nectar runtime.\r");
     Ok(())
 }
 
@@ -200,9 +200,12 @@ pub fn run_runtime(
     let process = Command::new(path)
         .args(&full_args)
         .current_dir(path.parent().unwrap())
-        .stdin(if !detached { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
-        .stdout(if verbose { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
-        .stderr(if verbose { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
+        .stdin(if !detached { Stdio::inherit() } else { Stdio::null() })
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+        //.stdin(if !detached { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
+        //.stdout(if verbose { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
+        //.stderr(if verbose { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
         .spawn()?;
 
     Ok((process, fds.master))

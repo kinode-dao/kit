@@ -49,24 +49,35 @@ pub async fn cleanup(
     for (i, NodeCleanupInfo { master_fd, process_id, home }) in node_cleanup_infos.iter_mut().enumerate() {
         // Send Ctrl-C to the process
         println!("Cleaning up {:?}...\r", home);
-        if detached {
-            // 231222 Note: I (hf) tried to use the `else` method for
-            //  both detached and non-detached processes and found it
-            //  did not work properly for detached processes; specifically
-            //  for `run-tests` that exited early by, e.g., a user input
-            //  Ctrl+C.
-            nix::unistd::write(master_fd.as_raw_fd(), b"\x03").unwrap();
-        } else {
-            let pid = nix::unistd::Pid::from_raw(*process_id);
-            match nix::sys::wait::waitpid(pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
-                Ok(nix::sys::wait::WaitStatus::StillAlive) |
-                Ok(nix::sys::wait::WaitStatus::Stopped(_, _)) |
-                Ok(nix::sys::wait::WaitStatus::Continued(_)) => {
-                    nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGINT)
-                        .expect("SIGINT failed");
-                }
-                _ => {}
+        //if detached {
+        //    // 231222 Note: I (hf) tried to use the `else` method for
+        //    //  both detached and non-detached processes and found it
+        //    //  did not work properly for detached processes; specifically
+        //    //  for `run-tests` that exited early by, e.g., a user input
+        //    //  Ctrl+C.
+        //    nix::unistd::write(master_fd.as_raw_fd(), b"\x03").unwrap();
+        //} else {
+        //    let pid = nix::unistd::Pid::from_raw(*process_id);
+        //    match nix::sys::wait::waitpid(pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
+        //        Ok(nix::sys::wait::WaitStatus::StillAlive) |
+        //        Ok(nix::sys::wait::WaitStatus::Stopped(_, _)) |
+        //        Ok(nix::sys::wait::WaitStatus::Continued(_)) => {
+        //            nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGINT)
+        //                .expect("SIGINT failed");
+        //        }
+        //        _ => {}
+        //    }
+        //}
+        let pid = nix::unistd::Pid::from_raw(*process_id);
+        match nix::sys::wait::waitpid(pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
+            Ok(nix::sys::wait::WaitStatus::StillAlive) |
+            Ok(nix::sys::wait::WaitStatus::Stopped(_, _)) |
+            Ok(nix::sys::wait::WaitStatus::Continued(_)) => {
+                nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGINT)
+                    .expect("SIGINT failed");
+                println!("SIGINT sent...\r");
             }
+            _ => {}
         }
 
         if let Some(ref node_handles) = node_handles {
