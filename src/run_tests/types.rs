@@ -23,11 +23,17 @@ pub enum Runtime {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Test {
     pub setup_package_paths: Vec<PathBuf>,
-    pub test_package_paths: Vec<PathBuf>,
+    pub test_packages: Vec<TestPackage>,
     pub package_build_verbose: bool,
     pub timeout_secs: u64,
     pub network_router: NetworkRouter,
     pub nodes: Vec<Node>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TestPackage {
+    pub path: PathBuf,
+    pub grant_capabilities: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

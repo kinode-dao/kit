@@ -1,5 +1,5 @@
 [package]
-name = "uqdev"
+name = "necdev"
 version = "0.1.0"
 edition = "2021"
 
@@ -11,6 +11,7 @@ base64 = "0.21"
 clap = { version = "4.4", features = ["cargo", "string"] }
 dirs = "5.0"
 futures-util = "0.3"
+nectar_process_lib = { git = "ssh://git@github.com/uqbar-dao/process_lib.git", rev = "dee786a" }
 nix = { version = "0.27", features = ["process", "signal", "term"] }
 reqwest = { version = "0.11", features = ["json"] }
 rmp-serde = "1.1.2"
@@ -20,10 +21,9 @@ thiserror = "1.0"
 tokio = { version = "1.28", features = ["fs", "macros", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-tungstenite = "*"
 toml = "0.8"
-uqbar_process_lib = { git = "ssh://git@github.com/uqbar-dao/process_lib.git", rev = "77ebb26" }
 walkdir = "2.4"
 zip = "0.6"
 
 [[bin]]
-name = "uqdev"
+name = "necdev"
 path = "src/main.rs"

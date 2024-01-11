@@ -5,11 +5,13 @@ use std::process::{Command, Stdio};
 use reqwest;
 use serde::{Serialize, Deserialize};
 
-use super::setup::{check_py_deps, check_ui_deps, get_deps, REQUIRED_PY_PACKAGE};
+use super::setup::{check_js_deps, check_py_deps, check_rust_deps, get_deps, REQUIRED_PY_PACKAGE};
 
 const PY_VENV_NAME: &str = "process_env";
-const RUST_SRC_PATH: &str = "src/lib.rs";
+const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
 const PYTHON_SRC_PATH: &str = "src/lib.py";
+const RUST_SRC_PATH: &str = "src/lib.rs";
+const NECTAR_WIT_URL: &str = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/nectar.wit";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
@@ -56,16 +58,47 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn compile_javascript_wasm_process(
+    process_dir: &Path,
+    verbose: bool,
+) -> anyhow::Result<()> {
+    println!("Compiling Javascript Nectar process in {:?}...", process_dir);
+    let wit_dir = process_dir.join("wit");
+    fs::create_dir_all(&wit_dir)?;
+    download_file(NECTAR_WIT_URL, &wit_dir.join("nectar.wit")).await?;
+
+    let wasm_file_name = process_dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap();
+
+    run_command(Command::new("npm")
+        .arg("install")
+        .current_dir(process_dir)
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+    )?;
+
+    run_command(Command::new("node")
+        .args(&["componentize.mjs", wasm_file_name])
+        .current_dir(process_dir)
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+    )?;
+
+    println!("Done compiling Javascript Nectar process in {:?}.", process_dir);
+    Ok(())
+}
+
 async fn compile_python_wasm_process(
     process_dir: &Path,
     python: &str,
     verbose: bool,
 ) -> anyhow::Result<()> {
-    println!("Compiling Python Uqbar process in {:?}...", process_dir);
+    println!("Compiling Python Nectar process in {:?}...", process_dir);
     let wit_dir = process_dir.join("wit");
     fs::create_dir_all(&wit_dir)?;
-    let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/uqbar.wit";
-    download_file(uqbar_wit_url, &wit_dir.join("uqbar.wit")).await?;
+    download_file(NECTAR_WIT_URL, &wit_dir.join("nectar.wit")).await?;
 
     let wasm_file_name = process_dir
         .file_name()
@@ -88,7 +121,7 @@ async fn compile_python_wasm_process(
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling Python Uqbar process in {:?}.", process_dir);
+    println!("Done compiling Python Nectar process in {:?}.", process_dir);
     Ok(())
 }
 
@@ -96,7 +129,7 @@ async fn compile_rust_wasm_process(
     process_dir: &Path,
     verbose: bool,
 ) -> anyhow::Result<()> {
-    println!("Compiling Rust Uqbar process in {:?}...", process_dir);
+    println!("Compiling Rust Nectar process in {:?}...", process_dir);
 
     // Paths
     let bindings_dir = process_dir
@@ -108,11 +141,10 @@ async fn compile_rust_wasm_process(
     // Ensure the bindings directory exists
     fs::create_dir_all(&bindings_dir)?;
 
-    // Check and download uqbar.wit if wit_dir does not exist
+    // Check and download nectar.wit if wit_dir does not exist
     //if !wit_dir.exists() { // TODO: do a smarter check; this check will fail when remote has updated v
     fs::create_dir_all(&wit_dir)?;
-    let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/uqbar.wit";
-    download_file(uqbar_wit_url, &wit_dir.join("uqbar.wit")).await?;
+    download_file(NECTAR_WIT_URL, &wit_dir.join("nectar.wit")).await?;
 
     // Check and download wasi_snapshot_preview1.wasm if it does not exist
     let wasi_snapshot_file = process_dir.join("wasi_snapshot_preview1.wasm");
@@ -160,12 +192,10 @@ async fn compile_rust_wasm_process(
     // Adapt the module using wasm-tools
 
     // For use inside of process_dir
-    let wasm_file_name = {
-        let cargo_path = process_dir.join("Cargo.toml");
-        let cargo_contents = fs::read_to_string(cargo_path)?;
-        let cargo_parsed = toml::from_str::<CargoFile>(&cargo_contents)?;
-        cargo_parsed.package.name
-    };
+    let wasm_file_name = process_dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap();
 
     let wasm_file_prefix = Path::new("target/wasm32-wasi/release");
     let wasm_file = wasm_file_prefix
@@ -202,7 +232,7 @@ async fn compile_rust_wasm_process(
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling Rust Uqbar process in {:?}.", process_dir);
+    println!("Done compiling Rust Nectar process in {:?}.", process_dir);
     Ok(())
 }
 
@@ -210,36 +240,48 @@ fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> 
     let ui_path = package_dir.join("ui");
     println!("Building UI in {:?}...", ui_path);
 
-    if ui_path.exists() && ui_path.is_dir() && ui_path.join("package.json").exists() {
-        println!("UI directory found, running npm install...");
+    if ui_path.exists() && ui_path.is_dir() {
+        if ui_path.join("package.json").exists() {
+            println!("UI directory found, running npm install...");
 
-        // Set the current directory to 'ui_path' for the command
-        run_command(Command::new("npm")
-            .arg("install")
-            .current_dir(&ui_path) // Set the working directory
-            .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-            .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
-        )?;
+            run_command(Command::new("npm")
+                .arg("install")
+                .current_dir(&ui_path)
+                .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+                .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+            )?;
 
-        println!("Running npm run build:copy...");
+            println!("Running npm run build:copy...");
 
-        // Similarly for 'npm run build:copy'
-        run_command(Command::new("npm")
-            .args(["run", "build:copy"])
-            .current_dir(&ui_path) // Set the working directory
-            .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-            .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
-        )?;
+            run_command(Command::new("npm")
+                .args(["run", "build:copy"])
+                .current_dir(&ui_path)
+                .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+                .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+            )?;
+        } else {
+            let pkg_ui_path = package_dir.join("pkg/ui");
+            if pkg_ui_path.exists() {
+                fs::remove_dir_all(&pkg_ui_path)?;
+            }
+            run_command(Command::new("cp")
+                .args(["-r", "ui", "pkg/ui"])
+                .current_dir(&package_dir)
+                .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+                .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+            )?;
+        }
     } else {
-        println!("'ui' directory not found or 'ui/package.json' does not exist");
+        println!("'ui' directory not found");
     }
 
+    println!("Done building UI in {:?}.", ui_path);
     Ok(())
 }
 
 async fn compile_package_and_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
-    compile_package(package_dir, verbose).await?;
     compile_and_copy_ui(package_dir, verbose)?;
+    compile_package(package_dir, verbose).await?;
     Ok(())
 }
 
@@ -249,10 +291,16 @@ async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Result<()
         let path = entry.path();
         if path.is_dir() {
             if path.join(RUST_SRC_PATH).exists() {
+                let deps = check_rust_deps()?;
+                get_deps(deps)?;
                 compile_rust_wasm_process(&path, verbose).await?;
             } else if path.join(PYTHON_SRC_PATH).exists() {
                 let python = check_py_deps()?;
                 compile_python_wasm_process(&path, &python, verbose).await?;
+            } else if path.join(JAVASCRIPT_SRC_PATH).exists() {
+                let deps = check_js_deps()?;
+                get_deps(deps)?;
+                compile_javascript_wasm_process(&path, verbose).await?;
             }
         }
     }
@@ -261,15 +309,21 @@ async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Result<()
 }
 
 pub async fn execute(package_dir: &Path, ui_only: bool, verbose: bool) -> anyhow::Result<()> {
+    if !package_dir.join("pkg").exists() {
+        return Err(anyhow::anyhow!(
+            "Required `pkg/` dir not found within given input dir {:?} (or cwd, if none given). Please re-run targeting a package.",
+            package_dir,
+        ));
+    }
     let ui_dir = package_dir.join("ui");
     if !ui_dir.exists() {
         if ui_only {
-            return Err(anyhow::anyhow!("uqdev build: can't build UI: no ui directory exists"));
+            return Err(anyhow::anyhow!("necdev build: can't build UI: no ui directory exists"));
         } else {
             compile_package(package_dir, verbose).await
         }
     } else {
-        let deps = check_ui_deps()?;
+        let deps = check_js_deps()?;
         get_deps(deps)?;
         if ui_only {
             compile_and_copy_ui(package_dir, verbose)

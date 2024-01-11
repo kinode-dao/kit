@@ -8,7 +8,6 @@ use super::start_package::interact_with_package;
 pub async fn execute(
     project_dir: PathBuf,
     url: &str,
-    node: Option<&str>,
     arg_package_name: Option<&str>,
     arg_publisher: Option<&str>,
 ) -> anyhow::Result<()> {
@@ -28,7 +27,7 @@ pub async fn execute(
     // Create and send uninstall request
     let uninstall_request = interact_with_package(
         "Uninstall",
-        node,
+        None,
         &package_name,
         &publisher,
     )?;

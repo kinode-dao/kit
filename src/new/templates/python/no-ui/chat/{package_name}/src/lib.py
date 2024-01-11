@@ -34,9 +34,9 @@ def handle_message(our_node, message_archive):
             print_to_terminal(0, f"{package_name}: unexpected Response: {message}")
             exit(1)
         case MessageRequest():
-            ipc = json.loads(message.value.ipc.decode("utf-8"))
-            if "Send" in ipc:
-                target, message_text = ipc["Send"]["target"], ipc["Send"]["message"]
+            body = json.loads(message.value.body.decode("utf-8"))
+            if "Send" in body:
+                target, message_text = body["Send"]["target"], body["Send"]["message"]
                 if target == our_node:
                     print_to_terminal(0, f"{package_name}|{source.node}: {message_text}")
                     message_archive[source.node] = message_text
@@ -44,16 +44,16 @@ def handle_message(our_node, message_archive):
                     send_and_await_response(
                         Address(
                             target,
-                            ProcessId("{[package_name}", "{package_name}", "{publisher}"),
+                            ProcessId("{package_name}", "{package_name}", "{publisher}"),
                         ),
-                        Request(False, 5, message.value.ipc, None),
+                        Request(False, 5, message.value.body, None),
                         None,
                     )
                 send_response(
                     Response(False, json.dumps({"Ack": None}).encode("utf-8"), None),
                     None,
                 )
-            elif "History" in ipc:
+            elif "History" in body:
                 send_response(
                     Response(
                         False,

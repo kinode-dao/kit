@@ -1,10 +1,10 @@
-# Uqbar UI Template
+# Nectar UI Template
 
 Based on the Vite React Typescript template.
 
 ## Setup
 
-When using `uqdev new`, the `BASE_URL` on line 9 of `vite.config.ts` will be set automatically.
+When using `necdev new`, the `BASE_URL` on line 9 of `vite.config.ts` will be set automatically.
 The `BASE_URL` will be the first process in `manifest.json`, the `package` from `metadata.json`, and `publisher` from `metadata.json`.
 If you have multiple processes in `manifest.json`, make sure the first process will be the one serving the UI.
 

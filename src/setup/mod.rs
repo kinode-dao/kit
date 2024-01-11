@@ -20,6 +20,11 @@ pub enum Dependency {
     Nvm,
     Npm,
     Node,
+    Rust,
+    RustNightly,
+    RustWasm32Wasi,
+    RustNightlyWasm32Wasi,
+    WasmTools,
 }
 
 impl std::fmt::Display for Dependency {
@@ -28,6 +33,11 @@ impl std::fmt::Display for Dependency {
             Dependency::Nvm =>  write!(f, "nvm"),
             Dependency::Npm =>  write!(f, "npm"),
             Dependency::Node => write!(f, "node"),
+            Dependency::Rust => write!(f, "rust"),
+            Dependency::RustNightly => write!(f, "rust nightly"),
+            Dependency::RustWasm32Wasi => write!(f, "rust wasm32-wasi target"),
+            Dependency::RustNightlyWasm32Wasi => write!(f, "rust nightly wasm32-wasi target"),
+            Dependency::WasmTools => write!(f, "wasm-tools"),
         }
     }
 }
@@ -54,20 +64,30 @@ fn install_nvm() -> anyhow::Result<()> {
     );
     run_command(Command::new("bash")
         .args(&["-c", &format!("curl -o- {install_script} | bash")])
-        .stdout(Stdio::null())
     )?;
 
     println!("Done getting nvm.");
     Ok(())
 }
 
+fn install_rust() -> anyhow::Result<()> {
+    println!("Getting rust...");
+    let install_rust = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh";
+    run_command(Command::new("bash")
+        .args(&["-c", install_rust])
+    )?;
+
+    println!("Done getting rust.");
+    Ok(())
+}
+
 fn check_python_venv(python: &str) -> anyhow::Result<()> {
     println!("Checking for python venv...");
     let venv_result = run_command(Command::new(python)
-        .args(&["-m", "venv", "uqbar-test-venv"])
+        .args(&["-m", "venv", "nectar-test-venv"])
         .current_dir("/tmp")
     );
-    let venv_dir = PathBuf::from("/tmp/uqbar-test-venv");
+    let venv_dir = PathBuf::from("/tmp/nectar-test-venv");
     if venv_dir.exists() {
         std::fs::remove_dir_all(&venv_dir)?;
     }
@@ -107,8 +127,21 @@ fn call_nvm(arg: &str) -> anyhow::Result<()> {
     run_command(Command::new("bash")
         .arg("-c")
         .arg(format!("source ~/.nvm/nvm.sh && nvm {}", arg))
-    )?;
-    Ok(())
+    )
+}
+
+fn call_rustup(arg: &str) -> anyhow::Result<()> {
+    run_command(Command::new("bash")
+        .arg("-c")
+        .arg(format!("rustup {}", arg))
+    )
+}
+
+fn call_cargo(arg: &str) -> anyhow::Result<()> {
+    run_command(Command::new("bash")
+        .arg("-c")
+        .arg(format!("cargo {}", arg))
+    )
 }
 
 fn compare_versions(installed_version: (u32, u32) , required_version: (u32, u32)) -> bool {
@@ -132,6 +165,82 @@ fn parse_version(version_str: &str) -> Option<(u32, u32)> {
     }
 
     None
+}
+
+fn check_rust_toolchains_targets() -> anyhow::Result<Vec<Dependency>> {
+    let mut missing_deps = Vec::new();
+    let output = Command::new("rustup")
+        .arg("show")
+        .output()?
+        .stdout;
+    let output = String::from_utf8_lossy(&output);
+    let original_default = output
+        .split('\n')
+        .fold("", |d, item| {
+            if !item.contains("(default)") {
+                d
+            } else {
+                item.split(' ')
+                    .nth(0)
+                    .unwrap_or("")
+            }
+        });
+
+    // check stable deps
+    run_command(Command::new("rustup")
+        .args(&["default", "stable"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+    )?;
+    let output = Command::new("rustup")
+        .arg("show")
+        .output()?
+        .stdout;
+    let output = String::from_utf8_lossy(&output);
+
+    let has_wasm32_wasi = output
+        .split('\n')
+        .fold(false, |acc, item| acc || item == "wasm32-wasi");
+    if !has_wasm32_wasi {
+        missing_deps.push(Dependency::RustWasm32Wasi);
+    }
+
+    // check nightly deps
+    let has_nightly_toolchain = output
+        .split('\n')
+        .fold(false, |acc, item| acc || item.starts_with("nightly"));
+    if !has_nightly_toolchain {
+        missing_deps.append(&mut vec![
+            Dependency::RustNightly,
+            Dependency::RustNightlyWasm32Wasi,
+        ]);
+    } else {
+        // check for nightly wasm32-wasi
+        run_command(Command::new("rustup")
+            .args(&["default", "nightly"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+        )?;
+        let output = Command::new("rustup")
+            .arg("show")
+            .output()?
+            .stdout;
+        let output = String::from_utf8_lossy(&output);
+
+        let has_wasm32_wasi = output
+            .split('\n')
+            .fold(false, |acc, item| acc || item == "wasm32-wasi");
+        if !has_wasm32_wasi {
+            missing_deps.push(Dependency::RustNightlyWasm32Wasi);
+        }
+    }
+
+    run_command(Command::new("rustup")
+        .args(&["default", original_default])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+    )?;
+    Ok(missing_deps)
 }
 
 /// Find the newest Python version (>= 3.10 or given major, minor)
@@ -178,14 +287,14 @@ pub fn get_python_version(
 /// Check for Python deps, erroring if not found: python deps cannot be automatically fetched
 pub fn check_py_deps() -> anyhow::Result<String> {
     let python = get_python_version(Some(REQUIRED_PY_MAJOR), Some(MINIMUM_PY_MINOR))?
-        .ok_or(anyhow::anyhow!("uqdev requires Python 3.10 or newer"))?;
+        .ok_or(anyhow::anyhow!("necdev requires Python 3.10 or newer"))?;
     check_python_venv(&python)?;
 
     Ok(python)
 }
 
-/// Check for UI deps, returning a Vec of not found: can be automatically fetched
-pub fn check_ui_deps() -> anyhow::Result<Vec<Dependency>> {
+/// Check for Javascript deps, returning a Vec of not found: can be automatically fetched
+pub fn check_js_deps() -> anyhow::Result<Vec<Dependency>> {
     let mut missing_deps = Vec::new();
     if !is_nvm_installed()? {
         missing_deps.push(Dependency::Nvm);
@@ -202,6 +311,27 @@ pub fn check_ui_deps() -> anyhow::Result<Vec<Dependency>> {
     Ok(missing_deps)
 }
 
+/// Check for Rust deps, returning a Vec of not found: can be automatically fetched
+pub fn check_rust_deps() -> anyhow::Result<Vec<Dependency>> {
+    if !is_command_installed("rustup")? {
+        // don't have rust -> missing all
+        return Ok(vec![
+            Dependency::Rust,
+            Dependency::RustNightly,
+            Dependency::RustWasm32Wasi,
+            Dependency::RustNightlyWasm32Wasi,
+            Dependency::WasmTools,
+        ]);
+    }
+
+    let mut missing_deps = check_rust_toolchains_targets()?;
+    if !is_command_installed("wasm-tools")? {
+        missing_deps.push(Dependency::WasmTools);
+    }
+
+    Ok(missing_deps)
+}
+
 pub fn get_deps(deps: Vec<Dependency>) -> anyhow::Result<()> {
     if deps.is_empty() {
         return Ok(());
@@ -209,7 +339,7 @@ pub fn get_deps(deps: Vec<Dependency>) -> anyhow::Result<()> {
 
     // If setup required, request user permission
     print!(
-        "UqDev requires {} missing {}: {}. Install? [Y/n]: ",
+        "NecDev requires {} missing {}: {}. Install? [Y/n]: ",
         if deps.len() == 1 { "this" } else { "these" },
         if deps.len() == 1 { "dependency" } else { "dependencies" },
         Dependencies(deps.clone()),
@@ -236,6 +366,13 @@ pub fn get_deps(deps: Vec<Dependency>) -> anyhow::Result<()> {
                             MINIMUM_NODE_MINOR,
                         ))?
                     },
+                    Dependency::Rust => install_rust()?,
+                    Dependency::RustNightly => call_rustup("install nightly")?,
+                    Dependency::RustWasm32Wasi => call_rustup("target add wasm32-wasi")?,
+                    Dependency::RustNightlyWasm32Wasi => {
+                        call_rustup("target add wasm32-wasi --toolchain nightly")?
+                    },
+                    Dependency::WasmTools => call_cargo("install wasm-tools")?,
                 }
             }
         },
@@ -247,13 +384,11 @@ pub fn get_deps(deps: Vec<Dependency>) -> anyhow::Result<()> {
 pub fn execute() -> anyhow::Result<()> {
     println!("Setting up...");
 
-    // Check if missing deps
     check_py_deps()?;
-
-    let missing_deps = check_ui_deps()?;
-
+    let mut missing_deps = check_js_deps()?;
+    missing_deps.append(&mut check_rust_deps()?);
     get_deps(missing_deps)?;
-    println!("Done setting up.");
 
+    println!("Done setting up.");
     Ok(())
 }

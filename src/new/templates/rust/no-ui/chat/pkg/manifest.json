@@ -4,10 +4,10 @@
         "process_wasm_path": "/{package_name}.wasm",
         "on_exit": "Restart",
         "request_networking": true,
-        "request_messaging": [
-            "net:sys:uqbar"
+        "request_capabilities": [
+            "net:sys:nectar"
         ],
-        "grant_messaging": [],
+        "grant_capabilities": [],
         "public": true
     }
 ]

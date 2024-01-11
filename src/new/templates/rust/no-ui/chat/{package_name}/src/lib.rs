@@ -1,6 +1,7 @@
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 
-use uqbar_process_lib::{await_message, println, Address, Message, ProcessId, Request, Response};
+use nectar_process_lib::{await_message, println, Address, Message, ProcessId, Request, Response};
 
 wit_bindgen::generate!({
     path: "wit",
@@ -24,46 +25,53 @@ enum ChatResponse {
 
 type MessageArchive = Vec<(String, String)>;
 
-fn handle_message (
-    our: &Address,
-    message_archive: &mut MessageArchive,
-) -> anyhow::Result<()> {
+fn handle_message(our: &Address, message_archive: &mut MessageArchive) -> anyhow::Result<()> {
     let message = await_message().unwrap();
 
     match message {
         Message::Response { .. } => {
             println!("{package_name}: unexpected Response: {:?}", message);
             panic!("");
-        },
-        Message::Request { ref source, ref ipc, .. } => {
-            match serde_json::from_slice(ipc)? {
-                ChatRequest::Send { ref target, ref message } => {
-                    if target == &our.node {
-                        println!("{package_name}|{}: {}", source.node, message);
-                        message_archive.push((source.node.clone(), message.clone()));
-                    } else {
-                        let _ = Request::new()
-                            .target(Address {
-                                node: target.clone(),
-                                process: ProcessId::from_str("{package_name}:{package_name}:{publisher}")?,
-                            })
-                            .ipc(ipc.clone())
-                            .send_and_await_response(5)?
-                            .unwrap();
-                    }
-                    Response::new()
-                        .ipc(serde_json::to_vec(&ChatResponse::Ack).unwrap())
-                        .send()
+        }
+        Message::Request {
+            ref source,
+            ref body,
+            ..
+        } => match serde_json::from_slice(body)? {
+            ChatRequest::Send {
+                ref target,
+                ref message,
+            } => {
+                if target == &our.node {
+                    println!("{package_name}|{}: {}", source.node, message);
+                    message_archive.push((source.node.clone(), message.clone()));
+                } else {
+                    let _ = Request::new()
+                        .target(Address {
+                            node: target.clone(),
+                            process: ProcessId::from_str(
+                                "{package_name}:{package_name}:{publisher}",
+                            )?,
+                        })
+                        .body(body.clone())
+                        .send_and_await_response(5)?
                         .unwrap();
-                },
-                ChatRequest::History => {
-                    Response::new()
-                        .ipc(serde_json::to_vec(&ChatResponse::History {
+                }
+                Response::new()
+                    .body(serde_json::to_vec(&ChatResponse::Ack).unwrap())
+                    .send()
+                    .unwrap();
+            }
+            ChatRequest::History => {
+                Response::new()
+                    .body(
+                        serde_json::to_vec(&ChatResponse::History {
                             messages: message_archive.clone(),
-                        }).unwrap())
-                        .send()
-                        .unwrap();
-                },
+                        })
+                        .unwrap(),
+                    )
+                    .send()
+                    .unwrap();
             }
         },
     }
@@ -80,10 +88,10 @@ impl Guest for Component {
 
         loop {
             match handle_message(&our, &mut message_archive) {
-                Ok(()) => {},
+                Ok(()) => {}
                 Err(e) => {
                     println!("{package_name}: error: {:?}", e);
-                },
+                }
             };
         }
     }

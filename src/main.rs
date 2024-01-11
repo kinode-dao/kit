@@ -70,14 +70,14 @@ async fn execute(
                 },
             };
             let process: &String = inject_message_matches.get_one("PROCESS").unwrap();
-            let ipc: &String = inject_message_matches.get_one("IPC").unwrap();
+            let body: &String = inject_message_matches.get_one("BODY_JSON").unwrap();
             let node: Option<&str> = inject_message_matches
                 .get_one("NODE_NAME")
                 .and_then(|s: &String| Some(s.as_str()));
             let bytes: Option<&str> = inject_message_matches
                 .get_one("PATH")
                 .and_then(|s: &String| Some(s.as_str()));
-            inject_message::execute(&url, process, ipc, node, bytes).await
+            inject_message::execute(&url, process, body, node, bytes).await
         },
         Some(("new", new_matches)) => {
             let new_dir = PathBuf::from(new_matches.get_one::<String>("DIR").unwrap());
@@ -131,10 +131,7 @@ async fn execute(
                     format!("http://localhost:{}", port)
                 },
             };
-            let node: Option<&str> = remove_package_matches
-                .get_one("NODE_NAME")
-                .and_then(|s: &String| Some(s.as_str()));
-            remove_package::execute(package_dir, &url, node, package_name, publisher).await
+            remove_package::execute(package_dir, &url, package_name, publisher).await
         },
         Some(("setup", _setup_matches)) => setup::execute(),
         Some(("start-package", start_package_matches)) => {
@@ -146,10 +143,7 @@ async fn execute(
                     format!("http://localhost:{}", port)
                 },
             };
-            let node: Option<&str> = start_package_matches
-                .get_one("NODE_NAME")
-                .and_then(|s: &String| Some(s.as_str()));
-            start_package::execute(package_dir, &url, node).await
+            start_package::execute(package_dir, &url).await
         },
         Some(("update", update_matches)) => {
             let args = update_matches.get_many::<String>("ARGUMENTS")
@@ -169,9 +163,9 @@ async fn execute(
 
 fn make_app(current_dir: &std::ffi::OsString) -> Command {
     command!()
-        .name("UqDev")
+        .name("NecDev")
         .version(env!("CARGO_PKG_VERSION"))
-        .about("Development tools for Uqbar")
+        .about("Development tools for NectarOS")
         .subcommand_required(true)
         .arg_required_else_help(true)
         .disable_version_flag(true)
@@ -187,13 +181,13 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             .arg(Arg::new("PATH")
                 .action(ArgAction::Set)
                 .long("runtime-path")
-                .help("Path to Uqbar core repo or runtime binary (overrides --version)")
+                .help("Path to Nectar core repo or runtime binary (overrides --version)")
             )
             .arg(Arg::new("VERSION")
                 .action(ArgAction::Set)
                 .short('v')
                 .long("version")
-                .help("Version of Uqbar binary to use (overridden by --runtime-path)")
+                .help("Version of Nectar binary to use (overridden by --runtime-path)")
                 .default_value("0.4.0")
             )
             .arg(Arg::new("HOME")
@@ -201,7 +195,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .short('h')
                 .long("home")
                 .help("Where to place the home directory for the fake node")
-                .default_value("/tmp/uqbar-fake-node")
+                .default_value("/tmp/nectar-fake-node")
             )
             .arg(Arg::new("NODE_PORT")
                 .action(ArgAction::Set)
@@ -230,7 +224,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .short('f')
                 .long("fake-node-name")
                 .help("Name for fake node")
-                .default_value("fake.uq")
+                .default_value("fake.nec")
             )
             .arg(Arg::new("PASSWORD")
                 .action(ArgAction::Set)
@@ -245,7 +239,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             )
         )
         .subcommand(Command::new("build")
-            .about("Build an Uqbar process")
+            .about("Build a Nectar process")
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
                 .help("The package directory to build")
@@ -261,7 +255,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .action(ArgAction::SetTrue)
                 .short('q')
                 .long("quiet")
-                .help("If set, do not print `cargo` stdout/stderr")
+                .help("If set, do not print build stdout/stderr")
                 .required(false)
             )
         )
@@ -290,7 +284,17 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             )
         )
         .subcommand(Command::new("inject-message")
-            .about("Inject a message to a running Uqbar node")
+            .about("Inject a message to a running Nectar node")
+            .arg(Arg::new("ADDRESS")
+                .action(ArgAction::Set)
+                .help("Address to send message to")
+                .required(true)
+            )
+            .arg(Arg::new("BODY_JSON")
+                .action(ArgAction::Set)
+                .help("Body in JSON format")
+                .required(true)
+            )
             .arg(Arg::new("NODE_PORT")
                 .action(ArgAction::Set)
                 .short('p')
@@ -305,21 +309,6 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .long("url")
                 .help("Node URL (overrides NODE_PORT)")
                 .required(false)
-                //.default_value("http://localhost:8080")
-            )
-            .arg(Arg::new("PROCESS")
-                .action(ArgAction::Set)
-                .short('r')
-                .long("process")
-                .help("Process to send message to")
-                .required(true)
-            )
-            .arg(Arg::new("IPC")
-                .action(ArgAction::Set)
-                .short('i')
-                .long("ipc")
-                .help("IPC in JSON format")
-                .required(true)
             )
             .arg(Arg::new("NODE_NAME")
                 .action(ArgAction::Set)
@@ -331,13 +320,13 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             .arg(Arg::new("PATH")
                 .action(ArgAction::Set)
                 .short('b')
-                .long("bytes")
-                .help("Send bytes from path on Unix system")
+                .long("blob")
+                .help("Send file at Unix path as bytes blob")
                 .required(false)
             )
         )
         .subcommand(Command::new("new")
-            .about("Create an Uqbar template package")
+            .about("Create a Nectar template package")
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
                 .help("Path to create template directory at")
@@ -354,14 +343,14 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .short('u')
                 .long("publisher")
                 .help("Name of the publisher")
-                .default_value("template.uq")
+                .default_value("template.nec")
             )
             .arg(Arg::new("LANGUAGE")
                 .action(ArgAction::Set)
                 .short('l')
                 .long("language")
                 .help("Programming language of the template")
-                .value_parser(["rust", "python"])
+                .value_parser(["rust", "python", "javascript"])
                 .default_value("rust")
             )
             .arg(Arg::new("TEMPLATE")
@@ -369,7 +358,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .short('t')
                 .long("template")
                 .help("Template to create")
-                .value_parser(["chat"])
+                .value_parser(["chat", "fibonacci"])
                 .default_value("chat")
             )
             .arg(Arg::new("UI")
@@ -380,7 +369,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             )
         )
         .subcommand(Command::new("run-tests")
-            .about("Run Uqbar tests")
+            .about("Run Nectar tests")
             .arg(Arg::new("PATH")
                 .action(ArgAction::Set)
                 .help("Path to tests configuration file")
@@ -423,19 +412,12 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .required(false)
                 //.default_value("http://localhost:8080")
             )
-            .arg(Arg::new("NODE_NAME")
-                .action(ArgAction::Set)
-                .short('n')
-                .long("node")
-                .help("Node ID (default: our)")
-                .required(false)
-            )
         )
         .subcommand(Command::new("setup")
-            .about("Fetch & setup Uqdev dependencies")
+            .about("Fetch & setup NecDev dependencies")
         )
         .subcommand(Command::new("start-package")
-            .about("Start a built Uqbar process")
+            .about("Start a built Nectar process")
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
                 .help("The package directory to build")
@@ -457,16 +439,9 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .required(false)
                 //.default_value("http://localhost:8080")
             )
-            .arg(Arg::new("NODE_NAME")
-                .action(ArgAction::Set)
-                .short('n')
-                .long("node")
-                .help("Node ID (default: our)")
-                .required(false)
-            )
         )
         .subcommand(Command::new("update")
-            .about("Fetch the most recent version of UqDev")
+            .about("Fetch the most recent version of NecDev")
             .arg(Arg::new("ARGUMENTS")
                 .action(ArgAction::Append)
                 .help("Additional arguments (e.g. `--branch next-release`)")
@@ -498,7 +473,7 @@ async fn main() -> anyhow::Result<()> {
                 None => {},
                 Some(e) => {
                     if e.is_connect() {
-                        println!("uqdev: error connecting; is Uqbar node running?");
+                        println!("necdev: error connecting; is Nectar node running?");
                         return Ok(());
                     }
                 },

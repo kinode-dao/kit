@@ -2,7 +2,6 @@ use std::fs;
 use std::io;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process;
 
 use serde_json::json;
 use walkdir::WalkDir;
@@ -24,7 +23,7 @@ fn new_package(
     });
 
     inject_message::make_message(
-        "main:app_store:uqbar",
+        "main:app_store:nectar",
         &message.to_string(),
         node,
         None,
@@ -46,7 +45,7 @@ pub fn interact_with_package(
     });
 
     inject_message::make_message(
-        "main:app_store:uqbar",
+        "main:app_store:nectar",
         &message.to_string(),
         node,
         None,
@@ -86,10 +85,16 @@ fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn execute(project_dir: PathBuf, url: &str, node: Option<&str>) -> anyhow::Result<()> {
-    let pkg_dir = project_dir.join("pkg").canonicalize()?;
-    let metadata: serde_json::Value = serde_json::from_reader(fs::File::open(pkg_dir
-        .join("metadata.json")
+pub async fn execute(package_dir: PathBuf, url: &str) -> anyhow::Result<()> {
+    if !package_dir.join("pkg").exists() {
+        return Err(anyhow::anyhow!(
+            "Required `pkg/` dir not found within given input dir {:?} (or cwd, if none given). Please re-run targeting a package.",
+            package_dir,
+        ));
+    }
+    let pkg_dir = package_dir.join("pkg").canonicalize()?;
+    let metadata: serde_json::Value = serde_json::from_reader(fs::File::open(
+        pkg_dir.join("metadata.json")
     )?)?;
     let package_name = metadata["package"].as_str().unwrap();
     let publisher = metadata["publisher"].as_str().unwrap();
@@ -105,30 +110,36 @@ pub async fn execute(project_dir: PathBuf, url: &str, node: Option<&str>) -> any
 
     // Create and send new package request
     let new_pkg_request = new_package(
-        node,
+        None,
         package_name,
         publisher,
         zip_filename.to_str().unwrap(),
     )?;
-    let response = inject_message::send_request(
-        url,
-        new_pkg_request,
-    ).await?;
-    if response.status() != 200 {
-        process::exit(1);
+    let response = inject_message::send_request(url, new_pkg_request).await?;
+    let inject_message::Response { ref body, .. } = inject_message::parse_response(response).await?;
+    let body = serde_json::from_str::<serde_json::Value>(body)?;
+    let new_package_response = body.get("NewPackageResponse");
+
+    if new_package_response != Some(&serde_json::Value::String("Success".to_string())) {
+        let error_message = format!("Failed to add package. Got response from node: {}", body);
+        println!("{}", error_message);
+        return Err(anyhow::anyhow!(error_message));
     }
 
     // Install package
-    let install_request = interact_with_package("Install", node, package_name, publisher)?;
-    let response = inject_message::send_request(
-        url,
-        install_request,
-    ).await?;
-    if response.status() != 200 {
-        process::exit(1);
-    }
+    let install_request = interact_with_package("Install", None, package_name, publisher)?;
+    let response = inject_message::send_request(url, install_request).await?;
+    let inject_message::Response { ref body, .. } = inject_message::parse_response(response).await?;
+    let body = serde_json::from_str::<serde_json::Value>(body)?;
+    let install_response = body.get("InstallResponse");
 
-    println!("Successfully installed package {} on node at {}", pkg_publisher, url);
+    if install_response == Some(&serde_json::Value::String("Success".to_string())) {
+        println!("Successfully installed package {} on node at {}", pkg_publisher, url);
+    } else {
+        let error_message = format!("Failed to start package. Got response from node: {}", body);
+        println!("{}", error_message);
+        return Err(anyhow::anyhow!(error_message));
+    }
 
     Ok(())
 }

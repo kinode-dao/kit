@@ -82,7 +82,7 @@ async fn fetch_local_commit_hash(commit_path: &PathBuf) -> anyhow::Result<Option
 }
 
 pub fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
-    println!("Compiling Uqbar runtime...");
+    println!("Compiling Nectar runtime...");
 
     build::run_command(Command::new("cargo")
         .args(&["+nightly", "build", "--release", "--features", "simulation-mode"])
@@ -91,7 +91,7 @@ pub fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling Uqbar runtime.");
+    println!("Done compiling Nectar runtime.");
     Ok(())
 }
 
@@ -103,7 +103,7 @@ async fn get_runtime_binary_inner(
     let url = format!("https://github.com/uqbar-dao/uqbin/raw/master/{version}/{binary_name}.zip");
 
     let runtime_zip_path = runtime_dir.join(format!("{}.zip", binary_name));
-    let runtime_path = runtime_dir.join("uqbar");
+    let runtime_path = runtime_dir.join("nectar");
 
     build::download_file(&url, &runtime_zip_path).await?;
     extract_zip(&runtime_zip_path)?;
@@ -120,13 +120,13 @@ async fn get_runtime_binary_inner(
 pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     let uname = Command::new("uname").output()?;
     if !uname.status.success() {
-        panic!("uqdev: Could not determine OS.");
+        panic!("necdev: Could not determine OS.");
     }
     let os_name = std::str::from_utf8(&uname.stdout)?.trim();
 
     let uname_p = Command::new("uname").arg("-p").output()?;
     if !uname_p.status.success() {
-        panic!("uqdev: Could not determine architecture.");
+        panic!("necdev: Could not determine architecture.");
     }
     let architecture_name = std::str::from_utf8(&uname_p.stdout)?.trim();
 
@@ -138,11 +138,11 @@ pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
         // ("Darwin", "x86_64") => "x86_64-apple-darwin",
         _ => panic!("OS/Architecture {}/{} not supported.", os_name, architecture_name),
     };
-    let binary_name = format!("uqbar-{}", binary_name_suffix);
+    let binary_name = format!("nectar-{}", binary_name_suffix);
 
-    let runtime_dir = PathBuf::from(format!("/tmp/uqbar-{}", version));
+    let runtime_dir = PathBuf::from(format!("/tmp/nectar-{}", version));
     let local_commit_path = runtime_dir.join("commit.txt");
-    let runtime_path = runtime_dir.join("uqbar");
+    let runtime_path = runtime_dir.join("nectar");
     let local_commit_hash = fetch_local_commit_hash(&local_commit_path).await?;
     // enable offline boot-fake-node:
     //  if online, fetch latest hash from github;
@@ -225,16 +225,16 @@ pub async fn execute(
         None => get_runtime_binary(&version).await?,
         Some(runtime_path) => {
             if !runtime_path.exists() {
-                panic!("uqdev boot-fake-node: RepoPath {:?} does not exist.", runtime_path);
+                panic!("necdev boot-fake-node: RepoPath {:?} does not exist.", runtime_path);
             }
             if runtime_path.is_file() {
                 runtime_path
             } else if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(&runtime_path, true)?;
-                runtime_path.join("target/release/uqbar")
+                runtime_path.join("target/release/nectar")
             } else {
-                panic!("uqdev boot-fake-node: --runtime-path {:?} must be a directory (the repo) or a binary.", runtime_path);
+                panic!("necdev boot-fake-node: --runtime-path {:?} must be a directory (the repo) or a binary.", runtime_path);
             }
         },
     };
