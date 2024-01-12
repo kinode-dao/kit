@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use nectar_process_lib::{await_message, print_to_terminal, Address, Message, Response};
+use nectar_process_lib::{await_message, call_init, print_to_terminal, Address, Message, Response};
 
 wit_bindgen::generate!({
     path: "wit",
@@ -31,7 +31,7 @@ fn fibonacci(n: u32) -> u64 {
 }
 
 fn handle_message (our: &Address) -> anyhow::Result<()> {
-    let message = await_message().unwrap();
+    let message = await_message()?;
 
     match message {
         Message::Response { .. } => {
@@ -97,23 +97,20 @@ fn handle_message (our: &Address) -> anyhow::Result<()> {
     Ok(())
 }
 
-struct Component;
-impl Guest for Component {
-    fn init(our: String) {
-        print_to_terminal(0, "{package_name}: begin");
+call_init!(init);
 
-        let our = Address::from_str(&our).unwrap();
+fn init(our: Address) {
+    print_to_terminal(0, "{package_name}: begin");
 
-        loop {
-            match handle_message(&our) {
-                Ok(()) => {},
-                Err(e) => {
-                    print_to_terminal(0, format!(
-                        "{package_name}: error: {:?}",
-                        e,
-                    ).as_str());
-                },
-            };
-        }
+    loop {
+        match handle_message(&our) {
+            Ok(()) => {},
+            Err(e) => {
+                print_to_terminal(0, format!(
+                    "{package_name}: error: {:?}",
+                    e,
+                ).as_str());
+            },
+        };
     }
 }

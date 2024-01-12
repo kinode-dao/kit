@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-use nectar_process_lib::{await_message, println, Address, Message, ProcessId, Request, Response};
+use nectar_process_lib::{await_message, call_init, println, Address, Message, ProcessId, Request, Response};
 
 wit_bindgen::generate!({
     path: "wit",
@@ -26,7 +26,7 @@ enum ChatResponse {
 type MessageArchive = Vec<(String, String)>;
 
 fn handle_message(our: &Address, message_archive: &mut MessageArchive) -> anyhow::Result<()> {
-    let message = await_message().unwrap();
+    let message = await_message()?;
 
     match message {
         Message::Response { .. } => {
@@ -78,21 +78,20 @@ fn handle_message(our: &Address, message_archive: &mut MessageArchive) -> anyhow
     Ok(())
 }
 
-struct Component;
-impl Guest for Component {
-    fn init(our: String) {
-        println!("{package_name}: begin");
+call_init!(init);
 
-        let our = Address::from_str(&our).unwrap();
-        let mut message_archive: MessageArchive = Vec::new();
+fn init(our: Address) {
+    println!("{package_name}: begin");
 
-        loop {
-            match handle_message(&our, &mut message_archive) {
-                Ok(()) => {}
-                Err(e) => {
-                    println!("{package_name}: error: {:?}", e);
-                }
-            };
-        }
+    let mut message_archive: MessageArchive = Vec::new();
+
+    loop {
+        match handle_message(&our, &mut message_archive) {
+            Ok(()) => {}
+            Err(e) => {
+                println!("{package_name}: error: {:?}", e);
+            }
+        };
     }
 }
+

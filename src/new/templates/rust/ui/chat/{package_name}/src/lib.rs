@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use nectar_process_lib::{
-    await_message, get_blob,
+    await_message, call_init, get_blob,
     http::{
         bind_http_path, bind_ws_path, send_response, send_ws_push, serve_ui, HttpServerRequest,
         IncomingHttpRequest, StatusCode, WsMessageType,
@@ -267,31 +267,29 @@ fn handle_message(
     Ok(())
 }
 
-struct Component;
-impl Guest for Component {
-    fn init(our: String) {
-        println!("{package_name}: begin");
+call_init!(init);
 
-        let our = Address::from_str(&our).unwrap();
-        let mut message_archive: MessageArchive = HashMap::new();
-        let mut channel_id = 0;
+fn init(our: Address) {
+    println!("{package_name}: begin");
 
-        // Bind UI files to routes; index.html is bound to "/"
-        serve_ui(&our, "ui").unwrap();
+    let mut message_archive: MessageArchive = HashMap::new();
+    let mut channel_id = 0;
 
-        // Bind HTTP path /messages
-        bind_http_path("/messages", true, false).unwrap();
+    // Bind UI files to routes; index.html is bound to "/"
+    serve_ui(&our, "ui").unwrap();
 
-        // Bind WebSocket path
-        bind_ws_path("/", true, false).unwrap();
+    // Bind HTTP path /messages
+    bind_http_path("/messages", true, false).unwrap();
 
-        loop {
-            match handle_message(&our, &mut message_archive, &mut channel_id) {
-                Ok(()) => {}
-                Err(e) => {
-                    println!("{package_name}: error: {:?}", e);
-                }
-            };
-        }
+    // Bind WebSocket path
+    bind_ws_path("/", true, false).unwrap();
+
+    loop {
+        match handle_message(&our, &mut message_archive, &mut channel_id) {
+            Ok(()) => {}
+            Err(e) => {
+                println!("{package_name}: error: {:?}", e);
+            }
+        };
     }
 }
