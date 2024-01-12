@@ -415,9 +415,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                 panic!("necdev run-tests: RepoPath {:?} does not exist.", runtime_path);
             }
             if runtime_path.is_file() {
-                // TODO: make loading/finding base processes more robust
-                panic!("necdev run-tests: path to binary not yet implemented; please pass path to Nectar core repo (or use --version)")
-                // runtime_path
+                panic!("necdev run-tests: RepoPath must be a directory (the repo).")
             } else if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(

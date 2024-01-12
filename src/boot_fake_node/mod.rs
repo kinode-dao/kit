@@ -228,13 +228,13 @@ pub async fn execute(
                 panic!("necdev boot-fake-node: RepoPath {:?} does not exist.", runtime_path);
             }
             if runtime_path.is_file() {
-                runtime_path
+                panic!("necdev boot-fake-node: --runtime-path must be a directory (the repo).")
             } else if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(&runtime_path, true)?;
                 runtime_path.join("target/release/nectar")
             } else {
-                panic!("necdev boot-fake-node: --runtime-path {:?} must be a directory (the repo) or a binary.", runtime_path);
+                panic!("necdev boot-fake-node: --runtime-path {:?} must be a directory (the repo).", runtime_path);
             }
         },
     };
