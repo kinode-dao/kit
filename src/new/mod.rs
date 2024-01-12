@@ -64,7 +64,7 @@ fn replace_vars(input: &str, package_name: &str, publisher: &str) -> String {
 
 pub fn execute(
     new_dir: PathBuf,
-    package_name: String,
+    package_name: Option<String>,
     publisher: String,
     language: Language,
     template: Template,
@@ -73,12 +73,16 @@ pub fn execute(
     // Check if the directory already exists
     if new_dir.exists() {
         let error = format!(
-            "Directory {:?} already exists. Remove it to create a new template.",
+            "Directory {:?} already exists. `necdev new` creates a new directory to place the template in. Either remove given directory or provide a non-existing directory to create.",
             new_dir,
         );
-        println!("{}", error);
         return Err(anyhow::anyhow!(error));
     }
+
+    let package_name = match package_name {
+        Some(pn) => pn,
+        None => new_dir.file_name().unwrap().to_str().unwrap().to_string(),
+    };
 
     let ui_infix = if ui { "ui".to_string() } else { "no-ui".to_string() };
     let template_prefix = format!(

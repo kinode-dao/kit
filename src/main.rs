@@ -81,11 +81,8 @@ async fn execute(
         },
         Some(("new", new_matches)) => {
             let new_dir = PathBuf::from(new_matches.get_one::<String>("DIR").unwrap());
-            let new_dir_clone = new_dir.clone();
-            let package_name = match new_matches.get_one::<String>("PACKAGE") {
-                Some(pn) => pn,
-                None => new_dir_clone.file_name().unwrap().to_str().unwrap(),
-            };
+            let package_name = new_matches.get_one::<String>("PACKAGE")
+                .map(|pn| pn.to_string());
             let publisher = new_matches.get_one::<String>("PUBLISHER").unwrap();
             let language: new::Language = new_matches.get_one::<String>("LANGUAGE").unwrap().into();
             let template: new::Template = new_matches.get_one::<String>("TEMPLATE").unwrap().into();
@@ -93,7 +90,7 @@ async fn execute(
 
             new::execute(
                 new_dir,
-                package_name.to_string(),
+                package_name,
                 publisher.clone(),
                 language.clone(),
                 template.clone(),
