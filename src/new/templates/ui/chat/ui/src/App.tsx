@@ -100,10 +100,12 @@ function App() {
       } as SendChatMessage;
 
       // Send a message to the node via websocket
-      api.send({ data });
+      // UNCOMMENT THE FOLLOWING 2 LINES to send message via websocket
+      // api.send({ data });
       // setMessage("");
 
       // Send a message to the node via HTTP request
+      // IF YOU UNCOMMENTED THE LINES ABOVE, COMMENT OUT THIS try/catch BLOCK
       try {
         const result = await fetch(`${BASE_URL}/messages`, {
           method: "POST",
