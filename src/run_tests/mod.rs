@@ -298,6 +298,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
         node_cleanup_infos_for_cleanup,
         Some(node_handles_for_cleanup),
         detached,
+        true,
     ));
     task_handles.push(handle);
     let send_to_cleanup_for_signal = send_to_cleanup.clone();

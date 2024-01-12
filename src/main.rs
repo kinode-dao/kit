@@ -29,6 +29,7 @@ async fn execute(
             let rpc = boot_matches.get_one::<String>("RPC_ENDPOINT").and_then(|s| Some(s.as_str()));
             let fake_node_name = boot_matches.get_one::<String>("NODE_NAME").unwrap();
             let password = boot_matches.get_one::<String>("PASSWORD").unwrap();
+            let is_persist = boot_matches.get_one::<bool>("PERSIST").unwrap();
 
             boot_fake_node::execute(
                 runtime_path,
@@ -39,6 +40,7 @@ async fn execute(
                 rpc,
                 fake_node_name,
                 password,
+                *is_persist,
                 vec![],
             ).await
         },
@@ -189,13 +191,6 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .help("Version of Nectar binary to use (overridden by --runtime-path)")
                 .default_value("0.4.0")
             )
-            .arg(Arg::new("HOME")
-                .action(ArgAction::Set)
-                .short('h')
-                .long("home")
-                .help("Where to place the home directory for the fake node")
-                .default_value("/tmp/nectar-fake-node")
-            )
             .arg(Arg::new("NODE_PORT")
                 .action(ArgAction::Set)
                 .short('p')
@@ -203,6 +198,20 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .help("The port to run the fake node on")
                 .default_value("8080")
                 .value_parser(value_parser!(u16))
+            )
+            .arg(Arg::new("HOME")
+                .action(ArgAction::Set)
+                .short('h')
+                .long("home")
+                .help("Where to place the home directory for the fake node")
+                .default_value("/tmp/nectar-fake-node")
+            )
+            .arg(Arg::new("NODE_NAME")
+                .action(ArgAction::Set)
+                .short('f')
+                .long("fake-node-name")
+                .help("Name for fake node")
+                .default_value("fake.nec")
             )
             .arg(Arg::new("NETWORK_ROUTER_PORT")
                 .action(ArgAction::Set)
@@ -217,12 +226,10 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .help("Ethereum RPC endpoint (wss://)")
                 .required(false)
             )
-            .arg(Arg::new("NODE_NAME")
-                .action(ArgAction::Set)
-                .short('f')
-                .long("fake-node-name")
-                .help("Name for fake node")
-                .default_value("fake.nec")
+            .arg(Arg::new("PERSIST")
+                .action(ArgAction::SetTrue)
+                .long("persist")
+                .help("Do not delete node home after exit")
             )
             .arg(Arg::new("PASSWORD")
                 .action(ArgAction::Set)

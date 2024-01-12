@@ -216,6 +216,7 @@ pub async fn execute(
     rpc: Option<&str>,
     fake_node_name: &str,
     password: &str,
+    is_persist: bool,
     mut args: Vec<&str>,
 ) -> anyhow::Result<()> {
     let detached = false;  // TODO: to argument?
@@ -254,6 +255,7 @@ pub async fn execute(
         node_cleanup_infos_for_cleanup,
         None,
         detached,
+        !is_persist,
     ));
     task_handles.push(handle);
     let send_to_cleanup_for_signal = send_to_cleanup.clone();

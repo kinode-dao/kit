@@ -40,6 +40,7 @@ pub async fn cleanup(
     node_cleanup_infos: NodeCleanupInfos,
     node_handles: Option<NodeHandles>,
     detached: bool,
+    remove_node_files: bool,
 ) {
     // Block until get cleanup request.
     recv_in_cleanup.recv().await;
@@ -74,7 +75,7 @@ pub async fn cleanup(
             nh[i].wait().unwrap();
         }
 
-        if home.exists() {
+        if remove_node_files && home.exists() {
             for dir in &["kernel", "kv", "sqlite", "vfs"] {
                 let dir = home.join(dir);
                 if dir.exists() {
