@@ -1,5 +1,5 @@
 [package]
-name = "necdev"
+name = "kit"
 version = "0.1.0"
 edition = "2021"
 
@@ -26,5 +26,5 @@ walkdir = "2.4"
 zip = "0.6"
 
 [[bin]]
-name = "necdev"
+name = "kit"
 path = "src/main.rs"

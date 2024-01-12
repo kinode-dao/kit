@@ -120,13 +120,13 @@ async fn get_runtime_binary_inner(
 pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     let uname = Command::new("uname").output()?;
     if !uname.status.success() {
-        panic!("necdev: Could not determine OS.");
+        panic!("kit: Could not determine OS.");
     }
     let os_name = std::str::from_utf8(&uname.stdout)?.trim();
 
     let uname_p = Command::new("uname").arg("-p").output()?;
     if !uname_p.status.success() {
-        panic!("necdev: Could not determine architecture.");
+        panic!("kit: Could not determine architecture.");
     }
     let architecture_name = std::str::from_utf8(&uname_p.stdout)?.trim();
 
@@ -225,16 +225,16 @@ pub async fn execute(
         None => get_runtime_binary(&version).await?,
         Some(runtime_path) => {
             if !runtime_path.exists() {
-                panic!("necdev boot-fake-node: RepoPath {:?} does not exist.", runtime_path);
+                panic!("kit boot-fake-node: RepoPath {:?} does not exist.", runtime_path);
             }
             if runtime_path.is_file() {
-                panic!("necdev boot-fake-node: --runtime-path must be a directory (the repo).")
+                panic!("kit boot-fake-node: --runtime-path must be a directory (the repo).")
             } else if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(&runtime_path, true)?;
                 runtime_path.join("target/release/nectar")
             } else {
-                panic!("necdev boot-fake-node: --runtime-path {:?} must be a directory (the repo).", runtime_path);
+                panic!("kit boot-fake-node: --runtime-path {:?} must be a directory (the repo).", runtime_path);
             }
         },
     };

@@ -123,7 +123,7 @@ async fn wait_until_booted(
             }
         };
     }
-    Err(anyhow::anyhow!("necdev run-tests: could not connect to Nectar node"))
+    Err(anyhow::anyhow!("kit run-tests: could not connect to Nectar node"))
 }
 
 async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> {
@@ -412,10 +412,10 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
         Runtime::FetchVersion(ref version) => get_runtime_binary(version).await?,
         Runtime::RepoPath(runtime_path) => {
             if !runtime_path.exists() {
-                panic!("necdev run-tests: RepoPath {:?} does not exist.", runtime_path);
+                panic!("kit run-tests: RepoPath {:?} does not exist.", runtime_path);
             }
             if runtime_path.is_file() {
-                panic!("necdev run-tests: RepoPath must be a directory (the repo).")
+                panic!("kit run-tests: RepoPath must be a directory (the repo).")
             } else if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(
@@ -424,7 +424,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                 )?;
                 runtime_path.join("target/release/nectar")
             } else {
-                panic!("necdev run-tests: RepoPath {:?} must be a directory (the repo) or a binary.", runtime_path);
+                panic!("kit run-tests: RepoPath {:?} must be a directory (the repo) or a binary.", runtime_path);
             }
         },
     };

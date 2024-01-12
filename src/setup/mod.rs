@@ -287,7 +287,7 @@ pub fn get_python_version(
 /// Check for Python deps, erroring if not found: python deps cannot be automatically fetched
 pub fn check_py_deps() -> anyhow::Result<String> {
     let python = get_python_version(Some(REQUIRED_PY_MAJOR), Some(MINIMUM_PY_MINOR))?
-        .ok_or(anyhow::anyhow!("necdev requires Python 3.10 or newer"))?;
+        .ok_or(anyhow::anyhow!("kit requires Python 3.10 or newer"))?;
     check_python_venv(&python)?;
 
     Ok(python)
@@ -339,7 +339,7 @@ pub fn get_deps(deps: Vec<Dependency>) -> anyhow::Result<()> {
 
     // If setup required, request user permission
     print!(
-        "NecDev requires {} missing {}: {}. Install? [Y/n]: ",
+        "kit requires {} missing {}: {}. Install? [Y/n]: ",
         if deps.len() == 1 { "this" } else { "these" },
         if deps.len() == 1 { "dependency" } else { "dependencies" },
         Dependencies(deps.clone()),

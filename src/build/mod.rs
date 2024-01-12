@@ -318,7 +318,7 @@ pub async fn execute(package_dir: &Path, ui_only: bool, verbose: bool) -> anyhow
     let ui_dir = package_dir.join("ui");
     if !ui_dir.exists() {
         if ui_only {
-            return Err(anyhow::anyhow!("necdev build: can't build UI: no ui directory exists"));
+            return Err(anyhow::anyhow!("kit build: can't build UI: no ui directory exists"));
         } else {
             compile_package(package_dir, verbose).await
         }

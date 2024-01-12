@@ -40,7 +40,7 @@ impl From<&String> for Language {
             "rust" => Language::Rust,
             "python" => Language::Python,
             "javascript" => Language::Javascript,
-            _ => panic!("necdev: language must be 'rust' or 'python'; not '{s}'"),
+            _ => panic!("kit: language must be 'rust' or 'python'; not '{s}'"),
         }
     }
 }
@@ -50,7 +50,7 @@ impl From<&String> for Template {
         match s.as_str() {
             "chat" => Template::Chat,
             "fibonacci" => Template::Fibonacci,
-            _ => panic!("necdev: template must be 'chat'; not '{s}'"),
+            _ => panic!("kit: template must be 'chat'; not '{s}'"),
         }
     }
 }
@@ -78,7 +78,7 @@ pub fn execute(
     // Check if the directory already exists
     if new_dir.exists() {
         let error = format!(
-            "Directory {:?} already exists. `necdev new` creates a new directory to place the template in. Either remove given directory or provide a non-existing directory to create.",
+            "Directory {:?} already exists. `kit new` creates a new directory to place the template in. Either remove given directory or provide a non-existing directory to create.",
             new_dir,
         );
         return Err(anyhow::anyhow!(error));
@@ -156,7 +156,7 @@ pub fn execute(
     if ui && path_to_content.keys().filter(|p| !p.starts_with("ui")).count() == 0 {
         // Only `ui/` exists
         return Err(anyhow::anyhow!(
-            "necdev new: cannot use `--ui` for {} {}; template does not exist",
+            "kit new: cannot use `--ui` for {} {}; template does not exist",
             language.to_string(),
             template.to_string(),
         ));

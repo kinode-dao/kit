@@ -160,9 +160,9 @@ async fn execute(
 
 fn make_app(current_dir: &std::ffi::OsString) -> Command {
     command!()
-        .name("NecDev")
+        .name("kit")
         .version(env!("CARGO_PKG_VERSION"))
-        .about("Development tools for NectarOS")
+        .about("Development tool\x1b[1mkit\x1b[0m for NectarOS")
         .subcommand_required(true)
         .arg_required_else_help(true)
         .disable_version_flag(true)
@@ -411,7 +411,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             )
         )
         .subcommand(Command::new("setup")
-            .about("Fetch & setup NecDev dependencies")
+            .about("Fetch & setup kit dependencies")
         )
         .subcommand(Command::new("start-package")
             .about("Start a built Nectar process")
@@ -438,7 +438,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             )
         )
         .subcommand(Command::new("update")
-            .about("Fetch the most recent version of NecDev")
+            .about("Fetch the most recent version of kit")
             .arg(Arg::new("ARGUMENTS")
                 .action(ArgAction::Append)
                 .help("Additional arguments (e.g. `--branch next-release`)")
@@ -470,7 +470,7 @@ async fn main() -> anyhow::Result<()> {
                 None => {},
                 Some(e) => {
                     if e.is_connect() {
-                        println!("necdev: error connecting; is Nectar node running?");
+                        println!("kit: error connecting; is Nectar node running?");
                         return Ok(());
                     }
                 },

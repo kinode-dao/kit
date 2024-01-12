@@ -723,6 +723,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "kit"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "clap",
+ "dirs",
+ "futures-util",
+ "nectar_process_lib",
+ "nix",
+ "regex",
+ "reqwest",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-tungstenite",
+ "toml",
+ "walkdir",
+ "zip",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -821,30 +845,6 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "tempfile",
-]
-
-[[package]]
-name = "necdev"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64",
- "clap",
- "dirs",
- "futures-util",
- "nectar_process_lib",
- "nix",
- "regex",
- "reqwest",
- "rmp-serde",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tokio-tungstenite",
- "toml",
- "walkdir",
- "zip",
 ]
 
 [[package]]
