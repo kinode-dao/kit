@@ -62,6 +62,11 @@ fn replace_vars(input: &str, package_name: &str, publisher: &str) -> String {
         .to_string()
 }
 
+fn is_url_safe(input: &str) -> bool {
+    let re = regex::Regex::new(r"^[a-zA-Z0-9\-_.~]+$").unwrap();
+    re.is_match(input)
+}
+
 pub fn execute(
     new_dir: PathBuf,
     package_name: Option<String>,
@@ -79,10 +84,49 @@ pub fn execute(
         return Err(anyhow::anyhow!(error));
     }
 
-    let package_name = match package_name {
-        Some(pn) => pn,
-        None => new_dir.file_name().unwrap().to_str().unwrap().to_string(),
+    let (package_name, is_from_dir) = match package_name {
+        Some(pn) => (pn, false),
+        None => (new_dir.file_name().unwrap().to_str().unwrap().to_string(), true),
     };
+
+    if !is_url_safe(&package_name) {
+        let error =
+            if !is_from_dir {
+                anyhow::anyhow!("`package_name` '{}' must be URL safe.", package_name)
+            } else {
+                anyhow::anyhow!(
+                    "`package_name` (derived from given directory {:?}) '{}' must be URL safe.",
+                    new_dir,
+                    package_name,
+                )
+            };
+        return Err(error);
+    }
+    if !is_url_safe(&publisher) {
+        return Err(anyhow::anyhow!("`publisher` '{}' must be URL safe.", publisher));
+    }
+
+    match language {
+        Language::Rust => {
+            if package_name.contains('-') {
+                let error =
+                    if !is_from_dir {
+                        anyhow::anyhow!(
+                            "rust `package_name`s cannot contain `-`s (given '{}')",
+                            package_name,
+                        )
+                    } else {
+                        anyhow::anyhow!(
+                            "rust `package_name` (derived from given directory {:?}) cannot contain `-`s (given '{}')",
+                            new_dir,
+                            package_name,
+                        )
+                    };
+                return Err(error);
+            }
+        },
+        _ => {},
+    }
 
     let ui_infix = if ui { "ui".to_string() } else { "no-ui".to_string() };
     let template_prefix = format!(
