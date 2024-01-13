@@ -1,6 +1,6 @@
 # kit
 
-Tools for developing on The OS.
+Tool**kit** for developing on The OS.
 
 ## Installing
 
