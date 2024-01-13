@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use nectar_process_lib::{await_message, call_init, print_to_terminal, Address, Message, Response};
+use nectar_process_lib::{await_message, call_init, println, Address, Message, Response};
 
 wit_bindgen::generate!({
     path: "wit",
@@ -46,12 +46,12 @@ fn handle_message (our: &Address) -> anyhow::Result<()> {
                     let start = std::time::Instant::now();
                     let result = fibonacci(number);
                     let duration = start.elapsed();
-                    print_to_terminal(0, &format!(
+                    println!(
                         "{package_name}: fibonacci({}) = {}; {}ns",
                         number,
                         result,
                         duration.as_nanos(),
-                    ));
+                    );
                     Response::new()
                         .body(serde_json::to_vec(&FibonacciResponse::Number(result)).unwrap())
                         .send()
@@ -75,14 +75,14 @@ fn handle_message (our: &Address) -> anyhow::Result<()> {
                             let trial = item.as_nanos();
                             ad + if mean >= trial { mean - trial } else { trial - mean }
                         }) / number_trials as u128;
-                    print_to_terminal(0, &format!(
+                    println!(
                         "{package_name}: fibonacci({}) = {}; {}±{}ns averaged over {} trials",
                         number,
                         result,
                         mean,
                         absolute_deviation,
                         number_trials,
-                    ));
+                    );
                     Response::new()
                         .body(serde_json::to_vec(&FibonacciResponse::Numbers((
                             result,
@@ -100,16 +100,13 @@ fn handle_message (our: &Address) -> anyhow::Result<()> {
 call_init!(init);
 
 fn init(our: Address) {
-    print_to_terminal(0, "{package_name}: begin");
+    println!("{package_name}: begin");
 
     loop {
         match handle_message(&our) {
             Ok(()) => {},
             Err(e) => {
-                print_to_terminal(0, format!(
-                    "{package_name}: error: {:?}",
-                    e,
-                ).as_str());
+                println!("{package_name}: error: {:?}", e);
             },
         };
     }

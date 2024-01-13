@@ -26,13 +26,12 @@ def parse_address(address_string):
 def handle_message(our_node, message_archive):
     result = receive()
     if isinstance(result, Err):
-        exit(1)
+        raise Exception(f"{result}")
     source, message = result
 
     match message:
         case MessageResponse():
-            print_to_terminal(0, f"{package_name}: unexpected Response: {message}")
-            exit(1)
+            raise Exception(f"unexpected Response: {message}")
         case MessageRequest():
             body = json.loads(message.value.body.decode("utf-8"))
             if "Send" in body:
@@ -50,7 +49,7 @@ def handle_message(our_node, message_archive):
                         None,
                     )
                 send_response(
-                    Response(False, json.dumps({"Ack": None}).encode("utf-8"), None),
+                    Response(False, json.dumps({"Ack": None}).encode("utf-8"), None, []),
                     None,
                 )
             elif "History" in body:
@@ -63,7 +62,7 @@ def handle_message(our_node, message_archive):
                     None,
                 )
             else:
-                exit(1)
+                raise Exception(f"Unexpected Request: {body}")
 
     return message_archive
 
@@ -75,4 +74,7 @@ class Process(process.Process):
         message_archive = {}
 
         while True:
-            message_archive = handle_message(our_node, message_archive)
+            try:
+                message_archive = handle_message(our_node, message_archive)
+            except Exception as e:
+                print_to_terminal(0, f"{package_name}: error: {e}")

@@ -26,8 +26,7 @@ function handleMessage(ourNode, messageArchive) {
     const [source, message] = receive();
 
     if (message.tag == 'response') {
-        printToTerminal(0, `{package_name}: unexpected Response: ${JSON.stringify(message.val)}`);
-        process.exit(1);
+        throw new Error(`unexpected Response: ${JSON.stringify(message.val)}`);
     } else if (message.tag == 'request') {
         const { bytes: bodyBytes, string: body0 } = inputBytesToString(message.val.body)
         const body = JSON.parse(body0);
@@ -61,6 +60,7 @@ function handleMessage(ourNode, messageArchive) {
                     inherit: false,
                     body: encoder.encode(JSON.stringify({ Ack: null })),
                     metadata: null
+                    capabilities: [],
                 },
                 null
             );
@@ -69,16 +69,18 @@ function handleMessage(ourNode, messageArchive) {
                 {
                     inherit: false,
                     body: encoder.encode(JSON.stringify({ History: { messages: messageArchive } })),
-                    metadata: null
+                    metadata: null,
+                    capabilities: [],
                 },
                 null
             );
         } else {
-            process.exit(1);
+            throw new Error(`Unexpected Request: ${body}`)
         }
     }
     return messageArchive;
 }
+
 export function init(our) {
     printToTerminal(0, `{package_name}: begin (javascript)`);
 

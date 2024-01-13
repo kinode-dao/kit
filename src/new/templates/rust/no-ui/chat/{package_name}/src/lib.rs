@@ -30,8 +30,7 @@ fn handle_message(our: &Address, message_archive: &mut MessageArchive) -> anyhow
 
     match message {
         Message::Response { .. } => {
-            println!("{package_name}: unexpected Response: {:?}", message);
-            panic!("");
+            return Err(anyhow::anyhow!("unexpected Response: {:?}", message));
         }
         Message::Request {
             ref source,
@@ -73,7 +72,7 @@ fn handle_message(our: &Address, message_archive: &mut MessageArchive) -> anyhow
                     .send()
                     .unwrap();
             }
-        },
+        }
     }
     Ok(())
 }

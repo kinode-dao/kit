@@ -51,7 +51,7 @@ def handle_message(our_node):
                     f"{package_name}: fibonacci({number}) = {result}; {duration}ns",
                 )
                 send_response(
-                    Response(False, json.dumps({"Number": result}).encode("utf-8"), None),
+                    Response(False, json.dumps({"Number": result}).encode("utf-8"), None, []),
                     None,
                 )
             elif "Numbers" in body:
@@ -73,6 +73,7 @@ def handle_message(our_node):
                         False,
                         json.dumps({"Numbers": [result, number_trials]}).encode("utf-8"),
                         None,
+                        [],
                     ),
                     None,
                 )
@@ -89,4 +90,4 @@ class Process(process.Process):
             try:
                 handle_message(our_node)
             except Exception as e:
-                print(f"{package_name}: error: {e}")
+                print_to_terminal(0, f"{package_name}: error: {e}")

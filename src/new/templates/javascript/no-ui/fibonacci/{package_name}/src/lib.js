@@ -34,8 +34,7 @@ function handleMessage(ourNode) {
     const [source, message] = receive();
 
     if (message.tag == 'response') {
-        printToTerminal(0, `{package_name}: unexpected Response: ${JSON.stringify(message.val)}`);
-        process.exit(1);
+        throw new Error(`unexpected Response: ${JSON.stringify(message.val)}`);
     } else if (message.tag == 'request') {
         const { bytes: bodyBytes, string: body0 } = inputBytesToString(message.val.body)
         const body = JSON.parse(body0);
@@ -51,8 +50,9 @@ function handleMessage(ourNode) {
                     inherit: false,
                     body: encoder.encode(JSON.stringify({ Number: result })),
                     metadata: null
+                    capabilities: [],
                 },
-                null
+                null,
             );
         } else if (body.Numbers) {
             const [number, numberTrials] = body.Numbers;
@@ -76,9 +76,10 @@ function handleMessage(ourNode) {
                 {
                     inherit: false,
                     body: encoder.encode(JSON.stringify({ Numbers: [result, numberTrials] })),
-                    metadata: null
+                    metadata: null,
+                    capabilities: [],
                 },
-                null
+                null,
             );
         } else {
             throw new Error(`Unexpected Request: ${body}`)
