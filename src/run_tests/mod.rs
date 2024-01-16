@@ -269,10 +269,10 @@ async fn run_tests(_test_batch: &str, mut ports: Vec<u16>, node_names: Vec<Strin
 
 async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow::Result<()> {
     for setup_package_path in &test.setup_package_paths {
-        build::execute(&setup_package_path, false, test.package_build_verbose).await?;
+        build::execute(&setup_package_path, false, test.package_build_verbose, false).await?;
     }
     for TestPackage { ref path, .. } in &test.test_packages {
-        build::execute(path, false, test.package_build_verbose).await?;
+        build::execute(path, false, test.package_build_verbose, false).await?;
     }
 
     // Initialize variables for master node and nodes list
