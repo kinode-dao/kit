@@ -200,8 +200,8 @@ pub fn run_runtime(
     let process = Command::new(path)
         .args(&full_args)
         .stdin(if !detached { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
-        .stdout(if verbose { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
-        .stderr(if verbose { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
         .spawn()?;
 
     Ok((process, fds.master))
