@@ -130,10 +130,7 @@ async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()
     println!("Loading setup packages...");
 
     for setup_path in setup_paths {
-        start_package::execute(
-            setup_path.clone(),
-            &format!("http://localhost:{}", port),
-        ).await?;
+        start_package::execute(&setup_path, &format!("http://localhost:{}", port)).await?;
     }
 
     println!("Done loading setup packages.");

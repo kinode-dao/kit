@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 mod boot_fake_node;
 mod build;
+mod build_start_package;
 mod dev_ui;
 mod inject_message;
 mod new;
@@ -50,6 +51,21 @@ async fn execute(
             let verbose = !build_matches.get_one::<bool>("QUIET").unwrap();
 
             build::execute(&package_dir, *ui_only, verbose).await
+        },
+        Some(("build-start-package", build_start_matches)) => {
+
+            let package_dir = PathBuf::from(build_start_matches.get_one::<String>("DIR").unwrap());
+            let ui_only = build_start_matches.get_one::<bool>("UI_ONLY").unwrap_or(&false);
+            let verbose = !build_start_matches.get_one::<bool>("QUIET").unwrap();
+            let url: String = match build_start_matches.get_one::<String>("URL") {
+                Some(url) => url.clone(),
+                None => {
+                    let port = build_start_matches.get_one::<u16>("NODE_PORT").unwrap();
+                    format!("http://localhost:{}", port)
+                },
+            };
+
+            build_start_package::execute(&package_dir, *ui_only, verbose, &url).await
         },
         Some(("dev-ui", dev_ui_matches)) => {
             let package_dir = PathBuf::from(dev_ui_matches.get_one::<String>("DIR").unwrap());
@@ -130,7 +146,7 @@ async fn execute(
                     format!("http://localhost:{}", port)
                 },
             };
-            remove_package::execute(package_dir, &url, package_name, publisher).await
+            remove_package::execute(&package_dir, &url, package_name, publisher).await
         },
         Some(("setup", _setup_matches)) => setup::execute(),
         Some(("start-package", start_package_matches)) => {
@@ -142,7 +158,7 @@ async fn execute(
                     format!("http://localhost:{}", port)
                 },
             };
-            start_package::execute(package_dir, &url).await
+            start_package::execute(&package_dir, &url).await
         },
         Some(("update", update_matches)) => {
             let args = update_matches.get_many::<String>("ARGUMENTS")
@@ -250,6 +266,43 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .action(ArgAction::Set)
                 .help("The package directory to build")
                 .default_value(current_dir)
+            )
+            .arg(Arg::new("UI_ONLY")
+                .action(ArgAction::SetTrue)
+                .long("ui-only")
+                .help("If set, build ONLY the web UI for the process")
+                .required(false)
+            )
+            .arg(Arg::new("QUIET")
+                .action(ArgAction::SetTrue)
+                .short('q')
+                .long("quiet")
+                .help("If set, do not print build stdout/stderr")
+                .required(false)
+            )
+        )
+        .subcommand(Command::new("build-start-package")
+            .about("Build and start a Nectar package")
+            .visible_alias("bs")
+            .arg(Arg::new("DIR")
+                .action(ArgAction::Set)
+                .help("The package directory to build")
+                .default_value(current_dir)
+            )
+            .arg(Arg::new("NODE_PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("Node port: for use on localhost (overridden by URL)")
+                .default_value("8080")
+                .value_parser(value_parser!(u16))
+            )
+            .arg(Arg::new("URL")
+                .action(ArgAction::Set)
+                .short('u')
+                .long("url")
+                .help("Node URL (overrides NODE_PORT)")
+                .required(false)
             )
             .arg(Arg::new("UI_ONLY")
                 .action(ArgAction::SetTrue)
@@ -449,7 +502,6 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .long("url")
                 .help("Node URL (overrides NODE_PORT)")
                 .required(false)
-                //.default_value("http://localhost:8080")
             )
         )
         .subcommand(Command::new("update")
