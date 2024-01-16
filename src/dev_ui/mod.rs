@@ -4,9 +4,11 @@ use std::process::{Command, Stdio};
 use super::build::run_command;
 use super::setup::{check_js_deps, get_deps};
 
-pub fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
-    let deps = check_js_deps()?;
-    get_deps(deps)?;
+pub fn execute(package_dir: &Path, url: &str, skip_deps_check: bool) -> anyhow::Result<()> {
+    if !skip_deps_check {
+        let deps = check_js_deps()?;
+        get_deps(deps)?;
+    }
     let ui_path = package_dir.join("ui");
     println!("Starting development UI in {:?}...", ui_path);
 

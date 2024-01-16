@@ -47,10 +47,11 @@ async fn execute(
         },
         Some(("build", build_matches)) => {
             let package_dir = PathBuf::from(build_matches.get_one::<String>("DIR").unwrap());
-            let ui_only = build_matches.get_one::<bool>("UI_ONLY").unwrap_or(&false);
+            let ui_only = build_matches.get_one::<bool>("UI_ONLY").unwrap();
             let verbose = !build_matches.get_one::<bool>("QUIET").unwrap();
+            let skip_deps_check = build_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
 
-            build::execute(&package_dir, *ui_only, verbose).await
+            build::execute(&package_dir, *ui_only, verbose, *skip_deps_check).await
         },
         Some(("build-start-package", build_start_matches)) => {
 
@@ -64,8 +65,15 @@ async fn execute(
                     format!("http://localhost:{}", port)
                 },
             };
+            let skip_deps_check = build_start_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
 
-            build_start_package::execute(&package_dir, *ui_only, verbose, &url).await
+            build_start_package::execute(
+                &package_dir,
+                *ui_only,
+                verbose,
+                &url,
+                *skip_deps_check,
+            ).await
         },
         Some(("dev-ui", dev_ui_matches)) => {
             let package_dir = PathBuf::from(dev_ui_matches.get_one::<String>("DIR").unwrap());
@@ -76,8 +84,9 @@ async fn execute(
                     format!("http://localhost:{}", port)
                 },
             };
+            let skip_deps_check = dev_ui_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
 
-            dev_ui::execute(&package_dir, &url)
+            dev_ui::execute(&package_dir, &url, *skip_deps_check)
         },
         Some(("inject-message", inject_message_matches)) => {
             let url: String = match inject_message_matches.get_one::<String>("URL") {
@@ -245,7 +254,8 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             .arg(Arg::new("PERSIST")
                 .action(ArgAction::SetTrue)
                 .long("persist")
-                .help("Do not delete node home after exit")
+                .help("If set, do not delete node home after exit")
+                .required(false)
             )
             .arg(Arg::new("PASSWORD")
                 .action(ArgAction::Set)
@@ -278,6 +288,13 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .short('q')
                 .long("quiet")
                 .help("If set, do not print build stdout/stderr")
+                .required(false)
+            )
+            .arg(Arg::new("SKIP_DEPS_CHECK")
+                .action(ArgAction::SetTrue)
+                .short('s')
+                .long("skip-deps-check")
+                .help("If set, do not check for dependencies")
                 .required(false)
             )
         )
@@ -317,6 +334,13 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .help("If set, do not print build stdout/stderr")
                 .required(false)
             )
+            .arg(Arg::new("SKIP_DEPS_CHECK")
+                .action(ArgAction::SetTrue)
+                .short('s')
+                .long("skip-deps-check")
+                .help("If set, do not check for dependencies")
+                .required(false)
+            )
         )
         .subcommand(Command::new("dev-ui")
             .about("Start the web UI development server with hot reloading (same as `cd ui && npm i && npm start`)")
@@ -340,7 +364,13 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .long("url")
                 .help("Node URL (overrides NODE_PORT)")
                 .required(false)
-                //.default_value("http://localhost:8080")
+            )
+            .arg(Arg::new("SKIP_DEPS_CHECK")
+                .action(ArgAction::SetTrue)
+                .short('s')
+                .long("skip-deps-check")
+                .help("If set, do not check for dependencies")
+                .required(false)
             )
         )
         .subcommand(Command::new("inject-message")
