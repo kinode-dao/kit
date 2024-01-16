@@ -24,6 +24,7 @@ impl std::fmt::Display for Response {
 
 pub fn make_message(
     process: &str,
+    expects_response: Option<u64>,
     body: &str,
     node: Option<&str>,
     raw_bytes: Option<&[u8]>,
@@ -49,7 +50,7 @@ pub fn make_message(
         "node": node,
         "process": process,
         "inherit": false,
-        "expects_response": Option::<bool>::None,
+        "expects_response": expects_response,
         "body": body,
         "metadata": Option::<serde_json::Value>::None,
         "context": Option::<serde_json::Value>::None,
@@ -86,7 +87,6 @@ pub async fn send_request(
 
 pub async fn parse_response(response: reqwest::Response) -> anyhow::Result<Response> {
     if response.status() != 200 {
-        println!("Failed with status code: {}", response.status());
         return Err(anyhow::anyhow!("Failed with status code: {}", response.status()))
     } else {
         let content: String = response.text().await?;
@@ -135,14 +135,23 @@ pub async fn parse_response(response: reqwest::Response) -> anyhow::Result<Respo
 pub async fn execute(
     url: &str,
     process: &str,
+    expects_response: Option<u64>,
     body: &str,
     node: Option<&str>,
     bytes_path: Option<&str>,
 ) -> anyhow::Result<()> {
-    let request = make_message(process, body, node, None, bytes_path)?;
+    let request = make_message(process, expects_response, body, node, None, bytes_path)?;
     let response = send_request(url, request).await?;
-    let response = parse_response(response).await?;
-    println!("{}", response);
+    if expects_response.is_some() {
+        let response = parse_response(response).await?;
+        println!("{}", response);
+    } else {
+        if response.status() != 200 {
+            return Err(anyhow::anyhow!("Failed with status code: {}", response.status()))
+        } else {
+            println!("{}", response.status());
+        }
+    }
 
     Ok(())
 }
