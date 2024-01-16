@@ -344,7 +344,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .action(ArgAction::SetTrue)
                 .short('l')
                 .long("non-block")
-                .help("Don't block on the full node response")
+                .help("If set, don't block on the full node response")
             )
         )
         .subcommand(Command::new("new")
