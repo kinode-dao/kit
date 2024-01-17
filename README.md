@@ -65,7 +65,7 @@ kit --help
 Use like (substituting path to Nectar core repo):
 
 ```bash
-kit boot-fake-node --runtime-path ~/git/nectar
+kit boot-fake-node --runtime-path ~/git/kinode
 ```
 
 NecDev also contains tools for running tests.
