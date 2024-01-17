@@ -68,7 +68,6 @@ async fn get_runtime_binary_inner(
     runtime_dir: &PathBuf,
 ) -> anyhow::Result<()> {
     let url = format!("{KINODE_RELEASE_BASE_URL}/{version}/{zip_name}");
-    println!("{}", url);
 
     let runtime_zip_path = runtime_dir.join(zip_name);
     let runtime_path = runtime_dir.join("kinode");
