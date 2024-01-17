@@ -167,7 +167,10 @@ async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Resu
 
     let mut grant_caps = std::collections::HashMap::new();
     for TestPackage { ref path, ref grant_capabilities } in test_packages {
-        grant_caps.insert(path, grant_capabilities);
+        grant_caps.insert(
+            path.file_name().map(|f| f.to_str()).unwrap(),
+            grant_capabilities,
+        );
     }
     let grant_caps = serde_json::to_vec(&grant_caps)?;
 
@@ -197,7 +200,12 @@ async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Resu
     Ok(())
 }
 
-async fn run_tests(_test_batch: &str, mut ports: Vec<u16>, node_names: Vec<String>, test_timeout: u64) -> anyhow::Result<()> {
+async fn run_tests(
+    test_packages: &Vec<TestPackage>,
+    mut ports: Vec<u16>,
+    node_names: Vec<String>,
+    test_timeout: u64,
+) -> anyhow::Result<()> {
     let master_port = ports.remove(0);
 
     // Set up non-master nodes.
@@ -208,6 +216,10 @@ async fn run_tests(_test_batch: &str, mut ports: Vec<u16>, node_names: Vec<Strin
             &serde_json::to_string(&serde_json::json!({
                 "Run": {
                     "input_node_names": node_names,
+                    "test_names": test_packages
+                        .iter()
+                        .map(|tp| tp.path.to_str().unwrap())
+                        .collect::<Vec<&str>>(),
                     "test_timeout": test_timeout,
                 }
             })).unwrap(),
@@ -234,6 +246,10 @@ async fn run_tests(_test_batch: &str, mut ports: Vec<u16>, node_names: Vec<Strin
         &serde_json::to_string(&serde_json::json!({
             "Run": {
                 "input_node_names": node_names,
+                "test_names": test_packages
+                    .iter()
+                    .map(|tp| tp.path.to_str().unwrap())
+                    .collect::<Vec<&str>>(),
                 "test_timeout": test_timeout,
             }
         })).unwrap(),
@@ -383,7 +399,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
     load_tests(&test.test_packages, master_node_port.unwrap().clone()).await?;
 
     let tests_result = run_tests(
-        &format!("{:?}", test.test_packages),
+        &test.test_packages,
         ports,
         make_node_names(test.nodes)?,
         test.timeout_secs,
