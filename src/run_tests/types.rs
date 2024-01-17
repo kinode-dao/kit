@@ -52,7 +52,7 @@ pub enum NetworkRouterDefects {
 pub struct Node {
     pub port: u16,
     pub home: PathBuf,
-    pub fake_node_name: Option<String>,
+    pub fake_node_name: String,
     pub password: Option<String>,
     pub rpc: Option<String>,
     pub runtime_verbose: bool,

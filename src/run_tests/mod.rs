@@ -328,12 +328,9 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
             }
         }
 
-        let mut args = vec![];
+        let mut args = vec!["--fake-node-name", &node.fake_node_name];
         if let Some(ref rpc) = node.rpc {
             args.extend_from_slice(&["--rpc", rpc]);
-        };
-        if let Some(ref fake_node_name) = node.fake_node_name {
-            args.extend_from_slice(&["--fake-node-name", fake_node_name]);
         };
         if let Some(ref password) = node.password {
             args.extend_from_slice(&["--password", password]);
