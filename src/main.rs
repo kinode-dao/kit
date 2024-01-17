@@ -97,6 +97,7 @@ async fn execute(
                 },
             };
             let process: &String = inject_message_matches.get_one("PROCESS").unwrap();
+            let non_block: &bool = inject_message_matches.get_one("NONBLOCK").unwrap();
             let body: &String = inject_message_matches.get_one("BODY_JSON").unwrap();
             let node: Option<&str> = inject_message_matches
                 .get_one("NODE_NAME")
@@ -104,7 +105,14 @@ async fn execute(
             let bytes: Option<&str> = inject_message_matches
                 .get_one("PATH")
                 .and_then(|s: &String| Some(s.as_str()));
-            inject_message::execute(&url, process, body, node, bytes).await
+
+            let expects_response =
+                if *non_block {
+                    None
+                } else {
+                    Some(15)
+                };
+            inject_message::execute(&url, process, expects_response, body, node, bytes).await
         },
         Some(("new", new_matches)) => {
             let new_dir = PathBuf::from(new_matches.get_one::<String>("DIR").unwrap());
@@ -414,6 +422,12 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .long("blob")
                 .help("Send file at Unix path as bytes blob")
                 .required(false)
+            )
+            .arg(Arg::new("NONBLOCK")
+                .action(ArgAction::SetTrue)
+                .short('l')
+                .long("non-block")
+                .help("If set, don't block on the full node response")
             )
         )
         .subcommand(Command::new("new")

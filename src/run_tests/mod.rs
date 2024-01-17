@@ -96,6 +96,7 @@ async fn wait_until_booted(
     for _ in 0..max_waits {
         let request = inject_message::make_message(
             "vfs:distro:sys",
+            Some(15),
             &serde_json::to_string(&serde_json::json!({
                 "path": "/tester:sys/pkg",
                 "action": "ReadDir",
@@ -144,6 +145,7 @@ async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Resu
         let basename = get_basename(path).unwrap();
         let request = inject_message::make_message(
             "vfs:distro:sys",
+            Some(15),
             &serde_json::to_string(&serde_json::json!({
                 "path": format!("/tester:sys/tests/{basename}.wasm"),
                 "action": "Write",
@@ -171,6 +173,7 @@ async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Resu
 
     let request = inject_message::make_message(
         "vfs:distro:sys",
+        Some(15),
         &serde_json::to_string(&serde_json::json!({
             "path": format!("/tester:sys/tests/grant_capabilities.json"),
             "action": "Write",
@@ -201,6 +204,7 @@ async fn run_tests(_test_batch: &str, mut ports: Vec<u16>, node_names: Vec<Strin
     for port in ports {
         let request = inject_message::make_message(
             "tester:tester:sys",
+            Some(15),
             &serde_json::to_string(&serde_json::json!({
                 "Run": {
                     "input_node_names": node_names,
@@ -226,6 +230,7 @@ async fn run_tests(_test_batch: &str, mut ports: Vec<u16>, node_names: Vec<Strin
     println!("Running tests...");
     let request = inject_message::make_message(
         "tester:tester:sys",
+        Some(15),
         &serde_json::to_string(&serde_json::json!({
             "Run": {
                 "input_node_names": node_names,

@@ -24,6 +24,7 @@ fn new_package(
 
     inject_message::make_message(
         "main:app_store:sys",
+        Some(15),
         &message.to_string(),
         node,
         None,
@@ -46,6 +47,7 @@ pub fn interact_with_package(
 
     inject_message::make_message(
         "main:app_store:sys",
+        Some(15),
         &message.to_string(),
         node,
         None,
