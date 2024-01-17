@@ -428,11 +428,12 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
         Runtime::FetchVersion(ref version) => get_runtime_binary(version).await?,
         Runtime::RepoPath(runtime_path) => {
             if !runtime_path.exists() {
-                panic!("kit run-tests: RepoPath {:?} does not exist.", runtime_path);
+                return Err(anyhow::anyhow!(
+                    "RepoPath {:?} does not exist.",
+                    runtime_path,
+                ));
             }
-            if runtime_path.is_file() {
-                panic!("kit run-tests: RepoPath must be a directory (the repo).")
-            } else if runtime_path.is_dir() {
+            if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(
                     &runtime_path,
@@ -440,7 +441,10 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                 )?;
                 runtime_path.join("target/release/kinode")
             } else {
-                panic!("kit run-tests: RepoPath {:?} must be a directory (the repo) or a binary.", runtime_path);
+                return Err(anyhow::anyhow!(
+                    "RepoPath {:?} must be a directory (the repo).",
+                    runtime_path
+                ));
             }
         },
     };

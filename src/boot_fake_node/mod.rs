@@ -14,6 +14,8 @@ use super::run_tests::cleanup::{cleanup, cleanup_on_signal};
 use super::run_tests::network_router;
 use super::run_tests::types::*;
 
+const KINODE_RELEASE_BASE_URL: &str = "https://github.com/uqbar-dao/kinode/releases/download";
+
 fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
     let file = fs::File::open(archive_path)?;
     let mut archive = ZipArchive::new(file)?;
@@ -41,44 +43,9 @@ fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
         }
     }
 
+    fs::remove_file(archive_path)?;
+
     Ok(())
-}
-
-async fn get_commit_history(user: &str, repo: &str) -> anyhow::Result<Vec<serde_json::Value>> {
-    let url = format!(
-        "https://api.github.com/repos/{}/{}/commits",
-        user,
-        repo,
-    );
-
-    let client = reqwest::Client::new();
-    let res = client.get(url)
-        .header("User-Agent", "request")
-        .send()
-        .await?
-        .json::<Vec<serde_json::Value>>()
-        .await?;
-
-    Ok(res)
-}
-
-async fn get_latest_commit_hash(user: &str, repo: &str) -> anyhow::Result<String> {
-    let commits = get_commit_history(user, repo).await?;
-    let latest_commit = commits
-        .get(0)
-        .ok_or_else(|| anyhow::anyhow!("no commits found"))?;
-    latest_commit
-        .get("sha")
-        .and_then(|s| Some(s.to_string()))
-        .ok_or_else(|| anyhow::anyhow!("foo"))
-}
-
-async fn fetch_local_commit_hash(commit_path: &PathBuf) -> anyhow::Result<Option<String>> {
-    if !commit_path.exists() {
-        return Ok(None);
-    }
-    let commit = fs::read_to_string(commit_path)?;
-    Ok(Some(commit))
 }
 
 pub fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
@@ -97,12 +64,13 @@ pub fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
 
 async fn get_runtime_binary_inner(
     version: &str,
-    binary_name: &str,
+    zip_name: &str,
     runtime_dir: &PathBuf,
 ) -> anyhow::Result<()> {
-    let url = format!("https://github.com/uqbar-dao/uqbin/raw/master/{version}/{binary_name}.zip");
+    let url = format!("{KINODE_RELEASE_BASE_URL}/{version}/{zip_name}");
+    println!("{}", url);
 
-    let runtime_zip_path = runtime_dir.join(format!("{}.zip", binary_name));
+    let runtime_zip_path = runtime_dir.join(zip_name);
     let runtime_path = runtime_dir.join("kinode");
 
     build::download_file(&url, &runtime_zip_path).await?;
@@ -120,56 +88,32 @@ async fn get_runtime_binary_inner(
 pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     let uname = Command::new("uname").output()?;
     if !uname.status.success() {
-        panic!("kit: Could not determine OS.");
+        return Err(anyhow::anyhow!("Could not determine OS."));
     }
     let os_name = std::str::from_utf8(&uname.stdout)?.trim();
 
     let uname_p = Command::new("uname").arg("-p").output()?;
     if !uname_p.status.success() {
-        panic!("kit: Could not determine architecture.");
+        return Err(anyhow::anyhow!("kit: Could not determine architecture."));
     }
     let architecture_name = std::str::from_utf8(&uname_p.stdout)?.trim();
 
     // TODO: update when have binaries
-    let binary_name_suffix = match (os_name, architecture_name) {
+    let zip_name_midfix = match (os_name, architecture_name) {
         ("Linux", "x86_64") => "x86_64-unknown-linux-gnu",
-        ("Darwin", "arm") => "arm-apple-darwin",
+        ("Darwin", "arm") => "aarch64-apple-darwin",
         ("Darwin", "i386") => "i386-apple-darwin",
         // ("Darwin", "x86_64") => "x86_64-apple-darwin",
-        _ => panic!("OS/Architecture {}/{} not supported.", os_name, architecture_name),
+        _ => return Err(anyhow::anyhow!("OS/Architecture {}/{} not supported.", os_name, architecture_name)),
     };
-    let binary_name = format!("kinode-{}", binary_name_suffix);
+    let zip_name = format!("kinode-{}-simulation-mode.zip", zip_name_midfix);
 
     let runtime_dir = PathBuf::from(format!("/tmp/kinode-{}", version));
-    let local_commit_path = runtime_dir.join("commit.txt");
     let runtime_path = runtime_dir.join("kinode");
-    let local_commit_hash = fetch_local_commit_hash(&local_commit_path).await?;
-    // enable offline boot-fake-node:
-    //  if online, fetch latest hash from github;
-    //  else if we have a local version, just use that
-    let latest_commit_hash = match get_latest_commit_hash("uqbar-dao", "uqbin").await {
-        Ok(s) => Ok(s),
-        Err(e) => {
-            match e.downcast_ref::<reqwest::Error>() {
-                None => Err(e),
-                Some(ee) => {
-                    if ee.is_connect() {
-                        if let Some(local_commit_hash) = local_commit_hash.clone() {
-                            Ok(local_commit_hash)
-                        } else {
-                            Err(e)
-                        }
-                    } else {
-                        Err(e)
-                    }
-                },
-            }
-        },
-    }?;
-    if !(runtime_dir.exists() && local_commit_hash == Some(latest_commit_hash.clone())) {
+
+    if !runtime_dir.exists() {
         fs::create_dir_all(&runtime_dir)?;
-        fs::write(local_commit_path, latest_commit_hash)?;
-        get_runtime_binary_inner(version, &binary_name, &runtime_dir).await?;
+        get_runtime_binary_inner(version, &zip_name, &runtime_dir).await?;
     }
 
     Ok(runtime_path)
@@ -225,16 +169,20 @@ pub async fn execute(
         None => get_runtime_binary(&version).await?,
         Some(runtime_path) => {
             if !runtime_path.exists() {
-                panic!("kit boot-fake-node: RepoPath {:?} does not exist.", runtime_path);
+                return Err(anyhow::anyhow!(
+                    "--runtime-path {:?} does not exist.",
+                    runtime_path,
+                ));
             }
-            if runtime_path.is_file() {
-                panic!("kit boot-fake-node: --runtime-path must be a directory (the repo).")
-            } else if runtime_path.is_dir() {
+            if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(&runtime_path, true)?;
                 runtime_path.join("target/release/kinode")
             } else {
-                panic!("kit boot-fake-node: --runtime-path {:?} must be a directory (the repo).", runtime_path);
+                return Err(anyhow::anyhow!(
+                    "--runtime-path {:?} must be a directory (the repo).",
+                    runtime_path,
+                ));
             }
         },
     };

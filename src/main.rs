@@ -222,7 +222,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .short('v')
                 .long("version")
                 .help("Version of Kinode binary to use (overridden by --runtime-path)")
-                .default_value("0.4.0")
+                .default_value("v0.5.0-alpha")
             )
             .arg(Arg::new("NODE_PORT")
                 .action(ArgAction::Set)
