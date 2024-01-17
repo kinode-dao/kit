@@ -79,8 +79,8 @@ fn handle_http_server_request(
             )?;
         }
         HttpServerRequest::WebSocketClose(_channel_id) => {}
-        HttpServerRequest::Http(IncomingHttpRequest { method, .. }) => {
-            match method.as_str() {
+        HttpServerRequest::Http(request) => {
+            match request.method()?.as_str() {
                 // Get all messages
                 "GET" => {
                     let mut headers = HashMap::new();
