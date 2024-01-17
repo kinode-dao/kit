@@ -65,7 +65,7 @@ pub async fn send_request(
     url: &str,
     json_data: Value,
 ) -> anyhow::Result<reqwest::Response> {
-    let endpoint = "/rpc:sys:nectar/message";
+    let endpoint = "/rpc:distro:sys/message";
     let mut url = url.to_string();
     let url =
         if url.ends_with(endpoint) {

@@ -82,7 +82,7 @@ async fn fetch_local_commit_hash(commit_path: &PathBuf) -> anyhow::Result<Option
 }
 
 pub fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
-    println!("Compiling Nectar runtime...");
+    println!("Compiling Kinode runtime...");
 
     build::run_command(Command::new("cargo")
         .args(&["+nightly", "build", "--release", "--features", "simulation-mode"])
@@ -91,7 +91,7 @@ pub fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling Nectar runtime.");
+    println!("Done compiling Kinode runtime.");
     Ok(())
 }
 
@@ -103,7 +103,7 @@ async fn get_runtime_binary_inner(
     let url = format!("https://github.com/uqbar-dao/uqbin/raw/master/{version}/{binary_name}.zip");
 
     let runtime_zip_path = runtime_dir.join(format!("{}.zip", binary_name));
-    let runtime_path = runtime_dir.join("nectar");
+    let runtime_path = runtime_dir.join("kinode");
 
     build::download_file(&url, &runtime_zip_path).await?;
     extract_zip(&runtime_zip_path)?;
@@ -138,11 +138,11 @@ pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
         // ("Darwin", "x86_64") => "x86_64-apple-darwin",
         _ => panic!("OS/Architecture {}/{} not supported.", os_name, architecture_name),
     };
-    let binary_name = format!("nectar-{}", binary_name_suffix);
+    let binary_name = format!("kinode-{}", binary_name_suffix);
 
-    let runtime_dir = PathBuf::from(format!("/tmp/nectar-{}", version));
+    let runtime_dir = PathBuf::from(format!("/tmp/kinode-{}", version));
     let local_commit_path = runtime_dir.join("commit.txt");
-    let runtime_path = runtime_dir.join("nectar");
+    let runtime_path = runtime_dir.join("kinode");
     let local_commit_hash = fetch_local_commit_hash(&local_commit_path).await?;
     // enable offline boot-fake-node:
     //  if online, fetch latest hash from github;
@@ -232,7 +232,7 @@ pub async fn execute(
             } else if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(&runtime_path, true)?;
-                runtime_path.join("target/release/nectar")
+                runtime_path.join("target/release/kinode")
             } else {
                 panic!("kit boot-fake-node: --runtime-path {:?} must be a directory (the repo).", runtime_path);
             }

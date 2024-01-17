@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
-use nectar_process_lib::{await_message, call_init, println, Address, Message, ProcessId, Request, Response};
+use kinode_process_lib::{await_message, call_init, println, Address, Message, ProcessId, Request, Response};
 
 wit_bindgen::generate!({
     path: "wit",

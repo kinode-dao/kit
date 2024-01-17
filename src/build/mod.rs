@@ -11,7 +11,7 @@ const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
 const PYTHON_SRC_PATH: &str = "src/lib.py";
 const RUST_SRC_PATH: &str = "src/lib.rs";
-const NECTAR_WIT_URL: &str = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/nectar.wit";
+const KINODE_WIT_URL: &str = "https://raw.githubusercontent.com/uqbar-dao/kinode-wit/master/kinode.wit";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
@@ -62,10 +62,10 @@ async fn compile_javascript_wasm_process(
     process_dir: &Path,
     verbose: bool,
 ) -> anyhow::Result<()> {
-    println!("Compiling Javascript Nectar process in {:?}...", process_dir);
+    println!("Compiling Javascript Kinode process in {:?}...", process_dir);
     let wit_dir = process_dir.join("wit");
     fs::create_dir_all(&wit_dir)?;
-    download_file(NECTAR_WIT_URL, &wit_dir.join("nectar.wit")).await?;
+    download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
     let wasm_file_name = process_dir
         .file_name()
@@ -86,7 +86,7 @@ async fn compile_javascript_wasm_process(
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling Javascript Nectar process in {:?}.", process_dir);
+    println!("Done compiling Javascript Kinode process in {:?}.", process_dir);
     Ok(())
 }
 
@@ -95,10 +95,10 @@ async fn compile_python_wasm_process(
     python: &str,
     verbose: bool,
 ) -> anyhow::Result<()> {
-    println!("Compiling Python Nectar process in {:?}...", process_dir);
+    println!("Compiling Python Kinode process in {:?}...", process_dir);
     let wit_dir = process_dir.join("wit");
     fs::create_dir_all(&wit_dir)?;
-    download_file(NECTAR_WIT_URL, &wit_dir.join("nectar.wit")).await?;
+    download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
     let wasm_file_name = process_dir
         .file_name()
@@ -121,7 +121,7 @@ async fn compile_python_wasm_process(
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling Python Nectar process in {:?}.", process_dir);
+    println!("Done compiling Python Kinode process in {:?}.", process_dir);
     Ok(())
 }
 
@@ -129,7 +129,7 @@ async fn compile_rust_wasm_process(
     process_dir: &Path,
     verbose: bool,
 ) -> anyhow::Result<()> {
-    println!("Compiling Rust Nectar process in {:?}...", process_dir);
+    println!("Compiling Rust Kinode process in {:?}...", process_dir);
 
     // Paths
     let bindings_dir = process_dir
@@ -141,10 +141,10 @@ async fn compile_rust_wasm_process(
     // Ensure the bindings directory exists
     fs::create_dir_all(&bindings_dir)?;
 
-    // Check and download nectar.wit if wit_dir does not exist
+    // Check and download kinode.wit if wit_dir does not exist
     //if !wit_dir.exists() { // TODO: do a smarter check; this check will fail when remote has updated v
     fs::create_dir_all(&wit_dir)?;
-    download_file(NECTAR_WIT_URL, &wit_dir.join("nectar.wit")).await?;
+    download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
     // Check and download wasi_snapshot_preview1.wasm if it does not exist
     let wasi_snapshot_file = process_dir.join("wasi_snapshot_preview1.wasm");
@@ -232,7 +232,7 @@ async fn compile_rust_wasm_process(
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling Rust Nectar process in {:?}.", process_dir);
+    println!("Done compiling Rust Kinode process in {:?}.", process_dir);
     Ok(())
 }
 
@@ -279,27 +279,39 @@ fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> 
     Ok(())
 }
 
-async fn compile_package_and_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
+async fn compile_package_and_ui(
+    package_dir: &Path,
+    verbose: bool,
+    skip_deps_check: bool,
+) -> anyhow::Result<()> {
     compile_and_copy_ui(package_dir, verbose)?;
-    compile_package(package_dir, verbose).await?;
+    compile_package(package_dir, verbose, skip_deps_check).await?;
     Ok(())
 }
 
-async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
+async fn compile_package(
+    package_dir: &Path,
+    verbose: bool,
+    skip_deps_check: bool,
+) -> anyhow::Result<()> {
     for entry in package_dir.read_dir()? {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir() {
             if path.join(RUST_SRC_PATH).exists() {
-                let deps = check_rust_deps()?;
-                get_deps(deps)?;
+                if !skip_deps_check {
+                    let deps = check_rust_deps()?;
+                    get_deps(deps)?;
+                }
                 compile_rust_wasm_process(&path, verbose).await?;
             } else if path.join(PYTHON_SRC_PATH).exists() {
                 let python = check_py_deps()?;
                 compile_python_wasm_process(&path, &python, verbose).await?;
             } else if path.join(JAVASCRIPT_SRC_PATH).exists() {
-                let deps = check_js_deps()?;
-                get_deps(deps)?;
+                if !skip_deps_check {
+                    let deps = check_js_deps()?;
+                    get_deps(deps)?;
+                }
                 compile_javascript_wasm_process(&path, verbose).await?;
             }
         }
@@ -308,7 +320,12 @@ async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Result<()
     Ok(())
 }
 
-pub async fn execute(package_dir: &Path, ui_only: bool, verbose: bool) -> anyhow::Result<()> {
+pub async fn execute(
+    package_dir: &Path,
+    ui_only: bool,
+    verbose: bool,
+    skip_deps_check: bool,
+) -> anyhow::Result<()> {
     if !package_dir.join("pkg").exists() {
         return Err(anyhow::anyhow!(
             "Required `pkg/` dir not found within given input dir {:?} (or cwd, if none given). Please re-run targeting a package.",
@@ -320,15 +337,17 @@ pub async fn execute(package_dir: &Path, ui_only: bool, verbose: bool) -> anyhow
         if ui_only {
             return Err(anyhow::anyhow!("kit build: can't build UI: no ui directory exists"));
         } else {
-            compile_package(package_dir, verbose).await
+            compile_package(package_dir, verbose, skip_deps_check).await
         }
     } else {
-        let deps = check_js_deps()?;
-        get_deps(deps)?;
+        if !skip_deps_check {
+            let deps = check_js_deps()?;
+            get_deps(deps)?;
+        }
         if ui_only {
             compile_and_copy_ui(package_dir, verbose)
         } else {
-            compile_package_and_ui(package_dir, verbose).await
+            compile_package_and_ui(package_dir, verbose, skip_deps_check).await
         }
     }
 }

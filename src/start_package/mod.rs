@@ -1,7 +1,7 @@
 use std::fs;
 use std::io;
 use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use serde_json::json;
 use walkdir::WalkDir;
@@ -23,7 +23,7 @@ fn new_package(
     });
 
     inject_message::make_message(
-        "main:app_store:nectar",
+        "main:app_store:sys",
         Some(15),
         &message.to_string(),
         node,
@@ -46,7 +46,7 @@ pub fn interact_with_package(
     });
 
     inject_message::make_message(
-        "main:app_store:nectar",
+        "main:app_store:sys",
         Some(15),
         &message.to_string(),
         node,
@@ -87,7 +87,7 @@ fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn execute(package_dir: PathBuf, url: &str) -> anyhow::Result<()> {
+pub async fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
     if !package_dir.join("pkg").exists() {
         return Err(anyhow::anyhow!(
             "Required `pkg/` dir not found within given input dir {:?} (or cwd, if none given). Please re-run targeting a package.",

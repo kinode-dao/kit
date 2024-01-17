@@ -49,8 +49,8 @@ fn make_node_names(nodes: Vec<Node>) -> anyhow::Result<Vec<String>> {
         .map(|node| get_basename(&node.home)
             .and_then(|base| Some(base.to_string()))
             .and_then(|mut base| {
-                if !base.ends_with(".nec") {
-                    base.push_str(".nec");
+                if !base.ends_with(".os") {
+                    base.push_str(".os");
                 }
                 Some(base)
             })
@@ -95,10 +95,10 @@ async fn wait_until_booted(
 ) -> anyhow::Result<()> {
     for _ in 0..max_waits {
         let request = inject_message::make_message(
-            "vfs:sys:nectar",
+            "vfs:distro:sys",
             Some(15),
             &serde_json::to_string(&serde_json::json!({
-                "path": "/tester:nectar/pkg",
+                "path": "/tester:sys/pkg",
                 "action": "ReadDir",
             })).unwrap(),
             None,
@@ -124,17 +124,14 @@ async fn wait_until_booted(
             }
         };
     }
-    Err(anyhow::anyhow!("kit run-tests: could not connect to Nectar node"))
+    Err(anyhow::anyhow!("kit run-tests: could not connect to Kinode"))
 }
 
 async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> {
     println!("Loading setup packages...");
 
     for setup_path in setup_paths {
-        start_package::execute(
-            setup_path.clone(),
-            &format!("http://localhost:{}", port),
-        ).await?;
+        start_package::execute(&setup_path, &format!("http://localhost:{}", port)).await?;
     }
 
     println!("Done loading setup packages.");
@@ -147,10 +144,10 @@ async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Resu
     for TestPackage { ref path, .. } in test_packages {
         let basename = get_basename(path).unwrap();
         let request = inject_message::make_message(
-            "vfs:sys:nectar",
+            "vfs:distro:sys",
             Some(15),
             &serde_json::to_string(&serde_json::json!({
-                "path": format!("/tester:nectar/tests/{basename}.wasm"),
+                "path": format!("/tester:sys/tests/{basename}.wasm"),
                 "action": "Write",
             })).unwrap(),
             None,
@@ -175,10 +172,10 @@ async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Resu
     let grant_caps = serde_json::to_vec(&grant_caps)?;
 
     let request = inject_message::make_message(
-        "vfs:sys:nectar",
+        "vfs:distro:sys",
         Some(15),
         &serde_json::to_string(&serde_json::json!({
-            "path": format!("/tester:nectar/tests/grant_capabilities.json"),
+            "path": format!("/tester:sys/tests/grant_capabilities.json"),
             "action": "Write",
         })).unwrap(),
         None,
@@ -206,7 +203,7 @@ async fn run_tests(_test_batch: &str, mut ports: Vec<u16>, node_names: Vec<Strin
     // Set up non-master nodes.
     for port in ports {
         let request = inject_message::make_message(
-            "tester:tester:nectar",
+            "tester:tester:sys",
             Some(15),
             &serde_json::to_string(&serde_json::json!({
                 "Run": {
@@ -232,7 +229,7 @@ async fn run_tests(_test_batch: &str, mut ports: Vec<u16>, node_names: Vec<Strin
     // Set up master node & start tests.
     println!("Running tests...");
     let request = inject_message::make_message(
-        "tester:tester:nectar",
+        "tester:tester:sys",
         Some(15),
         &serde_json::to_string(&serde_json::json!({
             "Run": {
@@ -277,10 +274,10 @@ async fn run_tests(_test_batch: &str, mut ports: Vec<u16>, node_names: Vec<Strin
 
 async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow::Result<()> {
     for setup_package_path in &test.setup_package_paths {
-        build::execute(&setup_package_path, false, test.package_build_verbose).await?;
+        build::execute(&setup_package_path, false, test.package_build_verbose, false).await?;
     }
     for TestPackage { ref path, .. } in &test.test_packages {
-        build::execute(path, false, test.package_build_verbose).await?;
+        build::execute(path, false, test.package_build_verbose, false).await?;
     }
 
     // Initialize variables for master node and nodes list
@@ -336,12 +333,9 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
             }
         }
 
-        let mut args = vec![];
+        let mut args = vec!["--fake-node-name", &node.fake_node_name];
         if let Some(ref rpc) = node.rpc {
             args.extend_from_slice(&["--rpc", rpc]);
-        };
-        if let Some(ref fake_node_name) = node.fake_node_name {
-            args.extend_from_slice(&["--fake-node-name", fake_node_name]);
         };
         if let Some(ref password) = node.password {
             args.extend_from_slice(&["--password", password]);
@@ -428,7 +422,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                     &runtime_path,
                     config.runtime_build_verbose,
                 )?;
-                runtime_path.join("target/release/nectar")
+                runtime_path.join("target/release/kinode")
             } else {
                 panic!("kit run-tests: RepoPath {:?} must be a directory (the repo) or a binary.", runtime_path);
             }

@@ -1,12 +1,12 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
 use std::process;
 
 use super::inject_message;
 use super::start_package::interact_with_package;
 
 pub async fn execute(
-    project_dir: PathBuf,
+    project_dir: &Path,
     url: &str,
     arg_package_name: Option<&str>,
     arg_publisher: Option<&str>,

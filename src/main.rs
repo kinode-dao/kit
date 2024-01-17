@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 mod boot_fake_node;
 mod build;
+mod build_start_package;
 mod dev_ui;
 mod inject_message;
 mod new;
@@ -46,10 +47,33 @@ async fn execute(
         },
         Some(("build", build_matches)) => {
             let package_dir = PathBuf::from(build_matches.get_one::<String>("DIR").unwrap());
-            let ui_only = build_matches.get_one::<bool>("UI_ONLY").unwrap_or(&false);
+            let ui_only = build_matches.get_one::<bool>("UI_ONLY").unwrap();
             let verbose = !build_matches.get_one::<bool>("QUIET").unwrap();
+            let skip_deps_check = build_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
 
-            build::execute(&package_dir, *ui_only, verbose).await
+            build::execute(&package_dir, *ui_only, verbose, *skip_deps_check).await
+        },
+        Some(("build-start-package", build_start_matches)) => {
+
+            let package_dir = PathBuf::from(build_start_matches.get_one::<String>("DIR").unwrap());
+            let ui_only = build_start_matches.get_one::<bool>("UI_ONLY").unwrap_or(&false);
+            let verbose = !build_start_matches.get_one::<bool>("QUIET").unwrap();
+            let url: String = match build_start_matches.get_one::<String>("URL") {
+                Some(url) => url.clone(),
+                None => {
+                    let port = build_start_matches.get_one::<u16>("NODE_PORT").unwrap();
+                    format!("http://localhost:{}", port)
+                },
+            };
+            let skip_deps_check = build_start_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
+
+            build_start_package::execute(
+                &package_dir,
+                *ui_only,
+                verbose,
+                &url,
+                *skip_deps_check,
+            ).await
         },
         Some(("dev-ui", dev_ui_matches)) => {
             let package_dir = PathBuf::from(dev_ui_matches.get_one::<String>("DIR").unwrap());
@@ -60,8 +84,9 @@ async fn execute(
                     format!("http://localhost:{}", port)
                 },
             };
+            let skip_deps_check = dev_ui_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
 
-            dev_ui::execute(&package_dir, &url)
+            dev_ui::execute(&package_dir, &url, *skip_deps_check)
         },
         Some(("inject-message", inject_message_matches)) => {
             let url: String = match inject_message_matches.get_one::<String>("URL") {
@@ -138,7 +163,7 @@ async fn execute(
                     format!("http://localhost:{}", port)
                 },
             };
-            remove_package::execute(package_dir, &url, package_name, publisher).await
+            remove_package::execute(&package_dir, &url, package_name, publisher).await
         },
         Some(("setup", _setup_matches)) => setup::execute(),
         Some(("start-package", start_package_matches)) => {
@@ -150,7 +175,7 @@ async fn execute(
                     format!("http://localhost:{}", port)
                 },
             };
-            start_package::execute(package_dir, &url).await
+            start_package::execute(&package_dir, &url).await
         },
         Some(("update", update_matches)) => {
             let args = update_matches.get_many::<String>("ARGUMENTS")
@@ -172,7 +197,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
     command!()
         .name("kit")
         .version(env!("CARGO_PKG_VERSION"))
-        .about("Development tool\x1b[1mkit\x1b[0m for NectarOS")
+        .about("Development tool\x1b[1mkit\x1b[0m for Kinode")
         .subcommand_required(true)
         .arg_required_else_help(true)
         .disable_version_flag(true)
@@ -190,13 +215,13 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .action(ArgAction::Set)
                 .short('r')
                 .long("runtime-path")
-                .help("Path to Nectar core repo or runtime binary (overrides --version)")
+                .help("Path to Kinode core repo or runtime binary (overrides --version)")
             )
             .arg(Arg::new("VERSION")
                 .action(ArgAction::Set)
                 .short('v')
                 .long("version")
-                .help("Version of Nectar binary to use (overridden by --runtime-path)")
+                .help("Version of Kinode binary to use (overridden by --runtime-path)")
                 .default_value("0.4.0")
             )
             .arg(Arg::new("NODE_PORT")
@@ -212,14 +237,14 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .short('h')
                 .long("home")
                 .help("Where to place the home directory for the fake node")
-                .default_value("/tmp/nectar-fake-node")
+                .default_value("/tmp/kinode-fake-node")
             )
             .arg(Arg::new("NODE_NAME")
                 .action(ArgAction::Set)
                 .short('f')
                 .long("fake-node-name")
                 .help("Name for fake node")
-                .default_value("fake.nec")
+                .default_value("fake.os")
             )
             .arg(Arg::new("NETWORK_ROUTER_PORT")
                 .action(ArgAction::Set)
@@ -237,7 +262,8 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             .arg(Arg::new("PERSIST")
                 .action(ArgAction::SetTrue)
                 .long("persist")
-                .help("Do not delete node home after exit")
+                .help("If set, do not delete node home after exit")
+                .required(false)
             )
             .arg(Arg::new("PASSWORD")
                 .action(ArgAction::Set)
@@ -252,7 +278,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             )
         )
         .subcommand(Command::new("build")
-            .about("Build a Nectar package")
+            .about("Build a Kinode package")
             .visible_alias("b")
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
@@ -270,6 +296,57 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .short('q')
                 .long("quiet")
                 .help("If set, do not print build stdout/stderr")
+                .required(false)
+            )
+            .arg(Arg::new("SKIP_DEPS_CHECK")
+                .action(ArgAction::SetTrue)
+                .short('s')
+                .long("skip-deps-check")
+                .help("If set, do not check for dependencies")
+                .required(false)
+            )
+        )
+        .subcommand(Command::new("build-start-package")
+            .about("Build and start a Kinode package")
+            .visible_alias("bs")
+            .arg(Arg::new("DIR")
+                .action(ArgAction::Set)
+                .help("The package directory to build")
+                .default_value(current_dir)
+            )
+            .arg(Arg::new("NODE_PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("Node port: for use on localhost (overridden by URL)")
+                .default_value("8080")
+                .value_parser(value_parser!(u16))
+            )
+            .arg(Arg::new("URL")
+                .action(ArgAction::Set)
+                .short('u')
+                .long("url")
+                .help("Node URL (overrides NODE_PORT)")
+                .required(false)
+            )
+            .arg(Arg::new("UI_ONLY")
+                .action(ArgAction::SetTrue)
+                .long("ui-only")
+                .help("If set, build ONLY the web UI for the process")
+                .required(false)
+            )
+            .arg(Arg::new("QUIET")
+                .action(ArgAction::SetTrue)
+                .short('q')
+                .long("quiet")
+                .help("If set, do not print build stdout/stderr")
+                .required(false)
+            )
+            .arg(Arg::new("SKIP_DEPS_CHECK")
+                .action(ArgAction::SetTrue)
+                .short('s')
+                .long("skip-deps-check")
+                .help("If set, do not check for dependencies")
                 .required(false)
             )
         )
@@ -295,11 +372,17 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .long("url")
                 .help("Node URL (overrides NODE_PORT)")
                 .required(false)
-                //.default_value("http://localhost:8080")
+            )
+            .arg(Arg::new("SKIP_DEPS_CHECK")
+                .action(ArgAction::SetTrue)
+                .short('s')
+                .long("skip-deps-check")
+                .help("If set, do not check for dependencies")
+                .required(false)
             )
         )
         .subcommand(Command::new("inject-message")
-            .about("Inject a message to a running Nectar node")
+            .about("Inject a message to a running Kinode")
             .visible_alias("i")
             .arg(Arg::new("PROCESS")
                 .action(ArgAction::Set)
@@ -348,7 +431,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             )
         )
         .subcommand(Command::new("new")
-            .about("Create a Nectar template package")
+            .about("Create a Kinode template package")
             .visible_alias("n")
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
@@ -366,7 +449,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .short('u')
                 .long("publisher")
                 .help("Name of the publisher")
-                .default_value("template.nec")
+                .default_value("template.os")
             )
             .arg(Arg::new("LANGUAGE")
                 .action(ArgAction::Set)
@@ -392,7 +475,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             )
         )
         .subcommand(Command::new("run-tests")
-            .about("Run Nectar tests")
+            .about("Run Kinode tests")
             .visible_alias("t")
             .arg(Arg::new("PATH")
                 .action(ArgAction::Set)
@@ -442,7 +525,7 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
             .about("Fetch & setup kit dependencies")
         )
         .subcommand(Command::new("start-package")
-            .about("Start a built Nectar process")
+            .about("Start a built Kinode process")
             .visible_alias("s")
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
@@ -463,7 +546,6 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .long("url")
                 .help("Node URL (overrides NODE_PORT)")
                 .required(false)
-                //.default_value("http://localhost:8080")
             )
         )
         .subcommand(Command::new("update")
@@ -499,7 +581,7 @@ async fn main() -> anyhow::Result<()> {
                 None => {},
                 Some(e) => {
                     if e.is_connect() {
-                        println!("kit: error connecting; is Nectar node running?");
+                        println!("kit: error connecting; is Kinode running?");
                         return Ok(());
                     }
                 },

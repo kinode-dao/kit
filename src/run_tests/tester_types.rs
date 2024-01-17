@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use nectar_process_lib::kernel_types as kt;
-use nectar_process_lib::Address;
+use kinode_process_lib::kernel_types as kt;
+use kinode_process_lib::Address;
 
 type Rsvp = Option<Address>;
 

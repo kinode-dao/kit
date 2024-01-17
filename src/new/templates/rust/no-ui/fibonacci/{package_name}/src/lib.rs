@@ -1,6 +1,6 @@
 use serde::{Serialize, Deserialize};
 
-use nectar_process_lib::{await_message, call_init, println, Address, Message, Response};
+use kinode_process_lib::{await_message, call_init, println, Address, Message, Response};
 
 wit_bindgen::generate!({
     path: "wit",
