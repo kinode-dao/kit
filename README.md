@@ -1,6 +1,6 @@
 # kit
 
-Tool**kit** for developing on The OS.
+Tool**kit** for developing on Kinode OS.
 
 ## Installing
 
