@@ -1,10 +1,17 @@
 use std::fs::{self, File};
-use std::io;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 use reqwest;
 use serde::{Serialize, Deserialize};
+
+use super::setup::{check_js_deps, check_py_deps, check_rust_deps, get_deps, REQUIRED_PY_PACKAGE};
+
+const PY_VENV_NAME: &str = "process_env";
+const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
+const PYTHON_SRC_PATH: &str = "src/lib.py";
+const RUST_SRC_PATH: &str = "src/lib.rs";
+const KINODE_WIT_URL: &str = "https://raw.githubusercontent.com/uqbar-dao/kinode-wit/master/kinode.wit";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
@@ -16,12 +23,24 @@ struct CargoPackage {
     name: String,
 }
 
-pub fn run_command(cmd: &mut Command) -> io::Result<()> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Metadata {
+    package: String,
+    publisher: String,
+    version: [u32; 3],
+}
+
+pub fn run_command(cmd: &mut Command) -> anyhow::Result<()> {
     let status = cmd.status()?;
     if status.success() {
         Ok(())
     } else {
-        Err(io::Error::new(io::ErrorKind::Other, "Command failed"))
+        Err(anyhow::anyhow!(
+            "Command `{} {:?}` failed with exit code {}",
+            cmd.get_program().to_str().unwrap(),
+            cmd.get_args().map(|a| a.to_str().unwrap()).collect::<Vec<_>>(),
+            status.code().unwrap(),
+        ))
     }
 }
 
@@ -39,60 +58,78 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
-    let ui_path = package_dir.join("ui");
-    println!("Building UI in {:?}...", ui_path);
+async fn compile_javascript_wasm_process(
+    process_dir: &Path,
+    verbose: bool,
+) -> anyhow::Result<()> {
+    println!("Compiling Javascript Kinode process in {:?}...", process_dir);
+    let wit_dir = process_dir.join("wit");
+    fs::create_dir_all(&wit_dir)?;
+    download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
-    if ui_path.exists() && ui_path.is_dir() && ui_path.join("package.json").exists() {
-        println!("UI directory found, running npm install...");
+    let wasm_file_name = process_dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap();
 
-        // Set the current directory to 'ui_path' for the command
-        run_command(Command::new("npm")
-            .arg("install")
-            .current_dir(&ui_path) // Set the working directory
-            .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-            .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
-        )?;
+    run_command(Command::new("npm")
+        .arg("install")
+        .current_dir(process_dir)
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+    )?;
 
-        println!("Running npm run build:copy...");
+    run_command(Command::new("node")
+        .args(&["componentize.mjs", wasm_file_name])
+        .current_dir(process_dir)
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+    )?;
 
-        // Similarly for 'npm run build:copy'
-        run_command(Command::new("npm")
-            .args(["run", "build:copy"])
-            .current_dir(&ui_path) // Set the working directory
-            .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-            .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
-        )?;
-    } else {
-        println!("'ui' directory not found or 'ui/package.json' does not exist");
-    }
-
+    println!("Done compiling Javascript Kinode process in {:?}.", process_dir);
     Ok(())
 }
 
-pub async fn compile_package_and_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
-    compile_package(package_dir, verbose).await?;
-    compile_and_copy_ui(package_dir, verbose)?;
+async fn compile_python_wasm_process(
+    process_dir: &Path,
+    python: &str,
+    verbose: bool,
+) -> anyhow::Result<()> {
+    println!("Compiling Python Kinode process in {:?}...", process_dir);
+    let wit_dir = process_dir.join("wit");
+    fs::create_dir_all(&wit_dir)?;
+    download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
+
+    let wasm_file_name = process_dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap();
+
+    run_command(Command::new(python)
+        .args(&["-m", "venv", PY_VENV_NAME])
+        .current_dir(process_dir)
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+    )?;
+    run_command(Command::new("bash")
+        .args(&[
+            "-c",
+            &format!("source ../{PY_VENV_NAME}/bin/activate && pip install {REQUIRED_PY_PACKAGE} && componentize-py -d ../wit/ -w process componentize lib -o ../../pkg/{wasm_file_name}.wasm"),
+        ])
+        .current_dir(process_dir.join("src"))
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+    )?;
+
+    println!("Done compiling Python Kinode process in {:?}.", process_dir);
     Ok(())
 }
 
-pub async fn compile_package(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
-    // TODO: When expanding to other languages, will no longer be
-    //       able to use Cargo.toml as indicator of a process dir
-    // Look for subdirectories containing `Cargo.toml`
-    for entry in package_dir.read_dir()? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() && path.join("Cargo.toml").exists() {
-            compile_wasm_project(&path, verbose).await?;
-        }
-    }
-
-    Ok(())
-}
-
-async fn compile_wasm_project(process_dir: &Path, verbose: bool) -> anyhow::Result<()> {
-    println!("Compiling Uqbar process in {:?}...", process_dir);
+async fn compile_rust_wasm_process(
+    process_dir: &Path,
+    verbose: bool,
+) -> anyhow::Result<()> {
+    println!("Compiling Rust Kinode process in {:?}...", process_dir);
 
     // Paths
     let bindings_dir = process_dir
@@ -104,12 +141,10 @@ async fn compile_wasm_project(process_dir: &Path, verbose: bool) -> anyhow::Resu
     // Ensure the bindings directory exists
     fs::create_dir_all(&bindings_dir)?;
 
-    // Check and download uqbar.wit if wit_dir does not exist
+    // Check and download kinode.wit if wit_dir does not exist
     //if !wit_dir.exists() { // TODO: do a smarter check; this check will fail when remote has updated v
     fs::create_dir_all(&wit_dir)?;
-    // let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/master/uqbar.wit";
-    let uqbar_wit_url = "https://raw.githubusercontent.com/uqbar-dao/uqwit/2bb0a6b3b860545871cd53f607ef2b4e1da7a451/uqbar.wit";
-    download_file(uqbar_wit_url, &wit_dir.join("uqbar.wit")).await?;
+    download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
     // Check and download wasi_snapshot_preview1.wasm if it does not exist
     let wasi_snapshot_file = process_dir.join("wasi_snapshot_preview1.wasm");
@@ -157,21 +192,16 @@ async fn compile_wasm_project(process_dir: &Path, verbose: bool) -> anyhow::Resu
     // Adapt the module using wasm-tools
 
     // For use inside of process_dir
-    let wasm_file_name = {
-        let cargo_path = process_dir.join("Cargo.toml");
-        let cargo_contents = fs::read_to_string(cargo_path)?;
-        let cargo_parsed = toml::from_str::<CargoFile>(&cargo_contents)?;
-        cargo_parsed.package.name
-    };
+    let wasm_file_name = process_dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap();
+
     let wasm_file_prefix = Path::new("target/wasm32-wasi/release");
     let wasm_file = wasm_file_prefix
-        .clone()
         .join(&format!("{}.wasm", wasm_file_name));
-        // .join(&format!("{}.wasm", process_dir.file_name().unwrap().to_str().unwrap()));
     let adapted_wasm_file = wasm_file_prefix
-        .clone()
         .join(&format!("{}_adapted.wasm", wasm_file_name));
-        // .join(&format!("{}_adapted.wasm", process_dir.file_name().unwrap().to_str().unwrap()));
 
     let wasi_snapshot_file = Path::new("wasi_snapshot_preview1.wasm");
 
@@ -202,6 +232,122 @@ async fn compile_wasm_project(process_dir: &Path, verbose: bool) -> anyhow::Resu
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling WASM project in {:?}.", process_dir);
+    println!("Done compiling Rust Kinode process in {:?}.", process_dir);
     Ok(())
+}
+
+fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
+    let ui_path = package_dir.join("ui");
+    println!("Building UI in {:?}...", ui_path);
+
+    if ui_path.exists() && ui_path.is_dir() {
+        if ui_path.join("package.json").exists() {
+            println!("UI directory found, running npm install...");
+
+            run_command(Command::new("npm")
+                .arg("install")
+                .current_dir(&ui_path)
+                .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+                .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+            )?;
+
+            println!("Running npm run build:copy...");
+
+            run_command(Command::new("npm")
+                .args(["run", "build:copy"])
+                .current_dir(&ui_path)
+                .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+                .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+            )?;
+        } else {
+            let pkg_ui_path = package_dir.join("pkg/ui");
+            if pkg_ui_path.exists() {
+                fs::remove_dir_all(&pkg_ui_path)?;
+            }
+            run_command(Command::new("cp")
+                .args(["-r", "ui", "pkg/ui"])
+                .current_dir(&package_dir)
+                .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+                .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+            )?;
+        }
+    } else {
+        println!("'ui' directory not found");
+    }
+
+    println!("Done building UI in {:?}.", ui_path);
+    Ok(())
+}
+
+async fn compile_package_and_ui(
+    package_dir: &Path,
+    verbose: bool,
+    skip_deps_check: bool,
+) -> anyhow::Result<()> {
+    compile_and_copy_ui(package_dir, verbose)?;
+    compile_package(package_dir, verbose, skip_deps_check).await?;
+    Ok(())
+}
+
+async fn compile_package(
+    package_dir: &Path,
+    verbose: bool,
+    skip_deps_check: bool,
+) -> anyhow::Result<()> {
+    for entry in package_dir.read_dir()? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            if path.join(RUST_SRC_PATH).exists() {
+                if !skip_deps_check {
+                    let deps = check_rust_deps()?;
+                    get_deps(deps)?;
+                }
+                compile_rust_wasm_process(&path, verbose).await?;
+            } else if path.join(PYTHON_SRC_PATH).exists() {
+                let python = check_py_deps()?;
+                compile_python_wasm_process(&path, &python, verbose).await?;
+            } else if path.join(JAVASCRIPT_SRC_PATH).exists() {
+                if !skip_deps_check {
+                    let deps = check_js_deps()?;
+                    get_deps(deps)?;
+                }
+                compile_javascript_wasm_process(&path, verbose).await?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn execute(
+    package_dir: &Path,
+    ui_only: bool,
+    verbose: bool,
+    skip_deps_check: bool,
+) -> anyhow::Result<()> {
+    if !package_dir.join("pkg").exists() {
+        return Err(anyhow::anyhow!(
+            "Required `pkg/` dir not found within given input dir {:?} (or cwd, if none given). Please re-run targeting a package.",
+            package_dir,
+        ));
+    }
+    let ui_dir = package_dir.join("ui");
+    if !ui_dir.exists() {
+        if ui_only {
+            return Err(anyhow::anyhow!("kit build: can't build UI: no ui directory exists"));
+        } else {
+            compile_package(package_dir, verbose, skip_deps_check).await
+        }
+    } else {
+        if !skip_deps_check {
+            let deps = check_js_deps()?;
+            get_deps(deps)?;
+        }
+        if ui_only {
+            compile_and_copy_ui(package_dir, verbose)
+        } else {
+            compile_package_and_ui(package_dir, verbose, skip_deps_check).await
+        }
+    }
 }

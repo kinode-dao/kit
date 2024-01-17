@@ -4,10 +4,15 @@ use std::path::PathBuf;
 
 mod boot_fake_node;
 mod build;
+mod build_start_package;
+mod dev_ui;
 mod inject_message;
 mod new;
+mod remove_package;
 mod run_tests;
+mod setup;
 mod start_package;
+mod update;
 
 async fn execute(
     usage: clap::builder::StyledStr,
@@ -16,15 +21,16 @@ async fn execute(
     match matches {
         Some(("boot-fake-node", boot_matches)) => {
             let runtime_path = boot_matches
-                .get_one::<String>("runtime-path")
+                .get_one::<String>("PATH")
                 .and_then(|p| Some(PathBuf::from(p)));
-            let version = boot_matches.get_one::<String>("version").unwrap();
-            let node_home = PathBuf::from(boot_matches.get_one::<String>("node-home").unwrap());
-            let node_port = boot_matches.get_one::<u16>("node-port").unwrap();
-            let network_router_port = boot_matches.get_one::<u16>("network-router-port").unwrap();
-            let rpc = boot_matches.get_one::<String>("rpc").and_then(|s| Some(s.as_str()));
-            let fake_node_name = boot_matches.get_one::<String>("fake-node-name").unwrap();
-            let password = boot_matches.get_one::<String>("password").unwrap();
+            let version = boot_matches.get_one::<String>("VERSION").unwrap();
+            let node_home = PathBuf::from(boot_matches.get_one::<String>("HOME").unwrap());
+            let node_port = boot_matches.get_one::<u16>("NODE_PORT").unwrap();
+            let network_router_port = boot_matches.get_one::<u16>("NETWORK_ROUTER_PORT").unwrap();
+            let rpc = boot_matches.get_one::<String>("RPC_ENDPOINT").and_then(|s| Some(s.as_str()));
+            let fake_node_name = boot_matches.get_one::<String>("NODE_NAME").unwrap();
+            let password = boot_matches.get_one::<String>("PASSWORD").unwrap();
+            let is_persist = boot_matches.get_one::<bool>("PERSIST").unwrap();
 
             boot_fake_node::execute(
                 runtime_path,
@@ -35,44 +41,99 @@ async fn execute(
                 rpc,
                 fake_node_name,
                 password,
+                *is_persist,
                 vec![],
             ).await
         },
         Some(("build", build_matches)) => {
-            let package_dir = PathBuf::from(build_matches.get_one::<String>("package-dir").unwrap());
-            let ui = build_matches.get_one::<bool>("ui").unwrap_or(&false);
-            let ui_only = build_matches.get_one::<bool>("ui-only").unwrap_or(&false);
-            let verbose = !build_matches.get_one::<bool>("quiet").unwrap();
+            let package_dir = PathBuf::from(build_matches.get_one::<String>("DIR").unwrap());
+            let ui_only = build_matches.get_one::<bool>("UI_ONLY").unwrap();
+            let verbose = !build_matches.get_one::<bool>("QUIET").unwrap();
+            let skip_deps_check = build_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
 
-            if *ui_only {
-                build::compile_and_copy_ui(&package_dir, verbose)
-            } else if *ui {
-                build::compile_package_and_ui(&package_dir, verbose).await
-            } else {
-                build::compile_package(&package_dir, verbose).await
-            }
+            build::execute(&package_dir, *ui_only, verbose, *skip_deps_check).await
+        },
+        Some(("build-start-package", build_start_matches)) => {
+
+            let package_dir = PathBuf::from(build_start_matches.get_one::<String>("DIR").unwrap());
+            let ui_only = build_start_matches.get_one::<bool>("UI_ONLY").unwrap_or(&false);
+            let verbose = !build_start_matches.get_one::<bool>("QUIET").unwrap();
+            let url: String = match build_start_matches.get_one::<String>("URL") {
+                Some(url) => url.clone(),
+                None => {
+                    let port = build_start_matches.get_one::<u16>("NODE_PORT").unwrap();
+                    format!("http://localhost:{}", port)
+                },
+            };
+            let skip_deps_check = build_start_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
+
+            build_start_package::execute(
+                &package_dir,
+                *ui_only,
+                verbose,
+                &url,
+                *skip_deps_check,
+            ).await
+        },
+        Some(("dev-ui", dev_ui_matches)) => {
+            let package_dir = PathBuf::from(dev_ui_matches.get_one::<String>("DIR").unwrap());
+            let url: String = match dev_ui_matches.get_one::<String>("URL") {
+                Some(url) => url.clone(),
+                None => {
+                    let port = dev_ui_matches.get_one::<u16>("NODE_PORT").unwrap();
+                    format!("http://localhost:{}", port)
+                },
+            };
+            let skip_deps_check = dev_ui_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
+
+            dev_ui::execute(&package_dir, &url, *skip_deps_check)
         },
         Some(("inject-message", inject_message_matches)) => {
-            let url: &String = inject_message_matches.get_one("url").unwrap();
-            let process: &String = inject_message_matches.get_one("process").unwrap();
-            let ipc: &String = inject_message_matches.get_one("ipc").unwrap();
+            let url: String = match inject_message_matches.get_one::<String>("URL") {
+                Some(url) => url.clone(),
+                None => {
+                    let port = inject_message_matches.get_one::<u16>("NODE_PORT").unwrap();
+                    format!("http://localhost:{}", port)
+                },
+            };
+            let process: &String = inject_message_matches.get_one("PROCESS").unwrap();
+            let non_block: &bool = inject_message_matches.get_one("NONBLOCK").unwrap();
+            let body: &String = inject_message_matches.get_one("BODY_JSON").unwrap();
             let node: Option<&str> = inject_message_matches
-                .get_one("node")
+                .get_one("NODE_NAME")
                 .and_then(|s: &String| Some(s.as_str()));
             let bytes: Option<&str> = inject_message_matches
-                .get_one("bytes")
+                .get_one("PATH")
                 .and_then(|s: &String| Some(s.as_str()));
-            inject_message::execute(url, process, ipc, node, bytes).await
+
+            let expects_response =
+                if *non_block {
+                    None
+                } else {
+                    Some(15)
+                };
+            inject_message::execute(&url, process, expects_response, body, node, bytes).await
         },
         Some(("new", new_matches)) => {
-            let new_dir = PathBuf::from(new_matches.get_one::<String>("directory").unwrap());
-            let package_name = new_matches.get_one::<String>("package-name").unwrap();
-            let publisher = new_matches.get_one::<String>("publisher").unwrap();
+            let new_dir = PathBuf::from(new_matches.get_one::<String>("DIR").unwrap());
+            let package_name = new_matches.get_one::<String>("PACKAGE")
+                .map(|pn| pn.to_string());
+            let publisher = new_matches.get_one::<String>("PUBLISHER").unwrap();
+            let language: new::Language = new_matches.get_one::<String>("LANGUAGE").unwrap().into();
+            let template: new::Template = new_matches.get_one::<String>("TEMPLATE").unwrap().into();
+            let ui = new_matches.get_one::<bool>("UI").unwrap_or(&false);
 
-            new::execute(new_dir, package_name.clone(), publisher.clone())
+            new::execute(
+                new_dir,
+                package_name,
+                publisher.clone(),
+                language.clone(),
+                template.clone(),
+                *ui,
+            )
         },
         Some(("run-tests", run_tests_matches)) => {
-            let config_path = match run_tests_matches.get_one::<String>("config") {
+            let config_path = match run_tests_matches.get_one::<String>("PATH") {
                 Some(path) => PathBuf::from(path),
                 None => std::env::current_dir()?.join("tests.toml"),
             };
@@ -89,13 +150,41 @@ async fn execute(
 
             run_tests::execute(config_path.to_str().unwrap()).await
         },
-        Some(("start-package", start_package_matches)) => {
-            let package_dir = PathBuf::from(start_package_matches.get_one::<String>("package-dir").unwrap());
-            let url: &String = start_package_matches.get_one("url").unwrap();
-            let node: Option<&str> = start_package_matches
-                .get_one("node")
+        Some(("remove-package", remove_package_matches)) => {
+            let package_name = remove_package_matches.get_one::<String>("PACKAGE")
                 .and_then(|s: &String| Some(s.as_str()));
-            start_package::execute(package_dir, url, node).await
+            let publisher = remove_package_matches.get_one::<String>("PUBLISHER")
+                .and_then(|s: &String| Some(s.as_str()));
+            let package_dir = PathBuf::from(remove_package_matches.get_one::<String>("DIR").unwrap());
+            let url: String = match remove_package_matches.get_one::<String>("URL") {
+                Some(url) => url.clone(),
+                None => {
+                    let port = remove_package_matches.get_one::<u16>("NODE_PORT").unwrap();
+                    format!("http://localhost:{}", port)
+                },
+            };
+            remove_package::execute(&package_dir, &url, package_name, publisher).await
+        },
+        Some(("setup", _setup_matches)) => setup::execute(),
+        Some(("start-package", start_package_matches)) => {
+            let package_dir = PathBuf::from(start_package_matches.get_one::<String>("DIR").unwrap());
+            let url: String = match start_package_matches.get_one::<String>("URL") {
+                Some(url) => url.clone(),
+                None => {
+                    let port = start_package_matches.get_one::<u16>("NODE_PORT").unwrap();
+                    format!("http://localhost:{}", port)
+                },
+            };
+            start_package::execute(&package_dir, &url).await
+        },
+        Some(("update", update_matches)) => {
+            let args = update_matches.get_many::<String>("ARGUMENTS")
+                .unwrap_or_default()
+                .map(|v| v.to_string())
+                .collect::<Vec<_>>();
+            let branch = update_matches.get_one::<String>("BRANCH").unwrap();
+
+            update::execute(args, branch)
         },
         _ => {
             println!("Invalid subcommand. Usage:\n{}", usage);
@@ -104,37 +193,38 @@ async fn execute(
     }
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
-    let current_dir = env::current_dir()?.into_os_string();
-    let mut app = command!()
-        .name("UqDev")
-        .version("0.1.0")
-        .about("Development tools for Uqbar")
+fn make_app(current_dir: &std::ffi::OsString) -> Command {
+    command!()
+        .name("kit")
+        .version(env!("CARGO_PKG_VERSION"))
+        .about("Development tool\x1b[1mkit\x1b[0m for Kinode")
         .subcommand_required(true)
         .arg_required_else_help(true)
+        .disable_version_flag(true)
+        .arg(Arg::new("version")
+            .short('v')
+            .long("version")
+            .action(ArgAction::Version)
+            .help("Print version")
+        )
         .subcommand(Command::new("boot-fake-node")
             .about("Boot a fake node for development")
-            .arg(Arg::new("runtime-path")
+            .visible_alias("f")
+            .disable_help_flag(true)
+            .arg(Arg::new("PATH")
                 .action(ArgAction::Set)
+                .short('r')
                 .long("runtime-path")
-                .help("Path to Uqbar core repo or runtime binary (overrides --version)")
+                .help("Path to Kinode core repo or runtime binary (overrides --version)")
             )
-            .arg(Arg::new("version")
+            .arg(Arg::new("VERSION")
                 .action(ArgAction::Set)
                 .short('v')
                 .long("version")
-                .help("Version of Uqbar binary to use (overridden by --runtime-path)")
+                .help("Version of Kinode binary to use (overridden by --runtime-path)")
                 .default_value("0.4.0")
             )
-            .arg(Arg::new("node-home")
-                .action(ArgAction::Set)
-                .short('h')
-                .long("home")
-                .help("Where to place the home directory for the fake node")
-                .default_value("/tmp/uqbar-fake-node")
-            )
-            .arg(Arg::new("node-port")
+            .arg(Arg::new("NODE_PORT")
                 .action(ArgAction::Set)
                 .short('p')
                 .long("port")
@@ -142,148 +232,342 @@ async fn main() -> anyhow::Result<()> {
                 .default_value("8080")
                 .value_parser(value_parser!(u16))
             )
-            .arg(Arg::new("network-router-port")
+            .arg(Arg::new("HOME")
                 .action(ArgAction::Set)
-                .long("network-router-port")
-                .help("The port to run the network router on")
-                .default_value("9001")
-                .value_parser(value_parser!(u16))
+                .short('h')
+                .long("home")
+                .help("Where to place the home directory for the fake node")
+                .default_value("/tmp/kinode-fake-node")
             )
-            .arg(Arg::new("rpc")
-                .action(ArgAction::Set)
-                .short('r')
-                .long("rpc")
-                .help("Ethereum RPC endpoint (wss://)")
-                .required(false)
-            )
-            .arg(Arg::new("fake-node-name")
+            .arg(Arg::new("NODE_NAME")
                 .action(ArgAction::Set)
                 .short('f')
                 .long("fake-node-name")
                 .help("Name for fake node")
-                .default_value("fake.uq")
+                .default_value("fake.os")
             )
-            .arg(Arg::new("password")
+            .arg(Arg::new("NETWORK_ROUTER_PORT")
+                .action(ArgAction::Set)
+                .long("network-router-port")
+                .help("The port to run the network router on (or to connect to)")
+                .default_value("9001")
+                .value_parser(value_parser!(u16))
+            )
+            .arg(Arg::new("RPC_ENDPOINT")
+                .action(ArgAction::Set)
+                .long("rpc")
+                .help("Ethereum RPC endpoint (wss://)")
+                .required(false)
+            )
+            .arg(Arg::new("PERSIST")
+                .action(ArgAction::SetTrue)
+                .long("persist")
+                .help("If set, do not delete node home after exit")
+                .required(false)
+            )
+            .arg(Arg::new("PASSWORD")
                 .action(ArgAction::Set)
                 .long("password")
                 .help("Password to login")
                 .default_value("secret")
             )
+            .arg(Arg::new("help")
+                .long("help")
+                .action(ArgAction::Help)
+                .help("Print help")
+            )
         )
         .subcommand(Command::new("build")
-            .about("Build an Uqbar process")
-            .arg(Arg::new("package-dir")
+            .about("Build a Kinode package")
+            .visible_alias("b")
+            .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
                 .help("The package directory to build")
-                .default_value(&current_dir)
+                .default_value(current_dir)
             )
-            .arg(Arg::new("quiet")
-                .action(ArgAction::SetTrue)
-                .short('q')
-                .long("quiet")
-                .help("If set, do not print `cargo` stdout/stderr")
-                .required(false)
-            )
-            .arg(Arg::new("ui")
-                .action(ArgAction::SetTrue)
-                .long("ui")
-                .help("If set, build the web UI for the process")
-                .required(false)
-            )
-            .arg(Arg::new("ui-only")
+            .arg(Arg::new("UI_ONLY")
                 .action(ArgAction::SetTrue)
                 .long("ui-only")
                 .help("If set, build ONLY the web UI for the process")
                 .required(false)
             )
+            .arg(Arg::new("QUIET")
+                .action(ArgAction::SetTrue)
+                .short('q')
+                .long("quiet")
+                .help("If set, do not print build stdout/stderr")
+                .required(false)
+            )
+            .arg(Arg::new("SKIP_DEPS_CHECK")
+                .action(ArgAction::SetTrue)
+                .short('s')
+                .long("skip-deps-check")
+                .help("If set, do not check for dependencies")
+                .required(false)
+            )
         )
-        .subcommand(Command::new("inject-message")
-            .about("Inject a message to a running Uqbar node")
-            .arg(Arg::new("url")
+        .subcommand(Command::new("build-start-package")
+            .about("Build and start a Kinode package")
+            .visible_alias("bs")
+            .arg(Arg::new("DIR")
+                .action(ArgAction::Set)
+                .help("The package directory to build")
+                .default_value(current_dir)
+            )
+            .arg(Arg::new("NODE_PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("Node port: for use on localhost (overridden by URL)")
+                .default_value("8080")
+                .value_parser(value_parser!(u16))
+            )
+            .arg(Arg::new("URL")
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
-                .required(true)
+                .help("Node URL (overrides NODE_PORT)")
+                .required(false)
             )
-            .arg(Arg::new("process")
+            .arg(Arg::new("UI_ONLY")
+                .action(ArgAction::SetTrue)
+                .long("ui-only")
+                .help("If set, build ONLY the web UI for the process")
+                .required(false)
+            )
+            .arg(Arg::new("QUIET")
+                .action(ArgAction::SetTrue)
+                .short('q')
+                .long("quiet")
+                .help("If set, do not print build stdout/stderr")
+                .required(false)
+            )
+            .arg(Arg::new("SKIP_DEPS_CHECK")
+                .action(ArgAction::SetTrue)
+                .short('s')
+                .long("skip-deps-check")
+                .help("If set, do not check for dependencies")
+                .required(false)
+            )
+        )
+        .subcommand(Command::new("dev-ui")
+            .about("Start the web UI development server with hot reloading (same as `cd ui && npm i && npm start`)")
+            .visible_alias("d")
+            .arg(Arg::new("DIR")
+                .action(ArgAction::Set)
+                .help("The package directory to build (must contain a `ui` directory)")
+                .default_value(current_dir)
+            )
+            .arg(Arg::new("NODE_PORT")
                 .action(ArgAction::Set)
                 .short('p')
-                .long("process")
-                .help("Process to send message to")
-                .required(true)
+                .long("port")
+                .help("Node port: for use on localhost (overridden by URL)")
+                .default_value("8080")
+                .value_parser(value_parser!(u16))
             )
-            .arg(Arg::new("ipc")
+            .arg(Arg::new("URL")
                 .action(ArgAction::Set)
-                .short('i')
-                .long("ipc")
-                .help("IPC in JSON format")
+                .short('u')
+                .long("url")
+                .help("Node URL (overrides NODE_PORT)")
+                .required(false)
+            )
+            .arg(Arg::new("SKIP_DEPS_CHECK")
+                .action(ArgAction::SetTrue)
+                .short('s')
+                .long("skip-deps-check")
+                .help("If set, do not check for dependencies")
+                .required(false)
+            )
+        )
+        .subcommand(Command::new("inject-message")
+            .about("Inject a message to a running Kinode")
+            .visible_alias("i")
+            .arg(Arg::new("PROCESS")
+                .action(ArgAction::Set)
+                .help("PROCESS to send message to")
                 .required(true)
             )
-            .arg(Arg::new("node")
+            .arg(Arg::new("BODY_JSON")
+                .action(ArgAction::Set)
+                .help("Body in JSON format")
+                .required(true)
+            )
+            .arg(Arg::new("NODE_PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("Node port: for use on localhost (overridden by URL)")
+                .default_value("8080")
+                .value_parser(value_parser!(u16))
+            )
+            .arg(Arg::new("URL")
+                .action(ArgAction::Set)
+                .short('u')
+                .long("url")
+                .help("Node URL (overrides NODE_PORT)")
+                .required(false)
+            )
+            .arg(Arg::new("NODE_NAME")
                 .action(ArgAction::Set)
                 .short('n')
                 .long("node")
                 .help("Node ID (default: our)")
                 .required(false)
             )
-            .arg(Arg::new("bytes")
+            .arg(Arg::new("PATH")
                 .action(ArgAction::Set)
                 .short('b')
-                .long("bytes")
-                .help("Send bytes from path on Unix system")
+                .long("blob")
+                .help("Send file at Unix path as bytes blob")
                 .required(false)
+            )
+            .arg(Arg::new("NONBLOCK")
+                .action(ArgAction::SetTrue)
+                .short('l')
+                .long("non-block")
+                .help("If set, don't block on the full node response")
             )
         )
         .subcommand(Command::new("new")
-            .about("Create an Uqbar template package")
-            .arg(Arg::new("directory")
+            .about("Create a Kinode template package")
+            .visible_alias("n")
+            .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
                 .help("Path to create template directory at")
                 .required(true)
             )
-            .arg(Arg::new("package-name")
+            .arg(Arg::new("PACKAGE")
                 .action(ArgAction::Set)
                 .short('a')
                 .long("package")
-                .help("Name of the package")
-                .required(true)
+                .help("Name of the package [default: DIR]")
             )
-            .arg(Arg::new("publisher")
+            .arg(Arg::new("PUBLISHER")
                 .action(ArgAction::Set)
                 .short('u')
-                .long("package")
+                .long("publisher")
                 .help("Name of the publisher")
-                .default_value("template.uq")
+                .default_value("template.os")
+            )
+            .arg(Arg::new("LANGUAGE")
+                .action(ArgAction::Set)
+                .short('l')
+                .long("language")
+                .help("Programming language of the template")
+                .value_parser(["rust", "python", "javascript"])
+                .default_value("rust")
+            )
+            .arg(Arg::new("TEMPLATE")
+                .action(ArgAction::Set)
+                .short('t')
+                .long("template")
+                .help("Template to create")
+                .value_parser(["chat", "echo", "fibonacci"])
+                .default_value("chat")
+            )
+            .arg(Arg::new("UI")
+                .action(ArgAction::SetTrue)
+                .long("ui")
+                .help("If set, use the template with UI")
+                .required(false)
             )
         )
         .subcommand(Command::new("run-tests")
-            .about("Run Uqbar tests")
-            .arg(Arg::new("config")
+            .about("Run Kinode tests")
+            .visible_alias("t")
+            .arg(Arg::new("PATH")
                 .action(ArgAction::Set)
                 .help("Path to tests configuration file")
                 .default_value("tests.toml")
             )
         )
-        .subcommand(Command::new("start-package")
-            .about("Start a built Uqbar process")
-            .arg(Arg::new("package-dir")
+        .subcommand(Command::new("remove-package")
+            .about("Remove a running package from a node")
+            .visible_alias("r")
+            .arg(Arg::new("PACKAGE")
                 .action(ArgAction::Set)
-                .help("The package directory to build")
-                .default_value(&current_dir)
+                .short('a')
+                .long("package")
+                .help("Name of the package (Overrides DIR)")
+                .required(false)
             )
-            .arg(Arg::new("url")
+            .arg(Arg::new("PUBLISHER")
+                .action(ArgAction::Set)
+                .long("publisher")
+                .help("Name of the publisher (Overrides DIR)")
+                .required(false)
+            )
+            .arg(Arg::new("DIR")
+                .action(ArgAction::Set)
+                .help("The package directory to remove (Overridden by PACKAGE/PUBLISHER)")
+                .default_value(current_dir)
+            )
+            .arg(Arg::new("NODE_PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("Node port: for use on localhost (overridden by URL)")
+                .default_value("8080")
+                .value_parser(value_parser!(u16))
+            )
+            .arg(Arg::new("URL")
                 .action(ArgAction::Set)
                 .short('u')
                 .long("url")
-                .required(true)
+                .help("Node URL (overrides NODE_PORT)")
+                .required(false)
+                //.default_value("http://localhost:8080")
             )
-            .arg(Arg::new("node")
+        )
+        .subcommand(Command::new("setup")
+            .about("Fetch & setup kit dependencies")
+        )
+        .subcommand(Command::new("start-package")
+            .about("Start a built Kinode process")
+            .visible_alias("s")
+            .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
-                .short('n')
-                .long("node")
+                .help("The package directory to build")
+                .default_value(current_dir)
+            )
+            .arg(Arg::new("NODE_PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("Node port: for use on localhost (overridden by URL)")
+                .default_value("8080")
+                .value_parser(value_parser!(u16))
+            )
+            .arg(Arg::new("URL")
+                .action(ArgAction::Set)
+                .short('u')
+                .long("url")
+                .help("Node URL (overrides NODE_PORT)")
                 .required(false)
             )
-        );
+        )
+        .subcommand(Command::new("update")
+            .about("Fetch the most recent version of kit")
+            .arg(Arg::new("ARGUMENTS")
+                .action(ArgAction::Append)
+                .help("Additional arguments (e.g. `--branch next-release`)")
+                .required(false)
+            )
+            .arg(Arg::new("BRANCH")
+                .action(ArgAction::Set)
+                .long("branch")
+                .help("Branch name (e.g. `next-release`)")
+                .default_value("master")
+            )
+        )
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let current_dir = env::current_dir()?.into_os_string();
+    let mut app = make_app(&current_dir);
 
     let usage = app.render_usage();
     let matches = app.get_matches();
@@ -297,7 +581,7 @@ async fn main() -> anyhow::Result<()> {
                 None => {},
                 Some(e) => {
                     if e.is_connect() {
-                        println!("uqdev: error connecting; is Uqbar node running?");
+                        println!("kit: error connecting; is Kinode running?");
                         return Ok(());
                     }
                 },

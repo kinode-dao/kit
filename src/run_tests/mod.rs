@@ -1,11 +1,11 @@
-use std::cell::RefCell;
-use std::{fs, thread, time};
+use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::rc::Rc;
+use std::sync::Arc;
+
+use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
 
 use dirs::home_dir;
-use serde_json::Value;
 use toml;
 
 use super::boot_fake_node::{compile_runtime, get_runtime_binary, run_runtime};
@@ -13,6 +13,8 @@ use super::build;
 use super::inject_message;
 use super::start_package;
 
+pub mod cleanup;
+use cleanup::{cleanup, cleanup_on_signal};
 pub mod network_router;
 pub mod types;
 use types::*;
@@ -47,8 +49,8 @@ fn make_node_names(nodes: Vec<Node>) -> anyhow::Result<Vec<String>> {
         .map(|node| get_basename(&node.home)
             .and_then(|base| Some(base.to_string()))
             .and_then(|mut base| {
-                if !base.ends_with(".uq") {
-                    base.push_str(".uq");
+                if !base.ends_with(".os") {
+                    base.push_str(".os");
                 }
                 Some(base)
             })
@@ -69,9 +71,14 @@ impl Config {
             },
         };
         for test in self.tests.iter_mut() {
-            test.test_package_paths = test.test_package_paths
+            test.test_packages = test.test_packages
                 .iter()
-                .map(|tpp| expand_home_path(&tpp).unwrap_or_else(|| tpp.clone()))
+                .map(|tp| {
+                    TestPackage {
+                        path: expand_home_path(&tp.path).unwrap_or_else(|| tp.path.clone()),
+                        grant_capabilities: tp.grant_capabilities.clone(),
+                    }
+                })
                 .collect();
             for node in test.nodes.iter_mut() {
                 node.home = expand_home_path(&node.home).unwrap_or_else(|| node.home.clone());
@@ -81,12 +88,17 @@ impl Config {
     }
 }
 
-async fn wait_until_booted(port: u16, max_waits: u16) -> anyhow::Result<()> {
+async fn wait_until_booted(
+    port: u16,
+    max_waits: u16,
+    mut recv_kill_in_wait: BroadcastRecvBool,
+) -> anyhow::Result<()> {
     for _ in 0..max_waits {
         let request = inject_message::make_message(
-            "vfs:sys:uqbar",
+            "vfs:distro:sys",
+            Some(15),
             &serde_json::to_string(&serde_json::json!({
-                "path": "/tester:uqbar/pkg",
+                "path": "/tester:sys/pkg",
                 "action": "ReadDir",
             })).unwrap(),
             None,
@@ -98,68 +110,116 @@ async fn wait_until_booted(port: u16, max_waits: u16) -> anyhow::Result<()> {
             &format!("http://localhost:{}", port),
             request,
         ).await {
-            Ok(response) if response.status() == 200 => return Ok(()),
-            _ => ()
+            Ok(response) => match inject_message::parse_response(response).await {
+                Ok(_) => return Ok(()),
+                _ => (),
+            }
+            _ => (),
         }
 
-        thread::sleep(time::Duration::from_secs(1));
+        tokio::select! {
+            _ = sleep(Duration::from_secs(1)) => {}
+            _ = recv_kill_in_wait.recv() => {
+                return Err(anyhow::anyhow!("received exit"));
+            }
+        };
     }
-    Err(anyhow::anyhow!("uqdev run-tests: could not connect to Uqbar node"))
+    Err(anyhow::anyhow!("kit run-tests: could not connect to Kinode"))
 }
 
 async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> {
     println!("Loading setup packages...");
 
     for setup_path in setup_paths {
-        start_package::execute(
-            setup_path.clone(),
-            &format!("http://localhost:{}", port),
-            None,
-        ).await?;
+        start_package::execute(&setup_path, &format!("http://localhost:{}", port)).await?;
     }
 
     println!("Done loading setup packages.");
     Ok(())
 }
 
-async fn load_tests(test_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> {
+async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Result<()> {
     println!("Loading tests...");
 
-    for test_path in test_paths {
-        let basename = get_basename(&test_path).unwrap();
+    for TestPackage { ref path, .. } in test_packages {
+        let basename = get_basename(path).unwrap();
         let request = inject_message::make_message(
-            "vfs:sys:uqbar",
+            "vfs:distro:sys",
+            Some(15),
             &serde_json::to_string(&serde_json::json!({
-                "path": format!("/tester:uqbar/tests/{basename}.wasm"),
-                "action": "ReWrite",
+                "path": format!("/tester:sys/tests/{basename}.wasm"),
+                "action": "Write",
             })).unwrap(),
             None,
             None,
-            test_path.join("pkg").join(format!("{basename}.wasm")).to_str(),
+            path.join("pkg").join(format!("{basename}.wasm")).to_str(),
         )?;
 
-        match inject_message::send_request(
+        let response = inject_message::send_request(
             &format!("http://localhost:{}", port),
             request,
-        ).await {
-            Ok(response) if response.status() != 200 => println!("Failed with status code: {}", response.status()),
-            _ => ()
+        ).await?;
+        match inject_message::parse_response(response).await {
+            Ok(_) => {},
+            Err(e) => return Err(anyhow::anyhow!("Failed to load tests: {}", e)),
         }
     }
+
+    let mut grant_caps = std::collections::HashMap::new();
+    for TestPackage { ref path, ref grant_capabilities } in test_packages {
+        grant_caps.insert(
+            path.file_name().map(|f| f.to_str()).unwrap(),
+            grant_capabilities,
+        );
+    }
+    let grant_caps = serde_json::to_vec(&grant_caps)?;
+
+    let request = inject_message::make_message(
+        "vfs:distro:sys",
+        Some(15),
+        &serde_json::to_string(&serde_json::json!({
+            "path": format!("/tester:sys/tests/grant_capabilities.json"),
+            "action": "Write",
+        })).unwrap(),
+        None,
+        Some(&grant_caps),
+        None,
+    )?;
+
+    let response = inject_message::send_request(
+        &format!("http://localhost:{}", port),
+        request,
+    ).await?;
+    match inject_message::parse_response(response).await {
+        Ok(_) => {},
+        Err(e) => return Err(anyhow::anyhow!("Failed to load tests capabilities: {}", e)),
+    }
+
+
     println!("Done loading tests.");
     Ok(())
 }
 
-async fn run_tests(test_batch: &str, mut ports: Vec<u16>, node_names: Vec<String>, test_timeout: u64) -> anyhow::Result<()> {
+async fn run_tests(
+    test_packages: &Vec<TestPackage>,
+    mut ports: Vec<u16>,
+    node_names: Vec<String>,
+    test_timeout: u64,
+) -> anyhow::Result<()> {
     let master_port = ports.remove(0);
 
     // Set up non-master nodes.
     for port in ports {
         let request = inject_message::make_message(
-            "tester:tester:uqbar",
+            "tester:tester:sys",
+            Some(15),
             &serde_json::to_string(&serde_json::json!({
                 "Run": {
                     "input_node_names": node_names,
+                    "test_names": test_packages
+                        .iter()
+                        .map(|tp| tp.path.to_str().unwrap())
+                        .collect::<Vec<&str>>(),
                     "test_timeout": test_timeout,
                 }
             })).unwrap(),
@@ -181,10 +241,15 @@ async fn run_tests(test_batch: &str, mut ports: Vec<u16>, node_names: Vec<String
     // Set up master node & start tests.
     println!("Running tests...");
     let request = inject_message::make_message(
-        "tester:tester:uqbar",
+        "tester:tester:sys",
+        Some(15),
         &serde_json::to_string(&serde_json::json!({
             "Run": {
                 "input_node_names": node_names,
+                "test_names": test_packages
+                    .iter()
+                    .map(|tp| tp.path.to_str().unwrap())
+                    .collect::<Vec<&str>>(),
                 "test_timeout": test_timeout,
             }
         })).unwrap(),
@@ -197,43 +262,162 @@ async fn run_tests(test_batch: &str, mut ports: Vec<u16>, node_names: Vec<String
         request,
     ).await?;
 
-    if response.status() != 200 {
-        println!("Failed with status code: {}", response.status());
-        return Err(anyhow::anyhow!("Failed with status code: {}", response.status()))
-    } else {
-        let content: String = response.text().await?;
+    match inject_message::parse_response(response).await {
+        Ok(inject_message::Response { ref body, .. }) => {
+            match serde_json::from_str(body)? {
+                tt::TesterResponse::Pass => println!("PASS"),
+                tt::TesterResponse::Fail { test, file, line, column } => {
+                    let s = format!("FAIL: {} {}:{}:{}", test, file, line, column);
+                    println!("{}", s);
+                    return Err(anyhow::anyhow!(s));
+                },
+                tt::TesterResponse::GetFullMessage(_) => {
+                    let s = "FAIL: Unexpected Response";
+                    println!("{}", s);
+                    return Err(anyhow::anyhow!(s));
+                },
+            }
+        },
+        Err(e) => {
+            let s = format!("FAIL: {}", e);
+            println!("{}", s);
+            return Err(anyhow::anyhow!(s));
+        },
+    };
 
-        let mut data: Option<Value> = serde_json::from_str(&content).ok();
+    Ok(())
+}
 
-        println!("Done running tests ({}):", test_batch);
+async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow::Result<()> {
+    for setup_package_path in &test.setup_package_paths {
+        build::execute(&setup_package_path, false, test.package_build_verbose, false).await?;
+    }
+    for TestPackage { ref path, .. } in &test.test_packages {
+        build::execute(path, false, test.package_build_verbose, false).await?;
+    }
 
-        if let Some(ref mut data_map) = data {
-            if let Some(serde_json::Value::Array(ipc_bytes_val)) = data_map.get("ipc") {
-                let ipc_bytes: Vec<u8> = ipc_bytes_val.iter().map(|n| n.as_u64().unwrap() as u8).collect();
-                let ipc_string: String = String::from_utf8(ipc_bytes)?;
-                match serde_json::from_str(&ipc_string)? {
-                    tt::TesterResponse::Pass => println!("PASS"),
-                    tt::TesterResponse::Fail { test, file, line, column } => {
-                        let s = format!("FAIL: {} {}:{}:{}", test, file, line, column);
-                        println!("{}", s);
-                        return Err(anyhow::anyhow!(s));
-                    },
-                    tt::TesterResponse::GetFullMessage(_) => {
-                        let s = "FAIL: Unexpected Response";
-                        println!("{}", s);
-                        return Err(anyhow::anyhow!(s))
-                    },
-                }
-            } else {
-                println!("Test FAIL: unexpected Response: {:?}", data);
+    // Initialize variables for master node and nodes list
+    let mut master_node_port = None;
+    let mut task_handles = Vec::new();
+    let node_handles = Arc::new(Mutex::new(Vec::new()));
+    let node_cleanup_infos = Arc::new(Mutex::new(Vec::new()));
+
+    // Cleanup, boot check, test loading, and running
+    let (send_to_cleanup, recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
+    let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
+    let recv_kill_in_cos = send_to_kill.subscribe();
+    let recv_kill_in_router = send_to_kill.subscribe();
+    let node_cleanup_infos_for_cleanup = Arc::clone(&node_cleanup_infos);
+    let node_handles_for_cleanup = Arc::clone(&node_handles);
+    let send_to_kill_for_cleanup = send_to_kill.clone();
+    let handle = tokio::spawn(cleanup(
+        recv_in_cleanup,
+        send_to_kill_for_cleanup,
+        node_cleanup_infos_for_cleanup,
+        Some(node_handles_for_cleanup),
+        detached,
+        true,
+    ));
+    task_handles.push(handle);
+    let send_to_cleanup_for_signal = send_to_cleanup.clone();
+    let handle = tokio::spawn(cleanup_on_signal(send_to_cleanup_for_signal, recv_kill_in_cos));
+    task_handles.push(handle);
+    let _cleanup_context = CleanupContext::new(send_to_cleanup.clone());
+
+    let network_router_port_for_router = test.network_router.port.clone();
+    let network_router_defects_for_router = test.network_router.defects.clone();
+    let handle = tokio::spawn(async move {
+        let _ = network_router::execute(
+            network_router_port_for_router,
+            network_router_defects_for_router,
+            recv_kill_in_router,
+        ).await;
+    });
+    task_handles.push(handle);
+
+    // TODO: can remove?
+    std::thread::sleep(std::time::Duration::from_secs(1));
+
+    // Process each node
+    for node in &test.nodes {
+        fs::create_dir_all(&node.home)?;
+        let node_home = fs::canonicalize(&node.home)?;
+        for dir in &["kernel", "kv", "sqlite", "vfs"] {
+            let dir = node_home.join(dir);
+            if dir.exists() {
+                fs::remove_dir_all(&node_home.join(dir)).unwrap();
             }
         }
+
+        let mut args = vec!["--fake-node-name", &node.fake_node_name];
+        if let Some(ref rpc) = node.rpc {
+            args.extend_from_slice(&["--rpc", rpc]);
+        };
+        if let Some(ref password) = node.password {
+            args.extend_from_slice(&["--password", password]);
+        };
+
+        let (runtime_process, master_fd) = run_runtime(
+            &runtime_path,
+            &node_home,
+            node.port,
+            test.network_router.port,
+            &args[..],
+            node.runtime_verbose,
+            detached,
+        )?;
+
+        let mut node_cleanup_infos = node_cleanup_infos.lock().await;
+        node_cleanup_infos.push(NodeCleanupInfo {
+            master_fd,
+            process_id: runtime_process.id() as i32,
+            home: node_home.clone(),
+        });
+
+        if master_node_port.is_none() {
+            master_node_port = Some(node.port.clone());
+        }
+
+        let mut node_handles = node_handles.lock().await;
+        node_handles.push(runtime_process);
     }
+
+    let mut ports = Vec::new();
+
+    for node in &test.nodes {
+        let node_home = fs::canonicalize(&node.home)?;
+        println!("Setting up node {:?}...", node_home);
+        let recv_kill_in_wait = send_to_kill.subscribe();
+        wait_until_booted(node.port, 5, recv_kill_in_wait).await?;
+        ports.push(node.port);
+        println!("Done setting up node {:?} on port {}.", node_home, node.port);
+    }
+
+    for port in &ports {
+        load_setups(&test.setup_package_paths, port.clone()).await?;
+    }
+    load_tests(&test.test_packages, master_node_port.unwrap().clone()).await?;
+
+    let tests_result = run_tests(
+        &test.test_packages,
+        ports,
+        make_node_names(test.nodes)?,
+        test.timeout_secs,
+    ).await;
+
+    let _ = send_to_cleanup.send(true);
+    for handle in task_handles {
+        handle.await.unwrap();
+    }
+
+    tests_result?;
 
     Ok(())
 }
 
 pub async fn execute(config_path: &str) -> anyhow::Result<()> {
+    let detached = true; // TODO: to arg?
+
     let config_content = fs::read_to_string(config_path)?;
     let config = toml::from_str::<Config>(&config_content)?.expand_home_paths();
 
@@ -244,112 +428,25 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
         Runtime::FetchVersion(ref version) => get_runtime_binary(version).await?,
         Runtime::RepoPath(runtime_path) => {
             if !runtime_path.exists() {
-                panic!("uqdev run-tests: RepoPath {:?} does not exist.", runtime_path);
+                panic!("kit run-tests: RepoPath {:?} does not exist.", runtime_path);
             }
             if runtime_path.is_file() {
-                // TODO: make loading/finding base processes more robust
-                panic!("uqdev run-tests: path to binary not yet implemented; please pass path to Uqbar core repo (or use --version)")
-                // runtime_path
+                panic!("kit run-tests: RepoPath must be a directory (the repo).")
             } else if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(
                     &runtime_path,
                     config.runtime_build_verbose,
                 )?;
-                runtime_path.join("target/release/uqbar")
+                runtime_path.join("target/release/kinode")
             } else {
-                panic!("uqdev run-tests: RepoPath {:?} must be a directory (the repo) or a binary.", runtime_path);
+                panic!("kit run-tests: RepoPath {:?} must be a directory (the repo) or a binary.", runtime_path);
             }
         },
     };
 
     for test in config.tests {
-        for setup_package_path in &test.setup_package_paths {
-            build::compile_package(&setup_package_path, test.package_build_verbose).await?;
-        }
-        for test_package_path in &test.test_package_paths {
-            build::compile_package(&test_package_path, test.package_build_verbose).await?;
-        }
-
-        // Initialize variables for master node and nodes list
-        let mut master_node_port = None;
-        let nodes = Rc::new(RefCell::new(Vec::new()));
-
-        // Cleanup, boot check, test loading, and running
-        let (send_to_kill_router, recv_kill_in_router) = tokio::sync::mpsc::unbounded_channel();
-        let _cleanup_context = CleanupContext::new(Rc::clone(&nodes), send_to_kill_router);
-
-        // Process each node
-        for node in &test.nodes {
-            fs::create_dir_all(&node.home)?;
-            let node_home = fs::canonicalize(&node.home)?;
-            let home_fs = Path::new(node_home.to_str().unwrap()).join("fs");
-            if home_fs.exists() {
-                fs::remove_dir_all(home_fs).unwrap();
-            }
-
-            let mut args = vec![];
-            if let Some(ref rpc) = node.rpc {
-                args.extend_from_slice(&["--rpc", rpc]);
-            };
-            if let Some(ref fake_node_name) = node.fake_node_name {
-                args.extend_from_slice(&["--fake-node-name", fake_node_name]);
-            };
-            if let Some(ref password) = node.password {
-                args.extend_from_slice(&["--password", password]);
-            };
-
-            let (runtime_process, master_fd) = run_runtime(
-                &runtime_path,
-                &node_home,
-                node.port,
-                test.network_router.port,
-                &args[..],
-                node.runtime_verbose,
-                true,
-            )?;
-
-            let node_info = NodeInfo {
-                process_handle: runtime_process,
-                master_fd,
-                port: node.port,
-                home: node_home.clone(),
-            };
-
-            if master_node_port.is_none() {
-                master_node_port = Some(node_info.port.clone());
-            }
-            nodes.borrow_mut().push(node_info);
-        }
-
-        tokio::task::spawn(network_router::execute(
-            test.network_router.port.clone(),
-            test.network_router.defects.clone(),
-            recv_kill_in_router,
-        ));
-
-        let mut ports = Vec::new();
-
-        // Cleanup, boot check, test loading, and running
-        for node in nodes.borrow().iter() {
-            let node_home = fs::canonicalize(&node.home)?;
-            println!("Setting up node {:?}...", node_home);
-            wait_until_booted(node.port, 5).await?;
-            ports.push(node.port);
-            println!("Done setting up node {:?} on port {}.", node_home, node.port);
-        }
-
-        for port in &ports {
-            load_setups(&test.setup_package_paths, port.clone()).await?;
-        }
-        load_tests(&test.test_package_paths, master_node_port.unwrap().clone()).await?;
-
-        run_tests(
-            &format!("{:?}", test.test_package_paths),
-            ports,
-            make_node_names(test.nodes)?,
-            test.timeout_secs,
-        ).await?;
+        handle_test(detached, &runtime_path, test).await?;
     }
 
     Ok(())

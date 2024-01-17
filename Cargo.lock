@@ -29,6 +29,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "aho-corasick"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2969dcb958b36655471fc61f7e416fa76033bdd4bfed0678d8fee1e2d07a1f0"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
 name = "anstream"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -714,6 +723,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "kinode_process_lib"
+version = "0.5.0"
+source = "git+ssh://git@github.com/uqbar-dao/process_lib.git?rev=5305453#5305453c306e69ccdb4c0ac4b385d09e86a3b6e4"
+dependencies = [
+ "anyhow",
+ "bincode",
+ "http 1.0.0",
+ "mime_guess",
+ "rand",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "url",
+ "wit-bindgen",
+]
+
+[[package]]
+name = "kit"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "base64",
+ "clap",
+ "dirs",
+ "futures-util",
+ "kinode_process_lib",
+ "nix",
+ "regex",
+ "reqwest",
+ "rmp-serde",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "tokio-tungstenite",
+ "toml",
+ "walkdir",
+ "zip",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -765,6 +815,16 @@ name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
+
+[[package]]
+name = "mime_guess"
+version = "2.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4192263c238a5f0d0c6bfd21f336a313a4ce1c450542449ca191bb657b4642ef"
+dependencies = [
+ "mime",
+ "unicase",
+]
 
 [[package]]
 name = "miniz_oxide"
@@ -1033,6 +1093,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "regex"
+version = "1.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "380b951a9c5e80ddfd6136919eef32310721aa4aacd4889a8d39124b026ab343"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
+name = "regex-automata"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5f804c7828047e88b2d32e2d7fe5a105da8ee3264f01902f796c8e067dc2483f"
+dependencies = [
+ "aho-corasick",
+ "memchr",
+ "regex-syntax",
+]
+
+[[package]]
+name = "regex-syntax"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
+
+[[package]]
 name = "reqwest"
 version = "0.11.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1239,6 +1328,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "signal-hook-registry"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d8229b473baa5980ac72ef434c4415e70c4b5e71b423043adb4ba059f89c99a1"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "slab"
 version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1404,6 +1502,7 @@ dependencies = [
  "mio",
  "num_cpus",
  "pin-project-lite",
+ "signal-hook-registry",
  "socket2 0.5.5",
  "tokio-macros",
  "windows-sys",
@@ -1547,6 +1646,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42ff0bf0c66b8238c6f3b578df37d0b7848e55df8577b3f74f92a69acceeb825"
 
 [[package]]
+name = "unicase"
+version = "2.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7d2d4dafb69621809a81864c9c1b864479e1235c0dd4e199924b9742439ed89"
+dependencies = [
+ "version_check",
+]
+
+[[package]]
 name = "unicode-bidi"
 version = "0.3.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1578,45 +1686,6 @@ name = "unicode-xid"
 version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f962df74c8c05a667b5ee8bcf162993134c104e96440b663c8daa176dc772d8c"
-
-[[package]]
-name = "uqbar_process_lib"
-version = "0.3.0"
-source = "git+ssh://git@github.com/uqbar-dao/process_lib.git?rev=77ebb26#77ebb261bf74f2183fb81856ce9a6b66b8360a6d"
-dependencies = [
- "anyhow",
- "bincode",
- "http 1.0.0",
- "rand",
- "serde",
- "serde_json",
- "thiserror",
- "url",
- "wit-bindgen",
-]
-
-[[package]]
-name = "uqdev"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "base64",
- "clap",
- "dirs",
- "futures-util",
- "nix",
- "reqwest",
- "rmp-serde",
- "serde",
- "serde_json",
- "thiserror",
- "tokio",
- "tokio-tungstenite",
- "toml",
- "uqbar_process_lib",
- "walkdir",
- "zip",
-]
 
 [[package]]
 name = "url"
@@ -1746,15 +1815,6 @@ checksum = "0d046c5d029ba91a1ed14da14dca44b68bf2f124cfbaf741c54151fdb3e0750b"
 
 [[package]]
 name = "wasm-encoder"
-version = "0.36.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "822b645bf4f2446b949776ffca47e2af60b167209ffb70814ef8779d299cd421"
-dependencies = [
- "leb128",
-]
-
-[[package]]
-name = "wasm-encoder"
 version = "0.38.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7b09bc5df933a3dabbdb72ae4b6b71be8ae07f58774d5aa41bd20adcd41a235a"
@@ -1774,18 +1834,8 @@ dependencies = [
  "serde_derive",
  "serde_json",
  "spdx",
- "wasm-encoder 0.38.0",
- "wasmparser 0.118.0",
-]
-
-[[package]]
-name = "wasmparser"
-version = "0.116.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a58e28b80dd8340cb07b8242ae654756161f6fc8d0038123d679b7b99964fa50"
-dependencies = [
- "indexmap 2.1.0",
- "semver",
+ "wasm-encoder",
+ "wasmparser",
 ]
 
 [[package]]
@@ -1926,8 +1976,8 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen"
-version = "0.13.1"
-source = "git+https://github.com/bytecodealliance/wit-bindgen?rev=5390bab780733f1660d14c254ec985df2816bf1d#5390bab780733f1660d14c254ec985df2816bf1d"
+version = "0.16.0"
+source = "git+https://github.com/bytecodealliance/wit-bindgen?rev=efcc759#efcc7592cf3277bcb9be1034e48569c6d822b322"
 dependencies = [
  "bitflags 2.4.1",
  "wit-bindgen-rust-macro",
@@ -1935,8 +1985,8 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-core"
-version = "0.13.1"
-source = "git+https://github.com/bytecodealliance/wit-bindgen?rev=5390bab780733f1660d14c254ec985df2816bf1d#5390bab780733f1660d14c254ec985df2816bf1d"
+version = "0.16.0"
+source = "git+https://github.com/bytecodealliance/wit-bindgen?rev=efcc759#efcc7592cf3277bcb9be1034e48569c6d822b322"
 dependencies = [
  "anyhow",
  "wit-component",
@@ -1945,8 +1995,8 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-rust"
-version = "0.13.2"
-source = "git+https://github.com/bytecodealliance/wit-bindgen?rev=5390bab780733f1660d14c254ec985df2816bf1d#5390bab780733f1660d14c254ec985df2816bf1d"
+version = "0.16.0"
+source = "git+https://github.com/bytecodealliance/wit-bindgen?rev=efcc759#efcc7592cf3277bcb9be1034e48569c6d822b322"
 dependencies = [
  "anyhow",
  "heck",
@@ -1957,8 +2007,8 @@ dependencies = [
 
 [[package]]
 name = "wit-bindgen-rust-macro"
-version = "0.13.1"
-source = "git+https://github.com/bytecodealliance/wit-bindgen?rev=5390bab780733f1660d14c254ec985df2816bf1d#5390bab780733f1660d14c254ec985df2816bf1d"
+version = "0.16.0"
+source = "git+https://github.com/bytecodealliance/wit-bindgen?rev=efcc759#efcc7592cf3277bcb9be1034e48569c6d822b322"
 dependencies = [
  "anyhow",
  "proc-macro2",
@@ -1971,9 +2021,9 @@ dependencies = [
 
 [[package]]
 name = "wit-component"
-version = "0.17.0"
+version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "480cc1a078b305c1b8510f7c455c76cbd008ee49935f3a6c5fd5e937d8d95b1e"
+checksum = "5b8a35a2a9992898c9d27f1664001860595a4bc99d32dd3599d547412e17d7e2"
 dependencies = [
  "anyhow",
  "bitflags 2.4.1",
@@ -1982,17 +2032,17 @@ dependencies = [
  "serde",
  "serde_derive",
  "serde_json",
- "wasm-encoder 0.36.2",
+ "wasm-encoder",
  "wasm-metadata",
- "wasmparser 0.116.1",
+ "wasmparser",
  "wit-parser",
 ]
 
 [[package]]
 name = "wit-parser"
-version = "0.12.2"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "43771ee863a16ec4ecf9da0fc65c3bbd4a1235c8e3da5f094b562894843dfa76"
+checksum = "15df6b7b28ce94b8be39d8df5cb21a08a4f3b9f33b631aedb4aa5776f785ead3"
 dependencies = [
  "anyhow",
  "id-arena",

@@ -1,15 +1,16 @@
-use std::io::Read;
-use std::cell::RefCell;
 use std::{fs, io, thread, time};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::{FromRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
-use std::rc::Rc;
+use std::sync::Arc;
 use zip::read::ZipArchive;
 
+use tokio::sync::Mutex;
+
 use super::build;
+use super::run_tests::cleanup::{cleanup, cleanup_on_signal};
 use super::run_tests::network_router;
 use super::run_tests::types::*;
 
@@ -81,7 +82,7 @@ async fn fetch_local_commit_hash(commit_path: &PathBuf) -> anyhow::Result<Option
 }
 
 pub fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
-    println!("Compiling Uqbar runtime...");
+    println!("Compiling Kinode runtime...");
 
     build::run_command(Command::new("cargo")
         .args(&["+nightly", "build", "--release", "--features", "simulation-mode"])
@@ -90,7 +91,7 @@ pub fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling Uqbar runtime.");
+    println!("Done compiling Kinode runtime.");
     Ok(())
 }
 
@@ -102,7 +103,7 @@ async fn get_runtime_binary_inner(
     let url = format!("https://github.com/uqbar-dao/uqbin/raw/master/{version}/{binary_name}.zip");
 
     let runtime_zip_path = runtime_dir.join(format!("{}.zip", binary_name));
-    let runtime_path = runtime_dir.join("uqbar");
+    let runtime_path = runtime_dir.join("kinode");
 
     build::download_file(&url, &runtime_zip_path).await?;
     extract_zip(&runtime_zip_path)?;
@@ -119,13 +120,13 @@ async fn get_runtime_binary_inner(
 pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     let uname = Command::new("uname").output()?;
     if !uname.status.success() {
-        panic!("uqdev: Could not determine OS.");
+        panic!("kit: Could not determine OS.");
     }
     let os_name = std::str::from_utf8(&uname.stdout)?.trim();
 
     let uname_p = Command::new("uname").arg("-p").output()?;
     if !uname_p.status.success() {
-        panic!("uqdev: Could not determine architecture.");
+        panic!("kit: Could not determine architecture.");
     }
     let architecture_name = std::str::from_utf8(&uname_p.stdout)?.trim();
 
@@ -137,11 +138,11 @@ pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
         // ("Darwin", "x86_64") => "x86_64-apple-darwin",
         _ => panic!("OS/Architecture {}/{} not supported.", os_name, architecture_name),
     };
-    let binary_name = format!("uqbar-{}", binary_name_suffix);
+    let binary_name = format!("kinode-{}", binary_name_suffix);
 
-    let runtime_dir = PathBuf::from(format!("/tmp/uqbar-{}", version));
+    let runtime_dir = PathBuf::from(format!("/tmp/kinode-{}", version));
     let local_commit_path = runtime_dir.join("commit.txt");
-    let runtime_path = runtime_dir.join("uqbar");
+    let runtime_path = runtime_dir.join("kinode");
     let local_commit_hash = fetch_local_commit_hash(&local_commit_path).await?;
     // enable offline boot-fake-node:
     //  if online, fetch latest hash from github;
@@ -198,10 +199,9 @@ pub fn run_runtime(
 
     let process = Command::new(path)
         .args(&full_args)
-        .current_dir(path.parent().unwrap())
         .stdin(if !detached { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
-        .stdout(if verbose { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
-        .stderr(if verbose { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
         .spawn()?;
 
     Ok((process, fds.master))
@@ -216,38 +216,70 @@ pub async fn execute(
     rpc: Option<&str>,
     fake_node_name: &str,
     password: &str,
+    is_persist: bool,
     mut args: Vec<&str>,
 ) -> anyhow::Result<()> {
+    let detached = false;  // TODO: to argument?
     // TODO: factor out with run_tests?
     let runtime_path = match runtime_path {
         None => get_runtime_binary(&version).await?,
         Some(runtime_path) => {
             if !runtime_path.exists() {
-                panic!("uqdev boot-fake-node: RepoPath {:?} does not exist.", runtime_path);
+                panic!("kit boot-fake-node: RepoPath {:?} does not exist.", runtime_path);
             }
             if runtime_path.is_file() {
-                runtime_path
+                panic!("kit boot-fake-node: --runtime-path must be a directory (the repo).")
             } else if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(&runtime_path, true)?;
-                runtime_path.join("target/release/uqbar")
+                runtime_path.join("target/release/kinode")
             } else {
-                panic!("uqdev boot-fake-node: --runtime-path {:?} must be a directory (the repo) or a binary.", runtime_path);
+                panic!("kit boot-fake-node: --runtime-path {:?} must be a directory (the repo).", runtime_path);
             }
         },
     };
 
-    let (send_to_kill_router, recv_kill_in_router) = tokio::sync::mpsc::unbounded_channel();
-    tokio::task::spawn(network_router::execute(
-        network_router_port.clone(),
-        NetworkRouterDefects::None,
-        recv_kill_in_router,
+    let mut task_handles = Vec::new();
+
+    let node_cleanup_infos = Arc::new(Mutex::new(Vec::new()));
+
+    let (send_to_cleanup, recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
+    let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
+    let recv_kill_in_cos = send_to_kill.subscribe();
+    let recv_kill_in_router = send_to_kill.subscribe();
+
+    let node_cleanup_infos_for_cleanup = Arc::clone(&node_cleanup_infos);
+    let handle = tokio::spawn(cleanup(
+        recv_in_cleanup,
+        send_to_kill,
+        node_cleanup_infos_for_cleanup,
+        None,
+        detached,
+        !is_persist,
     ));
+    task_handles.push(handle);
+    let send_to_cleanup_for_signal = send_to_cleanup.clone();
+    let handle = tokio::spawn(cleanup_on_signal(send_to_cleanup_for_signal, recv_kill_in_cos));
+    task_handles.push(handle);
+    let send_to_cleanup_for_cleanup = send_to_cleanup.clone();
+    let _cleanup_context = CleanupContext::new(send_to_cleanup_for_cleanup);
 
+    let network_router_port_for_router = network_router_port.clone();
+    let handle = tokio::spawn(async move {
+        let _ = network_router::execute(
+            network_router_port_for_router,
+            NetworkRouterDefects::None,
+            recv_kill_in_router,
+        ).await;
+    });
+    task_handles.push(handle);
+
+    if node_home.exists() {
+        fs::remove_dir_all(&node_home)?;
+    }
+
+    // TODO: can remove?
     thread::sleep(time::Duration::from_secs(1));
-
-    let nodes = Rc::new(RefCell::new(Vec::new()));
-    let _cleanup_context = CleanupContext::new(Rc::clone(&nodes), send_to_kill_router);
 
     if let Some(ref rpc) = rpc {
         args.extend_from_slice(&["--rpc", rpc]);
@@ -255,26 +287,29 @@ pub async fn execute(
     args.extend_from_slice(&["--fake-node-name", fake_node_name]);
     args.extend_from_slice(&["--password", password]);
 
-    let (runtime_process, master_fd) = run_runtime(
+    let (mut runtime_process, master_fd) = run_runtime(
         &runtime_path,
         &node_home,
         node_port,
         network_router_port,
         &args[..],
         true,
-        false,
+        detached,
     )?;
 
-    let node_info = NodeInfo {
-        process_handle: runtime_process,
+    let mut node_cleanup_infos = node_cleanup_infos.lock().await;
+    node_cleanup_infos.push(NodeCleanupInfo {
         master_fd,
-        port: node_port,
+        process_id: runtime_process.id() as i32,
         home: node_home.clone(),
-    };
+    });
+    drop(node_cleanup_infos);
 
-    nodes.borrow_mut().push(node_info);
-
-    nodes.borrow_mut()[0].process_handle.wait().unwrap();
+    runtime_process.wait().unwrap();
+    let _ = send_to_cleanup.send(true);
+    for handle in task_handles {
+        handle.await.unwrap();
+    }
 
     Ok(())
 }
