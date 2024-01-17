@@ -23,7 +23,7 @@ fn new_package(
     });
 
     inject_message::make_message(
-        "main:app_store:nectar",
+        "main:app_store:sys",
         &message.to_string(),
         node,
         None,
@@ -45,7 +45,7 @@ pub fn interact_with_package(
     });
 
     inject_message::make_message(
-        "main:app_store:nectar",
+        "main:app_store:sys",
         &message.to_string(),
         node,
         None,

@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::str::FromStr;
 
-use nectar_process_lib::{
+use kinode_process_lib::{
     await_message, call_init, get_blob,
     http::{
         bind_http_path, bind_ws_path, send_response, send_ws_push, serve_ui, HttpServerRequest,

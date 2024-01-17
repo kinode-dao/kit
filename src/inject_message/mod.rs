@@ -64,7 +64,7 @@ pub async fn send_request(
     url: &str,
     json_data: Value,
 ) -> anyhow::Result<reqwest::Response> {
-    let endpoint = "/rpc:sys:nectar/message";
+    let endpoint = "/rpc:distro:sys/message";
     let mut url = url.to_string();
     let url =
         if url.ends_with(endpoint) {
@@ -86,8 +86,11 @@ pub async fn send_request(
 
 pub async fn parse_response(response: reqwest::Response) -> anyhow::Result<Response> {
     if response.status() != 200 {
-        println!("Failed with status code: {}", response.status());
-        return Err(anyhow::anyhow!("Failed with status code: {}", response.status()))
+        return Err(anyhow::anyhow!(
+            "Failed with status code: {}; {:?}",
+            response.status(),
+            response.text().await,
+        ))
     } else {
         let content: String = response.text().await?;
         let data: Value = serde_json::from_str(&content)?;

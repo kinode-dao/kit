@@ -84,10 +84,10 @@ fn install_rust() -> anyhow::Result<()> {
 fn check_python_venv(python: &str) -> anyhow::Result<()> {
     println!("Checking for python venv...");
     let venv_result = run_command(Command::new(python)
-        .args(&["-m", "venv", "nectar-test-venv"])
+        .args(&["-m", "venv", "kinode-test-venv"])
         .current_dir("/tmp")
     );
-    let venv_dir = PathBuf::from("/tmp/nectar-test-venv");
+    let venv_dir = PathBuf::from("/tmp/kinode-test-venv");
     if venv_dir.exists() {
         std::fs::remove_dir_all(&venv_dir)?;
     }

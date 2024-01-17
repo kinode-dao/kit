@@ -1,4 +1,4 @@
-import { printToTerminal, receive, sendAndAwaitResponse, sendResponse } from "nectar:process/standard@0.7.0";
+import { printToTerminal, receive, sendAndAwaitResponse, sendResponse } from "kinode:process/standard@0.7.0";
 
 function parseAddress(addressString) {
     const [node, rest] = addressString.split('@');
@@ -59,7 +59,7 @@ function handleMessage(ourNode, messageArchive) {
                 {
                     inherit: false,
                     body: encoder.encode(JSON.stringify({ Ack: null })),
-                    metadata: null
+                    metadata: null,
                     capabilities: [],
                 },
                 null

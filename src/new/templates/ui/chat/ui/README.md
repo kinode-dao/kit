@@ -1,4 +1,4 @@
-# Nectar UI Template
+# Kinode UI Template
 
 Based on the Vite React Typescript template.
 

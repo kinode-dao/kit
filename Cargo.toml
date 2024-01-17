@@ -11,7 +11,7 @@ base64 = "0.21"
 clap = { version = "4.4", features = ["cargo", "string"] }
 dirs = "5.0"
 futures-util = "0.3"
-nectar_process_lib = { git = "ssh://git@github.com/uqbar-dao/process_lib.git", rev = "dee786a" }
+kinode_process_lib = { git = "ssh://git@github.com/uqbar-dao/process_lib.git", rev = "5305453" }
 nix = { version = "0.27", features = ["process", "signal", "term"] }
 regex = "1.0"
 reqwest = { version = "0.11", features = ["json"] }
