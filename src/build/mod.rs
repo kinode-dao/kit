@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 use reqwest;
 use serde::{Serialize, Deserialize};
 
-use super::setup::{check_js_deps, check_py_deps, check_rust_deps, get_deps, REQUIRED_PY_PACKAGE};
+use super::setup::{check_js_deps, check_py_deps, check_rust_deps, get_deps, set_newest_valid_node_version, OldNodeVersion, REQUIRED_PY_PACKAGE};
 
 const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
@@ -244,8 +244,9 @@ fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> 
         if ui_path.join("package.json").exists() {
             println!("UI directory found, running npm install...");
 
-            run_command(Command::new("npm")
-                .arg("install")
+            run_command(Command::new("bash")
+                .arg("-c")
+                .arg("source ~/.nvm/nvm.sh && npm install")
                 .current_dir(&ui_path)
                 .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
                 .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
@@ -253,8 +254,9 @@ fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> 
 
             println!("Running npm run build:copy...");
 
-            run_command(Command::new("npm")
-                .args(["run", "build:copy"])
+            run_command(Command::new("bash")
+                .arg("-c")
+                .arg("source ~/.nvm/nvm.sh && npm run build:copy")
                 .current_dir(&ui_path)
                 .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
                 .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
@@ -308,10 +310,19 @@ async fn compile_package(
                 let python = check_py_deps()?;
                 compile_python_wasm_process(&path, &python, verbose).await?;
             } else if path.join(JAVASCRIPT_SRC_PATH).exists() {
-                if !skip_deps_check {
-                    let deps = check_js_deps()?;
-                    get_deps(deps)?;
-                }
+                let _old_node_version =
+                    if skip_deps_check {
+                        OldNodeVersion::none()
+                    } else {
+                        let (deps, old_node_version) = check_js_deps()?;
+                        if deps.is_empty() {
+                            old_node_version
+                        } else {
+                            get_deps(deps)?;
+                            set_newest_valid_node_version(None, None)?
+                                .unwrap_or(OldNodeVersion::none())
+                        }
+                    };
                 compile_javascript_wasm_process(&path, verbose).await?;
             }
         }
@@ -340,10 +351,15 @@ pub async fn execute(
             compile_package(package_dir, verbose, skip_deps_check).await
         }
     } else {
-        if !skip_deps_check {
-            let deps = check_js_deps()?;
-            get_deps(deps)?;
-        }
+        let _old_node_version =
+            if skip_deps_check {
+                OldNodeVersion::none()
+            } else {
+                let (deps, old_node_version) = check_js_deps()?;
+                get_deps(deps)?;
+                old_node_version
+            };
+
         if ui_only {
             compile_and_copy_ui(package_dir, verbose)
         } else {

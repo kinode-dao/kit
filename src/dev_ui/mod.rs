@@ -2,13 +2,22 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 
 use super::build::run_command;
-use super::setup::{check_js_deps, get_deps};
+use super::setup::{check_js_deps, get_deps, set_newest_valid_node_version, OldNodeVersion};
 
 pub fn execute(package_dir: &Path, url: &str, skip_deps_check: bool) -> anyhow::Result<()> {
-    if !skip_deps_check {
-        let deps = check_js_deps()?;
-        get_deps(deps)?;
-    }
+    let _old_node_version =
+        if skip_deps_check {
+            OldNodeVersion::none()
+        } else {
+            let (deps, old_node_version) = check_js_deps()?;
+            if deps.is_empty() {
+                old_node_version
+            } else {
+                get_deps(deps)?;
+                set_newest_valid_node_version(None, None)?
+                    .unwrap_or(OldNodeVersion::none())
+            }
+        };
     let ui_path = package_dir.join("ui");
     println!("Starting development UI in {:?}...", ui_path);
 

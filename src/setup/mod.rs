@@ -7,13 +7,37 @@ use std::str;
 use super::build::run_command;
 
 const FETCH_NVM_VERSION: &str = "v0.39.7";
-const REQUIRED_NODE_MAJOR: u32 = 18;
+const REQUIRED_NODE_MAJOR: u32 = 20;
 const MINIMUM_NODE_MINOR: u32 = 0;
 const REQUIRED_NPM_MAJOR: u32 = 9;
 const MINIMUM_NPM_MINOR: u32 = 0;
 pub const REQUIRED_PY_MAJOR: u32 = 3;
 pub const MINIMUM_PY_MINOR: u32 = 10;
 pub const REQUIRED_PY_PACKAGE: &str = "componentize-py==0.7.1";
+
+pub struct OldNodeVersion {
+    version: Option<String>,
+}
+
+impl OldNodeVersion {
+    pub fn new(version: Option<String>) -> Self {
+        OldNodeVersion { version }
+    }
+
+    pub fn none() -> Self {
+        OldNodeVersion { version: None }
+    }
+}
+
+impl Drop for OldNodeVersion {
+    fn drop(&mut self) {
+        if let Some(ref version) = self.version {
+            // reset `node` version to original setting
+            call_nvm(&format!("use {}", version))
+                .expect(&format!("could not reset node version to {}", version));
+        };
+    }
+}
 
 #[derive(Clone)]
 pub enum Dependency {
@@ -121,6 +145,87 @@ fn is_version_correct(cmd: &str, required_version: (u32, u32)) -> anyhow::Result
         .and_then(|v| Some(compare_versions(v, required_version)))
         .unwrap_or(false)
     )
+}
+
+fn strip_color_codes(input: &str) -> String {
+    let re = regex::Regex::new("\x1b\\[[^m]*m").unwrap();
+    re.replace_all(input, "").into_owned()
+}
+
+/// Use `nvm` to set to newest `node` version, provided
+/// that version is at least as new as `required_major`.
+///
+/// Returns `None` if no valid version; `Some(String)` after
+/// setting to newest valid version, where that `String` is
+/// the old `node` version that was set (so if can be restored later).
+pub fn set_newest_valid_node_version(
+    required_major: Option<u32>,
+    minimum_minor: Option<u32>,
+) -> anyhow::Result<Option<OldNodeVersion>> {
+    let required_major = required_major.unwrap_or(REQUIRED_NODE_MAJOR);
+    let minimum_minor = minimum_minor.unwrap_or(MINIMUM_NODE_MINOR);
+
+    let output = Command::new("bash")
+        .arg("-c")
+        .arg("source ~/.nvm/nvm.sh && nvm ls --no-alias")
+        .output()?
+        .stdout;
+
+    let nvm_ls = String::from_utf8_lossy(&output);
+    let mut original_version = None;
+    let mut versions = Vec::new();
+
+    for line in nvm_ls.lines() {
+        let line = strip_color_codes(line);
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        if fields.len() == 1 {
+            versions.push(fields[0].to_string());
+        } else if fields.len() == 2 {
+            if original_version == None {
+                assert_eq!("->", fields[0]);
+                original_version = Some(fields[1].to_string());
+            } else {
+                panic!("");
+            }
+        }
+    }
+
+    let mut newest_node = None;
+    let mut max_version = (0, 0); // (major, minor)
+
+    if let Some(ref version) = original_version {
+        if let Some((major, minor)) = parse_version(version) {
+            if major == required_major && minor >= minimum_minor && (major, minor) > max_version {
+                max_version = (major, minor);
+                newest_node = Some(version.to_string());
+            }
+        }
+    }
+
+    for version in versions {
+        if let Some((major, minor)) = parse_version(&version) {
+            if major == required_major && minor >= minimum_minor && (major, minor) > max_version {
+                max_version = (major, minor);
+                newest_node = Some(version.to_string());
+            }
+        }
+    }
+
+    if original_version == newest_node {
+        original_version = None;
+    }
+
+    match newest_node {
+        None => return Ok(None),
+        Some(newest_node) => {
+            run_command(Command::new("bash")
+                .arg("-c")
+                .arg(format!("source ~/.nvm/nvm.sh && nvm use {}", newest_node))
+                .stdout(Stdio::null())
+            )?;
+            return Ok(Some(OldNodeVersion::new(original_version)));
+        },
+    }
 }
 
 fn call_nvm(arg: &str) -> anyhow::Result<()> {
@@ -294,21 +399,24 @@ pub fn check_py_deps() -> anyhow::Result<String> {
 }
 
 /// Check for Javascript deps, returning a Vec of not found: can be automatically fetched
-pub fn check_js_deps() -> anyhow::Result<Vec<Dependency>> {
+pub fn check_js_deps() -> anyhow::Result<(Vec<Dependency>, OldNodeVersion)> {
     let mut missing_deps = Vec::new();
     if !is_nvm_installed()? {
         missing_deps.push(Dependency::Nvm);
     }
-    if !is_command_installed("node")?
-    || !is_version_correct("node", (REQUIRED_NODE_MAJOR, MINIMUM_NODE_MINOR))? {
-        missing_deps.push(Dependency::Node);
-    }
+    let old_node_version = match set_newest_valid_node_version(None, None)? {
+        Some(old_node_version) => old_node_version,
+        None => {
+            missing_deps.push(Dependency::Node);
+            OldNodeVersion::none()
+        },
+    };
     if !is_command_installed("npm")?
     || !is_version_correct("npm", (REQUIRED_NPM_MAJOR, MINIMUM_NPM_MINOR))? {
         missing_deps.push(Dependency::Npm);
     }
 
-    Ok(missing_deps)
+    Ok((missing_deps, old_node_version))
 }
 
 /// Check for Rust deps, returning a Vec of not found: can be automatically fetched
@@ -385,7 +493,7 @@ pub fn execute() -> anyhow::Result<()> {
     println!("Setting up...");
 
     check_py_deps()?;
-    let mut missing_deps = check_js_deps()?;
+    let (mut missing_deps, _old_node_version) = check_js_deps()?;
     missing_deps.append(&mut check_rust_deps()?);
     get_deps(missing_deps)?;
 
