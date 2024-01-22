@@ -333,6 +333,7 @@ async fn compile_package(
 
 pub async fn execute(
     package_dir: &Path,
+    no_ui: bool,
     ui_only: bool,
     verbose: bool,
     skip_deps_check: bool,
@@ -343,6 +344,7 @@ pub async fn execute(
             package_dir,
         ));
     }
+
     let ui_dir = package_dir.join("ui");
     if !ui_dir.exists() {
         if ui_only {
@@ -351,6 +353,10 @@ pub async fn execute(
             compile_package(package_dir, verbose, skip_deps_check).await
         }
     } else {
+        if no_ui {
+            return compile_package(package_dir, verbose, skip_deps_check).await;
+        }
+
         let _old_node_version =
             if skip_deps_check {
                 OldNodeVersion::none()
