@@ -47,15 +47,17 @@ async fn execute(
         },
         Some(("build", build_matches)) => {
             let package_dir = PathBuf::from(build_matches.get_one::<String>("DIR").unwrap());
+            let no_ui = build_matches.get_one::<bool>("NO_UI").unwrap();
             let ui_only = build_matches.get_one::<bool>("UI_ONLY").unwrap();
             let verbose = !build_matches.get_one::<bool>("QUIET").unwrap();
             let skip_deps_check = build_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
 
-            build::execute(&package_dir, *ui_only, verbose, *skip_deps_check).await
+            build::execute(&package_dir, *no_ui, *ui_only, verbose, *skip_deps_check).await
         },
         Some(("build-start-package", build_start_matches)) => {
 
             let package_dir = PathBuf::from(build_start_matches.get_one::<String>("DIR").unwrap());
+            let no_ui = build_start_matches.get_one::<bool>("NO_UI").unwrap();
             let ui_only = build_start_matches.get_one::<bool>("UI_ONLY").unwrap_or(&false);
             let verbose = !build_start_matches.get_one::<bool>("QUIET").unwrap();
             let url: String = match build_start_matches.get_one::<String>("URL") {
@@ -69,6 +71,7 @@ async fn execute(
 
             build_start_package::execute(
                 &package_dir,
+                *no_ui,
                 *ui_only,
                 verbose,
                 &url,
@@ -285,10 +288,16 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .help("The package directory to build")
                 .default_value(current_dir)
             )
+            .arg(Arg::new("NO_UI")
+                .action(ArgAction::SetTrue)
+                .long("no-ui")
+                .help("If set, do NOT build the web UI for the process; no-op if passed with UI_ONLY")
+                .required(false)
+            )
             .arg(Arg::new("UI_ONLY")
                 .action(ArgAction::SetTrue)
                 .long("ui-only")
-                .help("If set, build ONLY the web UI for the process")
+                .help("If set, build ONLY the web UI for the process; no-op if passed with NO_UI")
                 .required(false)
             )
             .arg(Arg::new("QUIET")
@@ -327,6 +336,12 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .short('u')
                 .long("url")
                 .help("Node URL (overrides NODE_PORT)")
+                .required(false)
+            )
+            .arg(Arg::new("NO_UI")
+                .action(ArgAction::SetTrue)
+                .long("no-ui")
+                .help("If set, do NOT build the web UI for the process; no-op if passed with UI_ONLY")
                 .required(false)
             )
             .arg(Arg::new("UI_ONLY")
