@@ -1,6 +1,8 @@
 # kit
 
-Tool**kit** for developing on Kinode OS.
+Tool**kit** for developing on [Kinode OS](https://github.com/uqbar-dao/kinode).
+
+Documentation in the [Kinode Book](https://book.kinode.org/kit/kit.html); example usage [here](https://book.kinode.org/my_first_app/chapter_1.html).
 
 ## Installing
 
@@ -61,14 +63,14 @@ kit start-package
 kit --help
 ```
 
-`kit boot-fake-node` can also accept a `--runtime-path` argument that compiles the fake node binary from a local Nectar core repository.
-Use like (substituting path to Nectar core repo):
+`kit boot-fake-node` can also accept a `--runtime-path` argument that compiles the fake node binary from a local Kinode core repository.
+Use like (substituting path to Kinode core repo):
 
 ```bash
 kit boot-fake-node --runtime-path ~/git/kinode
 ```
 
-NecDev also contains tools for running tests.
+`kit` also contains tools for running tests.
 For details and examples, please see [https://github.com/uqbar-dao/core_tests](https://github.com/uqbar-dao/core_tests).
 
 ## UI Development
