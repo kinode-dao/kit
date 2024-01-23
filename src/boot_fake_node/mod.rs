@@ -7,6 +7,8 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use zip::read::ZipArchive;
 
+use semver::Version;
+use serde::Deserialize;
 use tokio::sync::Mutex;
 
 use super::build;
@@ -15,6 +17,20 @@ use super::run_tests::network_router;
 use super::run_tests::types::*;
 
 const KINODE_RELEASE_BASE_URL: &str = "https://github.com/uqbar-dao/kinode/releases/download";
+const KINODE_OWNER: &str = "uqbar-dao";
+const KINODE_REPO: &str = "kinode";
+const LOCAL_PREFIX: &str = "/tmp/kinode-";
+
+#[derive(Deserialize, Debug)]
+struct Release {
+    tag_name: String,
+    assets: Vec<Asset>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Asset {
+    name: String,
+}
 
 fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
     let file = fs::File::open(archive_path)?;
@@ -84,7 +100,7 @@ async fn get_runtime_binary_inner(
     Ok(())
 }
 
-pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
+pub fn get_platform_runtime_name() -> anyhow::Result<String> {
     let uname = Command::new("uname").output()?;
     if !uname.status.success() {
         return Err(anyhow::anyhow!("Could not determine OS."));
@@ -105,17 +121,144 @@ pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
         // ("Darwin", "x86_64") => "x86_64-apple-darwin",
         _ => return Err(anyhow::anyhow!("OS/Architecture {}/{} not supported.", os_name, architecture_name)),
     };
-    let zip_name = format!("kinode-{}-simulation-mode.zip", zip_name_midfix);
+    Ok(format!("kinode-{}-simulation-mode.zip", zip_name_midfix))
+}
 
-    let runtime_dir = PathBuf::from(format!("/tmp/kinode-{}", version));
+pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
+    let zip_name = get_platform_runtime_name()?;
+
+    let version =
+        if version != "latest" {
+            version.to_string()
+        } else {
+            fetch_latest_release_tag_or_local(KINODE_OWNER, KINODE_REPO).await?
+        };
+
+    let runtime_dir = PathBuf::from(format!("{}{}", LOCAL_PREFIX, version));
     let runtime_path = runtime_dir.join("kinode");
 
     if !runtime_dir.exists() {
         fs::create_dir_all(&runtime_dir)?;
-        get_runtime_binary_inner(version, &zip_name, &runtime_dir).await?;
+        get_runtime_binary_inner(&version, &zip_name, &runtime_dir).await?;
     }
 
     Ok(runtime_path)
+}
+
+async fn fetch_releases(owner: &str, repo: &str) -> anyhow::Result<Vec<Release>> {
+    let url = format!("https://api.github.com/repos/{}/{}/releases", owner, repo);
+    let client = reqwest::Client::new();
+    let releases = client.get(url)
+        .header("User-Agent", "request")
+        .send()
+        .await?
+        .json::<Vec<Release>>()
+        .await?;
+    Ok(releases)
+}
+
+pub async fn find_releases_with_asset(owner: Option<&str>, repo: Option<&str>, asset_name: &str) -> anyhow::Result<Vec<String>> {
+    let owner = owner.unwrap_or(KINODE_OWNER);
+    let repo = repo.unwrap_or(KINODE_REPO);
+    let releases = fetch_releases(owner, repo).await?;
+    let filtered_releases: Vec<String> = releases.into_iter()
+        .filter(|release| release.assets.iter().any(|asset| asset.name == asset_name))
+        .map(|release| release.tag_name)
+        .collect();
+    Ok(filtered_releases)
+}
+
+pub async fn find_releases_with_asset_if_online(
+    owner: Option<&str>,
+    repo: Option<&str>,
+    asset_name: &str,
+) -> anyhow::Result<Vec<String>> {
+    let remote_values = match find_releases_with_asset(owner, repo, asset_name).await {
+        Ok(v) => v,
+        Err(e) => {
+            match e.downcast_ref::<reqwest::Error>() {
+                None => return Err(e),
+                Some(ee) => {
+                    if ee.is_connect() {
+                        get_local_versions_with_prefix(
+                            &format!("{}v", LOCAL_PREFIX)
+                        )?
+                            .iter()
+                            .map(|v| format!("v{}", v))
+                            .collect()
+                    } else {
+                        return Err(e);
+                    }
+                },
+            }
+        },
+    };
+    Ok(remote_values)
+}
+
+async fn fetch_latest_release_tag(owner: &str, repo: &str) -> anyhow::Result<String> {
+    fetch_releases(owner, repo)
+        .await?
+        .first()
+        .map(|release| release.tag_name.clone())
+        .ok_or_else(|| anyhow::anyhow!("No releases found"))
+}
+
+fn get_local_versions_with_prefix(prefix: &str) -> anyhow::Result<Vec<String>> {
+    let mut versions = Vec::new();
+
+    for entry in fs::read_dir(Path::new(prefix).parent().unwrap())? {
+        let entry = entry?;
+        let path = entry.path();
+        if let Some(str_path) = path.to_str() {
+            if str_path.starts_with(prefix) {
+                let version = str_path.replace(prefix, "");
+                versions.push(version);
+            }
+        }
+    }
+
+    Ok(versions)
+}
+
+fn find_newest_version(versions: Vec<String>) -> Option<String> {
+    let mut max_version: Option<Version> = None;
+
+    for version_str in versions {
+        if let Ok(version) = Version::parse(&version_str) {
+            match max_version {
+                Some(ref max) if version > *max => max_version = Some(version),
+                None => max_version = Some(version),
+                _ => {}
+            }
+        }
+    }
+
+    max_version.map(|v| v.to_string())
+}
+
+async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> anyhow::Result<String> {
+    match fetch_latest_release_tag(owner, repo).await {
+        Ok(v) => return Ok(v),
+        Err(e) => {
+            match e.downcast_ref::<reqwest::Error>() {
+                None => return Err(e),
+                Some(ee) => {
+                    if ee.is_connect() {
+                        let local_versions = get_local_versions_with_prefix(
+                            &format!("{}v", LOCAL_PREFIX)
+                        )?;
+                        let newest_local = find_newest_version(local_versions).ok_or(
+                            anyhow::anyhow!("Could not connect to github nor find local copy; please connect to the internet and try again.")
+                        )?;
+                        Ok(format!("v{}", newest_local))
+                    } else {
+                        return Err(e);
+                    }
+                },
+            }
+        },
+    }
 }
 
 pub fn run_runtime(
