@@ -161,16 +161,9 @@ async fn find_releases_with_asset(owner: &str, repo: &str, asset_name: &str) -> 
 }
 
 async fn fetch_latest_release_tag(owner: &str, repo: &str) -> anyhow::Result<String> {
-    let url = format!("https://api.github.com/repos/{}/{}/releases", owner, repo);
-    let client = reqwest::Client::new();
-    let releases = client.get(url)
-        .header("User-Agent", "request")
-        .send()
+    fetch_releases(owner, repo)
         .await?
-        .json::<Vec<Release>>()
-        .await?;
-
-    releases.first()
+        .first()
         .map(|release| release.tag_name.clone())
         .ok_or_else(|| anyhow::anyhow!("No releases found"))
 }
