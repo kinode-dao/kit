@@ -1,4 +1,4 @@
-use clap::{Arg, ArgAction, command, Command, value_parser};
+use clap::{Arg, ArgAction, builder::PossibleValuesParser, command, Command, value_parser};
 use std::env;
 use std::path::PathBuf;
 
@@ -196,8 +196,8 @@ async fn execute(
     }
 }
 
-fn make_app(current_dir: &std::ffi::OsString) -> Command {
-    command!()
+async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
+    Ok(command!()
         .name("kit")
         .version(env!("CARGO_PKG_VERSION"))
         .about("Development tool\x1b[1mkit\x1b[0m for Kinode")
@@ -226,6 +226,16 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .long("version")
                 .help("Version of Kinode binary to use (overridden by --runtime-path)")
                 .default_value("latest")
+                .value_parser(PossibleValuesParser::new({
+                    let mut possible_values = vec!["latest".to_string()];
+                    let mut remote_values = boot_fake_node::find_releases_with_asset_if_online(
+                        None,
+                        None,
+                        &boot_fake_node::get_platform_runtime_name()?
+                    ).await?;
+                    possible_values.append(&mut remote_values);
+                    possible_values
+                }))
             )
             .arg(Arg::new("NODE_PORT")
                 .action(ArgAction::Set)
@@ -577,12 +587,13 @@ fn make_app(current_dir: &std::ffi::OsString) -> Command {
                 .default_value("master")
             )
         )
+    )
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let current_dir = env::current_dir()?.into_os_string();
-    let mut app = make_app(&current_dir);
+    let mut app = make_app(&current_dir).await?;
 
     let usage = app.render_usage();
     let matches = app.get_matches();

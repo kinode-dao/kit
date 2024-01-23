@@ -753,6 +753,7 @@ dependencies = [
  "regex",
  "reqwest",
  "rmp-serde",
+ "semver",
  "serde",
  "serde_json",
  "thiserror",
