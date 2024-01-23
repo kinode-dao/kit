@@ -180,7 +180,12 @@ pub async fn find_releases_with_asset_if_online(
                 None => return Err(e),
                 Some(ee) => {
                     if ee.is_connect() {
-                        vec![]
+                        get_local_versions_with_prefix(
+                            &format!("{}v", LOCAL_PREFIX)
+                        )?
+                            .iter()
+                            .map(|v| format!("v{}", v))
+                            .collect()
                     } else {
                         return Err(e);
                     }
@@ -199,7 +204,7 @@ async fn fetch_latest_release_tag(owner: &str, repo: &str) -> anyhow::Result<Str
         .ok_or_else(|| anyhow::anyhow!("No releases found"))
 }
 
-fn get_versions_with_prefix(prefix: &str) -> anyhow::Result<Vec<String>> {
+fn get_local_versions_with_prefix(prefix: &str) -> anyhow::Result<Vec<String>> {
     let mut versions = Vec::new();
 
     for entry in fs::read_dir(Path::new(prefix).parent().unwrap())? {
@@ -240,10 +245,9 @@ async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> anyhow::R
                 None => return Err(e),
                 Some(ee) => {
                     if ee.is_connect() {
-                        let local_versions = get_versions_with_prefix(LOCAL_PREFIX)?
-                            .iter()
-                            .map(|v| v.chars().skip(1).collect())
-                            .collect();
+                        let local_versions = get_local_versions_with_prefix(
+                            &format!("{}v", LOCAL_PREFIX)
+                        )?;
                         let newest_local = find_newest_version(local_versions).ok_or(
                             anyhow::anyhow!("Could not connect to github nor find local copy; please connect to the internet and try again.")
                         )?;
