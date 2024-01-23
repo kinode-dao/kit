@@ -14,6 +14,8 @@ mod setup;
 mod start_package;
 mod update;
 
+const MAX_REMOTE_VALUES: usize = 3;
+
 async fn execute(
     usage: clap::builder::StyledStr,
     matches: Option<(&str, &clap::ArgMatches)>,
@@ -233,6 +235,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                         None,
                         &boot_fake_node::get_platform_runtime_name()?
                     ).await?;
+                    remote_values.truncate(MAX_REMOTE_VALUES);
                     possible_values.append(&mut remote_values);
                     possible_values
                 }))
