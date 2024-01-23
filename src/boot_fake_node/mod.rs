@@ -7,6 +7,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use zip::read::ZipArchive;
 
+use serde::Deserialize;
 use tokio::sync::Mutex;
 
 use super::build;
@@ -15,6 +16,19 @@ use super::run_tests::network_router;
 use super::run_tests::types::*;
 
 const KINODE_RELEASE_BASE_URL: &str = "https://github.com/uqbar-dao/kinode/releases/download";
+const KINODE_OWNER: &str = "uqbar-dao";
+const KINODE_REPO: &str = "kinode";
+
+#[derive(Deserialize, Debug)]
+struct Release {
+    tag_name: String,
+    assets: Vec<Asset>,
+}
+
+#[derive(Deserialize, Debug)]
+struct Asset {
+    name: String,
+}
 
 fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
     let file = fs::File::open(archive_path)?;
@@ -107,15 +121,58 @@ pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     };
     let zip_name = format!("kinode-{}-simulation-mode.zip", zip_name_midfix);
 
+    let version =
+        if version != "latest" {
+            version.to_string()
+        } else {
+            fetch_latest_release_tag(KINODE_OWNER, KINODE_REPO).await?
+        };
+
     let runtime_dir = PathBuf::from(format!("/tmp/kinode-{}", version));
     let runtime_path = runtime_dir.join("kinode");
 
     if !runtime_dir.exists() {
         fs::create_dir_all(&runtime_dir)?;
-        get_runtime_binary_inner(version, &zip_name, &runtime_dir).await?;
+        get_runtime_binary_inner(&version, &zip_name, &runtime_dir).await?;
     }
 
     Ok(runtime_path)
+}
+
+async fn fetch_releases(owner: &str, repo: &str) -> anyhow::Result<Vec<Release>> {
+    let url = format!("https://api.github.com/repos/{}/{}/releases", owner, repo);
+    let client = reqwest::Client::new();
+    let releases = client.get(url)
+        .header("User-Agent", "request")
+        .send()
+        .await?
+        .json::<Vec<Release>>()
+        .await?;
+    Ok(releases)
+}
+
+async fn find_releases_with_asset(owner: &str, repo: &str, asset_name: &str) -> anyhow::Result<Vec<String>> {
+    let releases = fetch_releases(owner, repo).await?;
+    let filtered_releases: Vec<String> = releases.into_iter()
+        .filter(|release| release.assets.iter().any(|asset| asset.name == asset_name))
+        .map(|release| release.tag_name)
+        .collect();
+    Ok(filtered_releases)
+}
+
+async fn fetch_latest_release_tag(owner: &str, repo: &str) -> anyhow::Result<String> {
+    let url = format!("https://api.github.com/repos/{}/{}/releases", owner, repo);
+    let client = reqwest::Client::new();
+    let releases = client.get(url)
+        .header("User-Agent", "request")
+        .send()
+        .await?
+        .json::<Vec<Release>>()
+        .await?;
+
+    releases.first()
+        .map(|release| release.tag_name.clone())
+        .ok_or_else(|| anyhow::anyhow!("No releases found"))
 }
 
 pub fn run_runtime(
