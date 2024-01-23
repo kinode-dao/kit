@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import reactLogo from "./assets/react.svg";
 import viteLogo from "./assets/vite.svg";
-import KinodeEncryptorApi from "@uqbar/client-encryptor-api";
+import KinodeClientApi from "@kinode/client-api";
 import "./App.css";
 import { SendChatMessage } from "./types/Chat";
 import useChatStore from "./store/chat";
@@ -23,7 +23,7 @@ function App() {
   const [target, setTarget] = useState("");
   const [message, setMessage] = useState("");
   const [nodeConnected, setNodeConnected] = useState(true);
-  const [api, setApi] = useState<KinodeEncryptorApi | undefined>();
+  const [api, setApi] = useState<KinodeClientApi | undefined>();
 
   useEffect(() => {
     // Get message history using http
@@ -37,7 +37,7 @@ function App() {
     // Connect to the Kinode via websocket
     console.log('WEBSOCKET URL', WEBSOCKET_URL)
     if (window.our?.node && window.our?.process) {
-      const api = new KinodeEncryptorApi({
+      const api = new KinodeClientApi({
         uri: WEBSOCKET_URL,
         nodeId: window.our.node,
         processId: window.our.process,
