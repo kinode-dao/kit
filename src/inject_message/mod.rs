@@ -2,23 +2,33 @@ use std::fs;
 use std::io::{self, Read};
 
 #[allow(deprecated)]
-use base64::encode;
+use base64::{decode, encode};
 use reqwest;
 use serde_json::{Value, json};
 
 pub struct Response {
     pub body: String,
+    pub lazy_load_blob_utf8: Option<Option<String>>,
     pub lazy_load_blob: Option<Vec<u8>>,
 }
 
 impl std::fmt::Display for Response {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Response:\nbody: {}\nblob: {:?}",
-            self.body,
-            self.lazy_load_blob,
-        )
+        if let Some(Some(ref s)) = self.lazy_load_blob_utf8 {
+            write!(
+                f,
+                "Response:\nbody: {}\nblob: {}",
+                self.body,
+                s,
+            )
+        } else {
+            write!(
+                f,
+                "Response:\nbody: {}\nblob: {:?}",
+                self.body,
+                self.lazy_load_blob,
+            )
+        }
     }
 }
 
@@ -120,13 +130,29 @@ pub async fn parse_response(response: reqwest::Response) -> anyhow::Result<Respo
                             .collect();
                         Some(Ok(blob_bytes))
                     },
+                    serde_json::Value::Object(blob_object) => {
+                        blob_object
+                            .get("bytes")
+                            .and_then(|bb| {
+                                let serde_json::Value::Array(blob_bytes_val) = bb else {
+                                    return Some(Err(anyhow::anyhow!("Unexpected `lazy_load_blob` format: {:?}.", b)));
+                                };
+                                let blob_bytes: Vec<u8> = blob_bytes_val
+                                    .iter()
+                                    .map(|n| n.as_u64().unwrap() as u8)
+                                    .collect();
+                                Some(Ok(blob_bytes))
+                            })
+                    },
                     _ => return Some(Err(anyhow::anyhow!("Response did not contain `lazy_load_blob` bytes field."))),
                 }
             })
             .transpose()?;
 
+        #[allow(deprecated)]
         Ok(Response {
             body,
+            lazy_load_blob_utf8: blob.clone().and_then(|b| decode(b).ok()).map(|b| String::from_utf8(b).ok()),
             lazy_load_blob: blob,
         })
     }
