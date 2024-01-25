@@ -16,8 +16,8 @@ use super::run_tests::cleanup::{cleanup, cleanup_on_signal};
 use super::run_tests::network_router;
 use super::run_tests::types::*;
 
-const KINODE_RELEASE_BASE_URL: &str = "https://github.com/uqbar-dao/kinode/releases/download";
-const KINODE_OWNER: &str = "uqbar-dao";
+const KINODE_RELEASE_BASE_URL: &str = "https://github.com/kinode-dao/kinode/releases/download";
+const KINODE_OWNER: &str = "kinode-dao";
 const KINODE_REPO: &str = "kinode";
 const LOCAL_PREFIX: &str = "/tmp/kinode-";
 
