@@ -11,7 +11,7 @@ const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
 const PYTHON_SRC_PATH: &str = "src/lib.py";
 const RUST_SRC_PATH: &str = "src/lib.rs";
-const KINODE_WIT_URL: &str = "https://raw.githubusercontent.com/kinode-dao/kinode-wit/master/kinode.wit";
+const KINODE_WIT_URL: &str = "https://raw.githubusercontent.com/kinode-dao/kinode-wit/9700a5962c46bbd345730ba61bdf71a6e1fb0782/kinode.wit";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
