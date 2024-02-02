@@ -183,6 +183,7 @@ async fn compile_rust_wasm_process(
             "--release",
             "--no-default-features",
             "--target", "wasm32-wasi",
+            "--target-dir", "target",
         ])
         .current_dir(process_dir)
         .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
