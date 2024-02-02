@@ -86,10 +86,11 @@
 
 .message {
   align-self: flex-start;
-  background-color: lightgray;
+  background-color: gray;
   border-radius: 0.25em;
   padding: 0.25em 0.5em;
   margin-bottom: 0.5em;
+  color: white;
 }
 
 .message.ours {
