@@ -300,6 +300,7 @@ pub async fn execute(
     node_port: u16,
     network_router_port: u16,
     rpc: Option<&str>,
+    is_testnet: bool,
     fake_node_name: &str,
     password: &str,
     is_persist: bool,
@@ -376,6 +377,9 @@ pub async fn execute(
     };
     args.extend_from_slice(&["--fake-node-name", fake_node_name]);
     args.extend_from_slice(&["--password", password]);
+    if is_testnet {
+        args.extend_from_slice(&["--testnet"]);
+    }
 
     let (mut runtime_process, master_fd) = run_runtime(
         &runtime_path,
