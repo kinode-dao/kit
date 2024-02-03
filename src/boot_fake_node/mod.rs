@@ -156,12 +156,18 @@ pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
 async fn fetch_releases(owner: &str, repo: &str) -> anyhow::Result<Vec<Release>> {
     let url = format!("https://api.github.com/repos/{}/{}/releases", owner, repo);
     let client = reqwest::Client::new();
-    let releases = client.get(url)
+    let releases = match client.get(url)
         .header("User-Agent", "request")
         .send()
         .await?
         .json::<Vec<Release>>()
-        .await?;
+        .await {
+        Ok(v) => v,
+        Err(_) => {
+            println!("github throttled! fix coming soon");
+            vec![]
+        },
+    };
     Ok(releases)
 }
 
@@ -308,6 +314,7 @@ pub async fn execute(
     node_port: u16,
     network_router_port: u16,
     rpc: Option<&str>,
+    is_testnet: bool,
     fake_node_name: &str,
     password: &str,
     is_persist: bool,
@@ -384,6 +391,9 @@ pub async fn execute(
     };
     args.extend_from_slice(&["--fake-node-name", fake_node_name]);
     args.extend_from_slice(&["--password", password]);
+    if is_testnet {
+        args.extend_from_slice(&["--testnet"]);
+    }
 
     let (mut runtime_process, master_fd) = run_runtime(
         &runtime_path,

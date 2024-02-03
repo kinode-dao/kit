@@ -56,6 +56,7 @@ pub struct Node {
     pub password: Option<String>,
     pub rpc: Option<String>,
     pub runtime_verbose: bool,
+    pub is_testnet: bool,
 }
 
 pub type NodeHandles = Arc<Mutex<Vec<Child>>>;

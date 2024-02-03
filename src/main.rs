@@ -30,6 +30,7 @@ async fn execute(
             let node_port = boot_matches.get_one::<u16>("NODE_PORT").unwrap();
             let network_router_port = boot_matches.get_one::<u16>("NETWORK_ROUTER_PORT").unwrap();
             let rpc = boot_matches.get_one::<String>("RPC_ENDPOINT").and_then(|s| Some(s.as_str()));
+            let is_testnet = boot_matches.get_one::<bool>("TESTNET").unwrap();
             let fake_node_name = boot_matches.get_one::<String>("NODE_NAME").unwrap();
             let password = boot_matches.get_one::<String>("PASSWORD").unwrap();
             let is_persist = boot_matches.get_one::<bool>("PERSIST").unwrap();
@@ -41,6 +42,7 @@ async fn execute(
                 *node_port,
                 *network_router_port,
                 rpc,
+                *is_testnet,
                 fake_node_name,
                 password,
                 *is_persist,
@@ -273,6 +275,12 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .action(ArgAction::Set)
                 .long("rpc")
                 .help("Ethereum RPC endpoint (wss://)")
+                .required(false)
+            )
+            .arg(Arg::new("TESTNET")
+                .action(ArgAction::SetTrue)
+                .long("testnet")
+                .help("If set, use Sepolia testnet")
                 .required(false)
             )
             .arg(Arg::new("PERSIST")
