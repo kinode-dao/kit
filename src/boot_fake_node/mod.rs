@@ -148,12 +148,18 @@ pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
 async fn fetch_releases(owner: &str, repo: &str) -> anyhow::Result<Vec<Release>> {
     let url = format!("https://api.github.com/repos/{}/{}/releases", owner, repo);
     let client = reqwest::Client::new();
-    let releases = client.get(url)
+    let releases = match client.get(url)
         .header("User-Agent", "request")
         .send()
         .await?
         .json::<Vec<Release>>()
-        .await?;
+        .await {
+        Ok(v) => v,
+        Err(_) => {
+            println!("github throttled! fix coming soon");
+            vec![]
+        },
+    };
     Ok(releases)
 }
 
