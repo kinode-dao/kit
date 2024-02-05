@@ -1,9 +1,10 @@
-use std::fs::{self, File};
+use std::fs::File;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
 use reqwest;
 use serde::{Serialize, Deserialize};
+use tokio::fs;
 
 use super::setup::{check_js_deps, check_py_deps, check_rust_deps, get_deps, set_newest_valid_node_version, OldNodeVersion, REQUIRED_PY_PACKAGE};
 
@@ -12,6 +13,7 @@ const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
 const PYTHON_SRC_PATH: &str = "src/lib.py";
 const RUST_SRC_PATH: &str = "src/lib.rs";
 const KINODE_WIT_URL: &str = "https://raw.githubusercontent.com/kinode-dao/kinode-wit/master/kinode.wit";
+const CACHE_DIR: &str = "/tmp/kinode-kit-cache";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
@@ -45,16 +47,37 @@ pub fn run_command(cmd: &mut Command) -> anyhow::Result<()> {
 }
 
 pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
-    let response = reqwest::get(url).await?;
+    fs::create_dir_all(&CACHE_DIR).await?;
+    let hex_url = hex::encode(url);
+    let hex_url_path = format!("{}/{}", CACHE_DIR, hex_url);
+    let hex_url_path = Path::new(&hex_url_path);
 
-    // Check if response status is 200 (OK)
-    if response.status() != reqwest::StatusCode::OK {
-        return Err(anyhow::anyhow!("Failed to download file: HTTP Status {}", response.status()));
+    let content =
+        if hex_url_path.exists() {
+            fs::read(hex_url_path).await?
+        } else {
+            let response = reqwest::get(url).await?;
+
+            // Check if response status is 200 (OK)
+            if response.status() != reqwest::StatusCode::OK {
+                return Err(anyhow::anyhow!("Failed to download file: HTTP Status {}", response.status()));
+            }
+
+            let content = response.bytes()
+                .await?
+                .to_vec();
+            fs::write(hex_url_path, &content).await?;
+            content
+        };
+
+    if path.exists() {
+        let existing_content = fs::read(path).await?;
+        if content == existing_content {
+            return Ok(());
+        }
     }
-
-    let content = response.bytes().await?;
-
-    fs::write(path, &content)?;
+    fs::create_dir_all(&path).await?;
+    fs::write(path, &content).await?;
     Ok(())
 }
 
@@ -64,7 +87,6 @@ async fn compile_javascript_wasm_process(
 ) -> anyhow::Result<()> {
     println!("Compiling Javascript Kinode process in {:?}...", process_dir);
     let wit_dir = process_dir.join("wit");
-    fs::create_dir_all(&wit_dir)?;
     download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
     let wasm_file_name = process_dir
@@ -97,7 +119,6 @@ async fn compile_python_wasm_process(
 ) -> anyhow::Result<()> {
     println!("Compiling Python Kinode process in {:?}...", process_dir);
     let wit_dir = process_dir.join("wit");
-    fs::create_dir_all(&wit_dir)?;
     download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
     let wasm_file_name = process_dir
@@ -139,16 +160,13 @@ async fn compile_rust_wasm_process(
     let wit_dir = process_dir.join("wit");
 
     // Ensure the bindings directory exists
-    fs::create_dir_all(&bindings_dir)?;
+    fs::create_dir_all(&bindings_dir).await?;
 
     // Check and download kinode.wit if wit_dir does not exist
-    //if !wit_dir.exists() { // TODO: do a smarter check; this check will fail when remote has updated v
-    fs::create_dir_all(&wit_dir)?;
     download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
     // Check and download wasi_snapshot_preview1.wasm if it does not exist
     let wasi_snapshot_file = process_dir.join("wasi_snapshot_preview1.wasm");
-    //if !wasi_snapshot_file.exists() { // TODO: do a smarter check; this check will fail when remote has updated v
     let wasi_version = "15.0.1";  // TODO: un-hardcode
     let wasi_snapshot_url = format!(
         "https://github.com/bytecodealliance/wasmtime/releases/download/v{}/wasi_snapshot_preview1.reactor.wasm",
@@ -168,10 +186,10 @@ async fn compile_rust_wasm_process(
     )?;
 
     // Copy wit directory to bindings
-    fs::create_dir_all(&bindings_dir.join("wit"))?;
-    for entry in fs::read_dir(&wit_dir)? {
-        let entry = entry?;
-        fs::copy(entry.path(), bindings_dir.join("wit").join(entry.file_name()))?;
+    fs::create_dir_all(&bindings_dir.join("wit")).await?;
+    let mut entries = fs::read_dir(&wit_dir).await?;
+    while let Some(entry) = entries.next_entry().await? {
+        fs::copy(entry.path(), bindings_dir.join("wit").join(entry.file_name())).await?;
     }
 
     // Create an empty world file
@@ -237,7 +255,7 @@ async fn compile_rust_wasm_process(
     Ok(())
 }
 
-fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
+async fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
     let ui_path = package_dir.join("ui");
     println!("Building UI in {:?}...", ui_path);
 
@@ -265,7 +283,7 @@ fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> 
         } else {
             let pkg_ui_path = package_dir.join("pkg/ui");
             if pkg_ui_path.exists() {
-                fs::remove_dir_all(&pkg_ui_path)?;
+                fs::remove_dir_all(&pkg_ui_path).await?;
             }
             run_command(Command::new("cp")
                 .args(["-r", "ui", "pkg/ui"])
@@ -287,7 +305,7 @@ async fn compile_package_and_ui(
     verbose: bool,
     skip_deps_check: bool,
 ) -> anyhow::Result<()> {
-    compile_and_copy_ui(package_dir, verbose)?;
+    compile_and_copy_ui(package_dir, verbose).await?;
     compile_package(package_dir, verbose, skip_deps_check).await?;
     Ok(())
 }
@@ -368,7 +386,7 @@ pub async fn execute(
             };
 
         if ui_only {
-            compile_and_copy_ui(package_dir, verbose)
+            compile_and_copy_ui(package_dir, verbose).await
         } else {
             compile_package_and_ui(package_dir, verbose, skip_deps_check).await
         }
