@@ -54,6 +54,15 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
 
     let content = response.bytes().await?;
 
+    // only write to file if content does not match existing content
+    if path.exists() {
+        let existing = fs::read(path)?;
+        if existing == content {
+            println!("File {:?} already exists and matches remote file", path);
+            return Ok(());
+        }
+    }
+    fs::create_dir_all(&path)?;
     fs::write(path, &content)?;
     Ok(())
 }
@@ -143,7 +152,6 @@ async fn compile_rust_wasm_process(
 
     // Check and download kinode.wit if wit_dir does not exist
     //if !wit_dir.exists() { // TODO: do a smarter check; this check will fail when remote has updated v
-    fs::create_dir_all(&wit_dir)?;
     download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
     // Check and download wasi_snapshot_preview1.wasm if it does not exist
