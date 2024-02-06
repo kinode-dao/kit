@@ -76,7 +76,7 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
             return Ok(());
         }
     }
-    fs::create_dir_all(&path).await?;
+    fs::create_dir_all(path.parent().ok_or(anyhow::anyhow!("path doesn't have parent"))?).await?;
     fs::write(path, &content).await?;
     Ok(())
 }
