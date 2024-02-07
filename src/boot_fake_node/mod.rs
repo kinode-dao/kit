@@ -70,7 +70,15 @@ pub fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
     println!("Compiling Kinode runtime...");
 
     build::run_command(Command::new("cargo")
-        .args(&["+nightly", "build", "--release", "--features", "simulation-mode"])
+        .args(&[
+            "+nightly",
+            "build",
+            "--release",
+            "-p",
+            "kinode",
+            "--features",
+            "simulation-mode",
+        ])
         .current_dir(path)
         .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
