@@ -73,7 +73,10 @@ fn main() -> anyhow::Result<()> {
     writeln!(&mut output_buffer, "];")?;
 
     let output_path = Path::new(NEW_DIR).join("includes.rs");
-    if output_path.exists() {
+    // create includes.rs if it does not exist
+    if !output_path.exists() {
+        fs::write(&output_path, &output_buffer)?;
+    } else {
         let existing_file = fs::read(&output_path)?;
         if output_buffer != existing_file {
             fs::write(&output_path, &output_buffer)?;
