@@ -12,7 +12,7 @@ const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
 const PYTHON_SRC_PATH: &str = "src/lib.py";
 const RUST_SRC_PATH: &str = "src/lib.rs";
-const KINODE_WIT_URL: &str = "https://raw.githubusercontent.com/kinode-dao/kinode-wit/master/kinode.wit";
+const KINODE_WIT_URL: &str = "https://raw.githubusercontent.com/kinode-dao/kinode-wit/v0.7.0-alpha/kinode.wit";
 pub const CACHE_DIR: &str = "/tmp/kinode-kit-cache";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
