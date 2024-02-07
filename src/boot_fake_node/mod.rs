@@ -5,6 +5,7 @@ use std::os::unix::io::{FromRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
+use std::time::Duration;
 use zip::read::ZipArchive;
 
 use semver::Version;
@@ -17,9 +18,10 @@ use super::run_tests::network_router;
 use super::run_tests::types::*;
 
 const KINODE_RELEASE_BASE_URL: &str = "https://github.com/kinode-dao/kinode/releases/download";
-const KINODE_OWNER: &str = "kinode-dao";
+pub const KINODE_OWNER: &str = "kinode-dao";
 const KINODE_REPO: &str = "kinode";
 const LOCAL_PREFIX: &str = "/tmp/kinode-";
+pub const CACHE_EXPIRY_SECONDS: u64 = 300;
 
 #[derive(Deserialize, Debug)]
 struct Release {
@@ -153,22 +155,49 @@ pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     Ok(runtime_path)
 }
 
-async fn fetch_releases(owner: &str, repo: &str) -> anyhow::Result<Vec<Release>> {
-    let url = format!("https://api.github.com/repos/{}/{}/releases", owner, repo);
+pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> anyhow::Result<Vec<u8>> {
+    let cache_path = format!("{}/{}-{}-{}.bin", build::CACHE_DIR, owner, repo, endpoint);
+    let cache_path = Path::new(&cache_path);
+    if cache_path.exists() {
+        if let Some(local_bytes) = std::fs::metadata(&cache_path).ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|m| m.elapsed().ok())
+            .and_then(|since_modified| {
+                if since_modified < Duration::from_secs(CACHE_EXPIRY_SECONDS) {
+                    fs::read(&cache_path).ok()
+                } else {
+                    None
+                }
+            }) {
+            return Ok(local_bytes);
+        }
+    }
+
+    let url = format!("https://api.github.com/repos/{owner}/{repo}/{endpoint}");
     let client = reqwest::Client::new();
-    let releases = match client.get(url)
+    match client.get(url)
         .header("User-Agent", "request")
         .send()
         .await?
-        .json::<Vec<Release>>()
+        .bytes()
         .await {
-        Ok(v) => v,
+        Ok(v) => {
+            fs::create_dir_all(
+                cache_path.parent().ok_or(anyhow::anyhow!("path doesn't have parent"))?
+            )?;
+            fs::write(&cache_path, &v)?;
+            return Ok(v.to_vec());
+        },
         Err(_) => {
             println!("github throttled! fix coming soon");
-            vec![]
+            return Ok(vec![]);
         },
     };
-    Ok(releases)
+}
+
+async fn fetch_releases(owner: &str, repo: &str) -> anyhow::Result<Vec<Release>> {
+    let bytes = get_from_github(owner, repo, "releases").await?;
+    Ok(serde_json::from_slice(&bytes)?)
 }
 
 pub async fn find_releases_with_asset(owner: Option<&str>, repo: Option<&str>, asset_name: &str) -> anyhow::Result<Vec<String>> {
@@ -194,9 +223,7 @@ pub async fn find_releases_with_asset_if_online(
                 None => return Err(e),
                 Some(ee) => {
                     if ee.is_connect() {
-                        get_local_versions_with_prefix(
-                            &format!("{}v", LOCAL_PREFIX)
-                        )?
+                        get_local_versions_with_prefix(&format!("{}v", LOCAL_PREFIX))?
                             .iter()
                             .map(|v| format!("v{}", v))
                             .collect()
@@ -235,7 +262,7 @@ fn get_local_versions_with_prefix(prefix: &str) -> anyhow::Result<Vec<String>> {
     Ok(versions)
 }
 
-fn find_newest_version(versions: Vec<String>) -> Option<String> {
+fn find_newest_version(versions: &Vec<String>) -> Option<String> {
     let mut max_version: Option<Version> = None;
 
     for version_str in versions {
@@ -262,7 +289,7 @@ async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> anyhow::R
                         let local_versions = get_local_versions_with_prefix(
                             &format!("{}v", LOCAL_PREFIX)
                         )?;
-                        let newest_local = find_newest_version(local_versions).ok_or(
+                        let newest_local = find_newest_version(&local_versions).ok_or(
                             anyhow::anyhow!("Could not connect to github nor find local copy; please connect to the internet and try again.")
                         )?;
                         Ok(format!("v{}", newest_local))
