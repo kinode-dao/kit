@@ -71,9 +71,13 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
         };
 
     if path.exists() {
-        let existing_content = fs::read(path).await?;
-        if content == existing_content {
-            return Ok(());
+        if path.is_dir() {
+            fs::remove_dir_all(path).await?;
+        } else {
+            let existing_content = fs::read(path).await?;
+            if content == existing_content {
+                return Ok(());
+            }
         }
     }
     fs::create_dir_all(path.parent().ok_or(anyhow::anyhow!("path doesn't have parent"))?).await?;
