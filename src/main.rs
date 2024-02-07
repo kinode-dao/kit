@@ -2,6 +2,8 @@ use clap::{Arg, ArgAction, builder::PossibleValuesParser, command, Command, valu
 use std::env;
 use std::path::PathBuf;
 
+use serde::Deserialize;
+
 mod boot_fake_node;
 mod build;
 mod build_start_package;
@@ -15,6 +17,28 @@ mod start_package;
 mod update;
 
 const MAX_REMOTE_VALUES: usize = 3;
+const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_SHA");
+const GIT_BRANCH_NAME: &str = env!("GIT_BRANCH_NAME");
+const KIT_REPO: &str = "kit";
+const KIT_MASTER_BRANCH: &str = "master";
+
+#[derive(Debug, Deserialize)]
+struct Commit {
+    sha: String,
+}
+
+async fn get_latest_commit_sha_from_branch(
+    owner: &str,
+    repo: &str,
+    branch: &str,
+) -> anyhow::Result<Commit> {
+    let bytes = boot_fake_node::get_from_github(
+        owner,
+        repo,
+        &format!("commits/{branch}"),
+    ).await?;
+    Ok(serde_json::from_slice(&bytes)?)
+}
 
 async fn execute(
     usage: clap::builder::StyledStr,
@@ -610,7 +634,7 @@ async fn main() -> anyhow::Result<()> {
     let matches = app.get_matches();
     let matches = matches.subcommand();
 
-    match execute(usage, matches).await {
+    let result = match execute(usage, matches).await {
         Ok(()) => Ok(()),
         Err(e) => {
             // TODO: add more non-"nerdview" error messages here
@@ -625,5 +649,20 @@ async fn main() -> anyhow::Result<()> {
             }
             Err(e)
         },
+    };
+
+    if let Some((subcommand, _)) = matches {
+        if subcommand != "update" && GIT_BRANCH_NAME == "master" {
+            let latest = get_latest_commit_sha_from_branch(
+                boot_fake_node::KINODE_OWNER,
+                KIT_REPO,
+                KIT_MASTER_BRANCH,
+            ).await?;
+            if GIT_COMMIT_HASH != latest.sha {
+                println!("kit is out of date! Run:\n```\nkit update\n```\nto update to the latest version.");
+            }
+        }
     }
+
+    result
 }

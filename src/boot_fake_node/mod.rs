@@ -18,10 +18,10 @@ use super::run_tests::network_router;
 use super::run_tests::types::*;
 
 const KINODE_RELEASE_BASE_URL: &str = "https://github.com/kinode-dao/kinode/releases/download";
-const KINODE_OWNER: &str = "kinode-dao";
+pub const KINODE_OWNER: &str = "kinode-dao";
 const KINODE_REPO: &str = "kinode";
 const LOCAL_PREFIX: &str = "/tmp/kinode-";
-const CACHE_EXPIRY_SECONDS: u64 = 300;
+pub const CACHE_EXPIRY_SECONDS: u64 = 300;
 
 #[derive(Deserialize, Debug)]
 struct Release {
@@ -147,11 +147,11 @@ pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     Ok(runtime_path)
 }
 
-async fn fetch_releases(owner: &str, repo: &str) -> anyhow::Result<Vec<Release>> {
-    let cache_path = format!("{}/{}-{}-releases.bin", build::CACHE_DIR, owner, repo);
+pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> anyhow::Result<Vec<u8>> {
+    let cache_path = format!("{}/{}-{}-{}.bin", build::CACHE_DIR, owner, repo, endpoint);
     let cache_path = Path::new(&cache_path);
     if cache_path.exists() {
-        if let Some(ref local_bytes) = std::fs::metadata(&cache_path).ok()
+        if let Some(local_bytes) = std::fs::metadata(&cache_path).ok()
             .and_then(|m| m.modified().ok())
             .and_then(|m| m.elapsed().ok())
             .and_then(|since_modified| {
@@ -161,29 +161,35 @@ async fn fetch_releases(owner: &str, repo: &str) -> anyhow::Result<Vec<Release>>
                     None
                 }
             }) {
-            return Ok(serde_json::from_slice(local_bytes)?);
+            return Ok(local_bytes);
         }
     }
 
-    let url = format!("https://api.github.com/repos/{}/{}/releases", owner, repo);
+    let url = format!("https://api.github.com/repos/{owner}/{repo}/{endpoint}");
     let client = reqwest::Client::new();
-    let releases = match client.get(url)
+    match client.get(url)
         .header("User-Agent", "request")
         .send()
         .await?
         .bytes()
         .await {
         Ok(v) => {
-            fs::create_dir_all(cache_path.parent().ok_or(anyhow::anyhow!("path doesn't have parent"))?)?;
+            fs::create_dir_all(
+                cache_path.parent().ok_or(anyhow::anyhow!("path doesn't have parent"))?
+            )?;
             fs::write(&cache_path, &v)?;
-            return Ok(serde_json::from_slice(&v)?);
+            return Ok(v.to_vec());
         },
         Err(_) => {
             println!("github throttled! fix coming soon");
-            vec![]
+            return Ok(vec![]);
         },
     };
-    Ok(releases)
+}
+
+async fn fetch_releases(owner: &str, repo: &str) -> anyhow::Result<Vec<Release>> {
+    let bytes = get_from_github(owner, repo, "releases").await?;
+    Ok(serde_json::from_slice(&bytes)?)
 }
 
 pub async fn find_releases_with_asset(owner: Option<&str>, repo: Option<&str>, asset_name: &str) -> anyhow::Result<Vec<String>> {
