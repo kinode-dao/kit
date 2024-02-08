@@ -62,6 +62,7 @@ fn replace_vars(input: &str, package_name: &str, publisher: &str) -> String {
     input
         .replace("{package_name}", package_name)
         .replace("{publisher}", publisher)
+        .replace("Cargo.toml_", "Cargo.toml")
         .to_string()
 }
 

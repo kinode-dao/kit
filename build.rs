@@ -49,7 +49,6 @@ fn add_commit_hash(repo: &git2::Repository) -> anyhow::Result<()> {
 fn add_branch_name(repo: &git2::Repository) -> anyhow::Result<()> {
     let head = repo.head()?;
     let branch = head
-        //.is_branch()
         .shorthand()
         .ok_or(anyhow::anyhow!("couldn't get branch name"))?;
 
