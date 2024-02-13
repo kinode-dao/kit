@@ -29,13 +29,6 @@ struct CargoPackage {
     name: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Metadata {
-    package: String,
-    publisher: String,
-    version: [u32; 3],
-}
-
 pub fn run_command(cmd: &mut Command) -> anyhow::Result<()> {
     let status = cmd.status()?;
     if status.success() {
