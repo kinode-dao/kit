@@ -14,7 +14,6 @@ const MINIMUM_NPM_MINOR: u32 = 0;
 pub const REQUIRED_PY_MAJOR: u32 = 3;
 pub const MINIMUM_PY_MINOR: u32 = 10;
 pub const REQUIRED_PY_PACKAGE: &str = "componentize-py==0.11.0";
-//pub const REQUIRED_PY_PACKAGE: &str = "componentize-py==0.7.1";
 
 pub struct OldNodeVersion {
     version: Option<String>,
