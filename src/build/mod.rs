@@ -13,6 +13,7 @@ const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
 const PYTHON_SRC_PATH: &str = "src/lib.py";
 const RUST_SRC_PATH: &str = "src/lib.rs";
 const KINODE_WIT_URL: &str = "https://raw.githubusercontent.com/kinode-dao/kinode-wit/v0.7.0-alpha/kinode.wit";
+const WASI_VERSION: &str = "17.0.1";  // TODO: un-hardcode
 pub const CACHE_DIR: &str = "/tmp/kinode-kit-cache";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -171,10 +172,9 @@ async fn compile_rust_wasm_process(
 
     // Check and download wasi_snapshot_preview1.wasm if it does not exist
     let wasi_snapshot_file = process_dir.join("wasi_snapshot_preview1.wasm");
-    let wasi_version = "15.0.1";  // TODO: un-hardcode
     let wasi_snapshot_url = format!(
         "https://github.com/bytecodealliance/wasmtime/releases/download/v{}/wasi_snapshot_preview1.reactor.wasm",
-        wasi_version,
+        WASI_VERSION,
     );
     download_file(&wasi_snapshot_url, &wasi_snapshot_file).await?;
 
