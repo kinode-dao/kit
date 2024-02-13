@@ -746,7 +746,6 @@ dependencies = [
 [[package]]
 name = "kinode_process_lib"
 version = "0.6.0"
-source = "git+https://github.com/uqbar-dao/process_lib.git?tag=v0.6.0-alpha#4c49368e1945c041dfcabbe15734322012239d25"
 dependencies = [
  "anyhow",
  "bincode",
