@@ -32,6 +32,7 @@ struct Metadata {
     version: [u32; 3],
 }
 
+#[autocontext::autocontext]
 pub fn run_command(cmd: &mut Command) -> anyhow::Result<()> {
     let status = cmd.status()?;
     if status.success() {

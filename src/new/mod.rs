@@ -71,6 +71,7 @@ fn is_url_safe(input: &str) -> bool {
     re.is_match(input)
 }
 
+#[autocontext::autocontext]
 pub fn execute(
     new_dir: PathBuf,
     package_name: Option<String>,
