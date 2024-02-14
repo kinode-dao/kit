@@ -1,5 +1,4 @@
 use std::fs;
-use std::io;
 use std::io::{Read, Write};
 use std::path::Path;
 
@@ -11,12 +10,13 @@ use kinode_process_lib::kernel_types::Erc721Metadata;
 
 use super::inject_message;
 
+#[autocontext::autocontext]
 fn new_package(
     node: Option<&str>,
     package_name: &str,
     publisher_node: &str,
     bytes_path: &str,
-) -> io::Result<serde_json::Value> {
+) -> anyhow::Result<serde_json::Value> {
     let message = json!({
         "NewPackage": {
             "package": {"package_name": package_name, "publisher_node": publisher_node},
@@ -34,12 +34,13 @@ fn new_package(
     )
 }
 
+#[autocontext::autocontext]
 pub fn interact_with_package(
     request_type: &str,
     node: Option<&str>,
     package_name: &str,
     publisher_node: &str,
-) -> io::Result<serde_json::Value> {
+) -> anyhow::Result<serde_json::Value> {
     let message = json!({
         request_type: {
             "package_name": package_name,
@@ -57,6 +58,7 @@ pub fn interact_with_package(
     )
 }
 
+#[autocontext::autocontext]
 fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
     let file = fs::File::create(zip_filename)?;
     let walkdir = WalkDir::new(directory);

@@ -25,6 +25,7 @@ struct CargoPackage {
     name: String,
 }
 
+#[autocontext::autocontext]
 pub fn run_command(cmd: &mut Command) -> anyhow::Result<()> {
     let status = cmd.status()?;
     if status.success() {
