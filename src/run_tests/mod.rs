@@ -291,10 +291,17 @@ async fn run_tests(
 
 async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow::Result<()> {
     for setup_package_path in &test.setup_package_paths {
-        build::execute(&setup_package_path, false, false, test.package_build_verbose, false).await?;
+        build::execute(
+            &setup_package_path,
+            false,
+            false,
+            test.package_build_verbose,
+            false,
+            false,
+        ).await?;
     }
     for TestPackage { ref path, .. } in &test.test_packages {
-        build::execute(path, false, false, test.package_build_verbose, false).await?;
+        build::execute(path, false, false, test.package_build_verbose, false, false).await?;
     }
 
     // Initialize variables for master node and nodes list

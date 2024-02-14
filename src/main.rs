@@ -79,8 +79,16 @@ async fn execute(
             let ui_only = build_matches.get_one::<bool>("UI_ONLY").unwrap();
             let verbose = !build_matches.get_one::<bool>("QUIET").unwrap();
             let skip_deps_check = build_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
+            let release = build_matches.get_one::<bool>("RELEASE").unwrap();
 
-            build::execute(&package_dir, *no_ui, *ui_only, verbose, *skip_deps_check).await
+            build::execute(
+                &package_dir,
+                *no_ui,
+                *ui_only,
+                verbose,
+                *skip_deps_check,
+                *release,
+            ).await
         },
         Some(("build-start-package", build_start_matches)) => {
 
@@ -96,6 +104,7 @@ async fn execute(
                 },
             };
             let skip_deps_check = build_start_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
+            let release = build_start_matches.get_one::<bool>("RELEASE").unwrap();
 
             build_start_package::execute(
                 &package_dir,
@@ -104,6 +113,7 @@ async fn execute(
                 verbose,
                 &url,
                 *skip_deps_check,
+                *release,
             ).await
         },
         Some(("dev-ui", dev_ui_matches)) => {
@@ -359,6 +369,12 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .help("If set, do not check for dependencies")
                 .required(false)
             )
+            .arg(Arg::new("RELEASE")
+                .action(ArgAction::SetTrue)
+                .long("release")
+                .help("If set, compile release build (default: debug build)")
+                .required(false)
+            )
         )
         .subcommand(Command::new("build-start-package")
             .about("Build and start a Kinode package")
@@ -407,6 +423,12 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .short('s')
                 .long("skip-deps-check")
                 .help("If set, do not check for dependencies")
+                .required(false)
+            )
+            .arg(Arg::new("RELEASE")
+                .action(ArgAction::SetTrue)
+                .long("release")
+                .help("If set, compile release build (default: debug build)")
                 .required(false)
             )
         )

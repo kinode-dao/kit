@@ -10,8 +10,9 @@ pub async fn execute(
     verbose: bool,
     url: &str,
     skip_deps_check: bool,
+    release: bool,
 ) -> anyhow::Result<()> {
-    build::execute(package_dir, no_ui, ui_only, verbose, skip_deps_check).await?;
+    build::execute(package_dir, no_ui, ui_only, verbose, skip_deps_check, release).await?;
     start_package::execute(package_dir, url).await?;
     Ok(())
 }
