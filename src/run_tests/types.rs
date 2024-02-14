@@ -11,6 +11,7 @@ use serde::{Serialize, Deserialize};
 pub struct Config {
     pub runtime: Runtime,
     pub runtime_build_verbose: bool,
+    pub runtime_build_release: bool,
     pub tests: Vec<Test>,
 }
 
