@@ -34,6 +34,7 @@ struct Asset {
     name: String,
 }
 
+#[autocontext::autocontext]
 fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
     let file = fs::File::open(archive_path)?;
     let mut archive = ZipArchive::new(file)?;
@@ -66,6 +67,7 @@ fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[autocontext::autocontext]
 pub fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
     println!("Compiling Kinode runtime...");
 
@@ -110,6 +112,7 @@ async fn get_runtime_binary_inner(
     Ok(())
 }
 
+#[autocontext::autocontext]
 pub fn get_platform_runtime_name() -> anyhow::Result<String> {
     let uname = Command::new("uname").output()?;
     if !uname.status.success() {
@@ -245,6 +248,7 @@ async fn fetch_latest_release_tag(owner: &str, repo: &str) -> anyhow::Result<Str
         .ok_or_else(|| anyhow::anyhow!("No releases found"))
 }
 
+#[autocontext::autocontext]
 fn get_local_versions_with_prefix(prefix: &str) -> anyhow::Result<Vec<String>> {
     let mut versions = Vec::new();
 
@@ -302,6 +306,7 @@ async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> anyhow::R
     }
 }
 
+#[autocontext::autocontext]
 pub fn run_runtime(
     path: &Path,
     home: &Path,

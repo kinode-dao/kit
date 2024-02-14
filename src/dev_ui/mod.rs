@@ -4,6 +4,7 @@ use std::process::{Command, Stdio};
 use super::build::run_command;
 use super::setup::{check_js_deps, get_deps, set_newest_valid_node_version, OldNodeVersion};
 
+#[autocontext::autocontext]
 pub fn execute(package_dir: &Path, url: &str, skip_deps_check: bool) -> anyhow::Result<()> {
     let _old_node_version =
         if skip_deps_check {
