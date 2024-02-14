@@ -58,6 +58,7 @@ async fn execute(
             let fake_node_name = boot_matches.get_one::<String>("NODE_NAME").unwrap();
             let password = boot_matches.get_one::<String>("PASSWORD").unwrap();
             let is_persist = boot_matches.get_one::<bool>("PERSIST").unwrap();
+            let release = boot_matches.get_one::<bool>("RELEASE").unwrap();
 
             boot_fake_node::execute(
                 runtime_path,
@@ -70,6 +71,7 @@ async fn execute(
                 fake_node_name,
                 password,
                 *is_persist,
+                *release,
                 vec![],
             ).await
         },
@@ -318,6 +320,12 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .long("password")
                 .help("Password to login")
                 .default_value("secret")
+            )
+            .arg(Arg::new("RELEASE")
+                .action(ArgAction::SetTrue)
+                .long("release")
+                .help("If set and given --runtime-path, compile release build [default: debug build]")
+                .required(false)
             )
             .arg(Arg::new("help")
                 .long("help")

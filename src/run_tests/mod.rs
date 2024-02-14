@@ -442,6 +442,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                 compile_runtime(
                     &runtime_path,
                     config.runtime_build_verbose,
+                    config.runtime_build_release,
                 )?;
                 runtime_path.join("target/release/kinode")
             } else {
