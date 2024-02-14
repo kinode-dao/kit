@@ -3,10 +3,11 @@ use std::io;
 use std::io::{Read, Write};
 use std::path::Path;
 
-use kinode_process_lib::kernel_types::Erc721Metadata;
 use serde_json::json;
 use walkdir::WalkDir;
 use zip::write::FileOptions;
+
+use kinode_process_lib::kernel_types::Erc721Metadata;
 
 use super::inject_message;
 
