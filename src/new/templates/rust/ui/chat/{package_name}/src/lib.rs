@@ -93,7 +93,7 @@ fn handle_http_server_request(
                             messages: message_archive.clone(),
                         })
                         .unwrap(),
-                    )?;
+                    );
                 }
                 // Send a message
                 "POST" => {
@@ -110,11 +110,11 @@ fn handle_http_server_request(
                     )?;
 
                     // Send an http response via the http server
-                    send_response(StatusCode::CREATED, None, vec![])?;
+                    send_response(StatusCode::CREATED, None, vec![]);
                 }
                 _ => {
                     // Method not allowed
-                    send_response(StatusCode::METHOD_NOT_ALLOWED, None, vec![])?;
+                    send_response(StatusCode::METHOD_NOT_ALLOWED, None, vec![]);
                 }
             }
         }
@@ -216,11 +216,10 @@ fn handle_chat_request(
 
             // Send a WebSocket message to the http server in order to update the UI
             send_ws_push(
-                our.node.clone(),
                 channel_id.clone(),
                 WsMessageType::Text,
                 blob,
-            )?;
+            );
         }
         ChatRequest::History => {
             // If this is an HTTP request, send a response to the http server
@@ -276,7 +275,7 @@ fn init(our: Address) {
     let mut channel_id = 0;
 
     // Bind UI files to routes; index.html is bound to "/"
-    serve_ui(&our, "ui").unwrap();
+    serve_ui(&our, "ui", true, true, vec!["/"]).unwrap();
 
     // Bind HTTP path /messages
     bind_http_path("/messages", true, false).unwrap();
