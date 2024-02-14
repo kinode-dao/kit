@@ -54,9 +54,9 @@ pub enum Dependency {
 impl std::fmt::Display for Dependency {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Dependency::Nvm =>  write!(f, "nvm"),
-            Dependency::Npm =>  write!(f, "npm"),
-            Dependency::Node => write!(f, "node"),
+            Dependency::Nvm =>  write!(f, "nvm {}", FETCH_NVM_VERSION),
+            Dependency::Npm =>  write!(f, "npm {}.{}", REQUIRED_NPM_MAJOR, MINIMUM_NPM_MINOR),
+            Dependency::Node => write!(f, "node {}.{}", REQUIRED_NODE_MAJOR, MINIMUM_NODE_MINOR),
             Dependency::Rust => write!(f, "rust"),
             Dependency::RustNightly => write!(f, "rust nightly"),
             Dependency::RustWasm32Wasi => write!(f, "rust wasm32-wasi target"),
