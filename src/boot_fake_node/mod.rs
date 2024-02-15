@@ -68,19 +68,23 @@ fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
 }
 
 #[autocontext::autocontext]
-pub fn compile_runtime(path: &Path, verbose: bool) -> anyhow::Result<()> {
+pub fn compile_runtime(path: &Path, verbose: bool, release: bool) -> anyhow::Result<()> {
     println!("Compiling Kinode runtime...");
 
+    let mut args = vec![
+        "+nightly",
+        "build",
+        "-p",
+        "kinode",
+        "--features",
+        "simulation-mode",
+    ];
+    if release {
+        args.push("--release");
+    }
+
     build::run_command(Command::new("cargo")
-        .args(&[
-            "+nightly",
-            "build",
-            "--release",
-            "-p",
-            "kinode",
-            "--features",
-            "simulation-mode",
-        ])
+        .args(&args)
         .current_dir(path)
         .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
@@ -350,6 +354,7 @@ pub async fn execute(
     fake_node_name: &str,
     password: &str,
     is_persist: bool,
+    release: bool,
     mut args: Vec<&str>,
 ) -> anyhow::Result<()> {
     let detached = false;  // TODO: to argument?
@@ -365,7 +370,7 @@ pub async fn execute(
             }
             if runtime_path.is_dir() {
                 // Compile the runtime binary
-                compile_runtime(&runtime_path, true)?;
+                compile_runtime(&runtime_path, true, release)?;
                 runtime_path.join("target/release/kinode")
             } else {
                 return Err(anyhow::anyhow!(
@@ -424,7 +429,7 @@ pub async fn execute(
     args.extend_from_slice(&["--fake-node-name", fake_node_name]);
     args.extend_from_slice(&["--password", password]);
     if is_testnet {
-        args.extend_from_slice(&["--testnet"]);
+        args.push("--testnet");
     }
 
     let (mut runtime_process, master_fd) = run_runtime(

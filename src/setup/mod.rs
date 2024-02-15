@@ -15,30 +15,6 @@ pub const REQUIRED_PY_MAJOR: u32 = 3;
 pub const MINIMUM_PY_MINOR: u32 = 10;
 pub const REQUIRED_PY_PACKAGE: &str = "componentize-py==0.7.1";
 
-pub struct OldNodeVersion {
-    version: Option<String>,
-}
-
-impl OldNodeVersion {
-    pub fn new(version: Option<String>) -> Self {
-        OldNodeVersion { version }
-    }
-
-    pub fn none() -> Self {
-        OldNodeVersion { version: None }
-    }
-}
-
-impl Drop for OldNodeVersion {
-    fn drop(&mut self) {
-        if let Some(ref version) = self.version {
-            // reset `node` version to original setting
-            call_nvm(&format!("use {}", version))
-                .expect(&format!("could not reset node version to {}", version));
-        };
-    }
-}
-
 #[derive(Clone)]
 pub enum Dependency {
     Nvm,
@@ -54,9 +30,9 @@ pub enum Dependency {
 impl std::fmt::Display for Dependency {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Dependency::Nvm =>  write!(f, "nvm"),
-            Dependency::Npm =>  write!(f, "npm"),
-            Dependency::Node => write!(f, "node"),
+            Dependency::Nvm =>  write!(f, "nvm {}", FETCH_NVM_VERSION),
+            Dependency::Npm =>  write!(f, "npm {}.{}", REQUIRED_NPM_MAJOR, MINIMUM_NPM_MINOR),
+            Dependency::Node => write!(f, "node {}.{}", REQUIRED_NODE_MAJOR, MINIMUM_NODE_MINOR),
             Dependency::Rust => write!(f, "rust"),
             Dependency::RustNightly => write!(f, "rust nightly"),
             Dependency::RustWasm32Wasi => write!(f, "rust wasm32-wasi target"),
@@ -85,11 +61,12 @@ fn is_nvm_installed() -> anyhow::Result<bool> {
 #[autocontext::autocontext]
 fn install_nvm() -> anyhow::Result<()> {
     println!("Getting nvm...");
-    let install_script = format!(
-        "https://raw.githubusercontent.com/nvm-sh/nvm/{FETCH_NVM_VERSION}/install.sh"
+    let install_nvm = format!(
+        "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/{}/install.sh | bash",
+        FETCH_NVM_VERSION,
     );
     run_command(Command::new("bash")
-        .args(&["-c", &format!("curl -o- {install_script} | bash")])
+        .args(&["-c", &install_nvm])
     )?;
 
     println!("Done getting nvm.");
@@ -139,6 +116,23 @@ fn is_command_installed(cmd: &str) -> anyhow::Result<bool> {
 }
 
 #[autocontext::autocontext]
+fn is_npm_version_correct(
+    node_version: String,
+    required_version: (u32, u32),
+) -> anyhow::Result<bool> {
+    let version = call_with_nvm_output(&format!("nvm use {node_version} && npm --version"))?;
+    let version = version.split('\n')
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<&str>>();
+    let version = version.last()
+        .unwrap_or_else(|| &"");
+    Ok(parse_version(version)
+        .and_then(|v| Some(compare_versions(v, required_version)))
+        .unwrap_or(false)
+    )
+}
+
+#[autocontext::autocontext]
 fn is_version_correct(cmd: &str, required_version: (u32, u32)) -> anyhow::Result<bool> {
     let output = Command::new(cmd)
         .arg("--version")
@@ -158,17 +152,16 @@ fn strip_color_codes(input: &str) -> String {
     re.replace_all(input, "").into_owned()
 }
 
-/// Use `nvm` to set to newest `node` version, provided
+/// Get the newest valid `node` via `nvm`, provided
 /// that version is at least as new as `required_major`.
 ///
-/// Returns `None` if no valid version; `Some(String)` after
-/// setting to newest valid version, where that `String` is
-/// the old `node` version that was set (so if can be restored later).
+/// Returns `None` if no valid version; `Some(String)`:
+/// the valid version, as a String.
 #[autocontext::autocontext]
-pub fn set_newest_valid_node_version(
+pub fn get_newest_valid_node_version(
     required_major: Option<u32>,
     minimum_minor: Option<u32>,
-) -> anyhow::Result<Option<OldNodeVersion>> {
+) -> anyhow::Result<Option<String>> {
     let required_major = required_major.unwrap_or(REQUIRED_NODE_MAJOR);
     let minimum_minor = minimum_minor.unwrap_or(MINIMUM_NODE_MINOR);
 
@@ -179,7 +172,6 @@ pub fn set_newest_valid_node_version(
         .stdout;
 
     let nvm_ls = String::from_utf8_lossy(&output);
-    let mut original_version = None;
     let mut versions = Vec::new();
 
     for line in nvm_ls.lines() {
@@ -188,26 +180,13 @@ pub fn set_newest_valid_node_version(
         if fields.len() == 1 {
             versions.push(fields[0].to_string());
         } else if fields.len() == 2 {
-            if original_version == None {
-                assert_eq!("->", fields[0]);
-                original_version = Some(fields[1].to_string());
-            } else {
-                panic!("");
-            }
+            assert_eq!("->", fields[0]);
+            versions.push(fields[1].to_string());
         }
     }
 
     let mut newest_node = None;
     let mut max_version = (0, 0); // (major, minor)
-
-    if let Some(ref version) = original_version {
-        if let Some((major, minor)) = parse_version(version) {
-            if major == required_major && minor >= minimum_minor && (major, minor) > max_version {
-                max_version = (major, minor);
-                newest_node = Some(version.to_string());
-            }
-        }
-    }
 
     for version in versions {
         if let Some((major, minor)) = parse_version(&version) {
@@ -218,44 +197,36 @@ pub fn set_newest_valid_node_version(
         }
     }
 
-    if original_version == newest_node {
-        original_version = None;
-    }
-
-    match newest_node {
-        None => return Ok(None),
-        Some(newest_node) => {
-            run_command(Command::new("bash")
-                .arg("-c")
-                .arg(format!("source ~/.nvm/nvm.sh && nvm use {}", newest_node))
-                .stdout(Stdio::null())
-            )?;
-            return Ok(Some(OldNodeVersion::new(original_version)));
-        },
-    }
+    Ok(newest_node)
 }
 
 #[autocontext::autocontext]
-fn call_nvm(arg: &str) -> anyhow::Result<()> {
+fn call_with_nvm_output(arg: &str) -> anyhow::Result<String> {
+    let output = Command::new("bash")
+        .args(&["-c", &format!("source ~/.nvm/nvm.sh && {}", arg)])
+        .output()?
+        .stdout;
+    Ok(String::from_utf8_lossy(&output).to_string())
+}
+
+#[autocontext::autocontext]
+fn call_with_nvm(arg: &str) -> anyhow::Result<()> {
     run_command(Command::new("bash")
-        .arg("-c")
-        .arg(format!("source ~/.nvm/nvm.sh && nvm {}", arg))
+        .args(&["-c", &format!("source ~/.nvm/nvm.sh && {}", arg)])
     )
 }
 
 #[autocontext::autocontext]
 fn call_rustup(arg: &str) -> anyhow::Result<()> {
     run_command(Command::new("bash")
-        .arg("-c")
-        .arg(format!("rustup {}", arg))
+        .args(&["-c", &format!("rustup {}", arg)])
     )
 }
 
 #[autocontext::autocontext]
 fn call_cargo(arg: &str) -> anyhow::Result<()> {
     run_command(Command::new("bash")
-        .arg("-c")
-        .arg(format!("cargo {}", arg))
+        .args(&["-c", &format!("cargo {}", arg)])
     )
 }
 
@@ -413,24 +384,22 @@ pub fn check_py_deps() -> anyhow::Result<String> {
 
 /// Check for Javascript deps, returning a Vec of not found: can be automatically fetched
 #[autocontext::autocontext]
-pub fn check_js_deps() -> anyhow::Result<(Vec<Dependency>, OldNodeVersion)> {
+pub fn check_js_deps() -> anyhow::Result<Vec<Dependency>> {
     let mut missing_deps = Vec::new();
     if !is_nvm_installed()? {
         missing_deps.push(Dependency::Nvm);
     }
-    let old_node_version = match set_newest_valid_node_version(None, None)? {
-        Some(old_node_version) => old_node_version,
-        None => {
-            missing_deps.push(Dependency::Node);
-            OldNodeVersion::none()
+    let valid_node = get_newest_valid_node_version(None, None)?;
+    match valid_node {
+        None => missing_deps.extend_from_slice(&[Dependency::Node, Dependency::Npm]),
+        Some(vn) => {
+            if !is_command_installed("npm")?
+            || !is_npm_version_correct(vn, (REQUIRED_NPM_MAJOR, MINIMUM_NPM_MINOR))? {
+                missing_deps.push(Dependency::Npm);
+            }
         },
-    };
-    if !is_command_installed("npm")?
-    || !is_version_correct("npm", (REQUIRED_NPM_MAJOR, MINIMUM_NPM_MINOR))? {
-        missing_deps.push(Dependency::Npm);
     }
-
-    Ok((missing_deps, old_node_version))
+    Ok(missing_deps)
 }
 
 /// Check for Rust deps, returning a Vec of not found: can be automatically fetched
@@ -482,10 +451,10 @@ pub fn get_deps(deps: Vec<Dependency>) -> anyhow::Result<()> {
             for dep in deps {
                 match dep {
                     Dependency::Nvm =>  install_nvm()?,
-                    Dependency::Npm =>  call_nvm(&format!("install-latest-npm"))?,
+                    Dependency::Npm =>  call_with_nvm(&format!("nvm install-latest-npm"))?,
                     Dependency::Node => {
-                        call_nvm(&format!(
-                            "install {}.{}",
+                        call_with_nvm(&format!(
+                            "nvm install {}.{}",
                             REQUIRED_NODE_MAJOR,
                             MINIMUM_NODE_MINOR,
                         ))?
@@ -510,7 +479,7 @@ pub fn execute() -> anyhow::Result<()> {
     println!("Setting up...");
 
     check_py_deps()?;
-    let (mut missing_deps, _old_node_version) = check_js_deps()?;
+    let mut missing_deps = check_js_deps()?;
     missing_deps.append(&mut check_rust_deps()?);
     get_deps(missing_deps)?;
 
