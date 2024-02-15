@@ -6,7 +6,7 @@ use reqwest;
 use serde::{Serialize, Deserialize};
 use tokio::fs;
 
-use super::setup::{check_js_deps, check_py_deps, check_rust_deps, get_deps, set_newest_valid_node_version, OldNodeVersion, REQUIRED_PY_PACKAGE};
+use super::setup::{check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version, REQUIRED_PY_PACKAGE};
 
 const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
@@ -88,6 +88,7 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
 
 async fn compile_javascript_wasm_process(
     process_dir: &Path,
+    valid_node: Option<String>,
     verbose: bool,
 ) -> anyhow::Result<()> {
     println!("Compiling Javascript Kinode process in {:?}...", process_dir);
@@ -99,15 +100,24 @@ async fn compile_javascript_wasm_process(
         .and_then(|s| s.to_str())
         .unwrap();
 
-    run_command(Command::new("npm")
-        .arg("install")
+    let install = "npm install".to_string();
+    let componentize = format!("node componentize.mjs {wasm_file_name}");
+    let (install, componentize) = valid_node
+        .map(|valid_node| {(
+            format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, install),
+            format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, componentize),
+        )})
+        .unwrap_or_else(|| (install, componentize));
+
+    run_command(Command::new("bash")
+        .args(&["-c", &install])
         .current_dir(process_dir)
         .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    run_command(Command::new("node")
-        .args(&["componentize.mjs", wasm_file_name])
+    run_command(Command::new("bash")
+        .args(&["-c", &componentize])
         .current_dir(process_dir)
         .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
@@ -260,7 +270,11 @@ async fn compile_rust_wasm_process(
     Ok(())
 }
 
-async fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Result<()> {
+async fn compile_and_copy_ui(
+    package_dir: &Path,
+    valid_node: Option<String>,
+    verbose: bool,
+) -> anyhow::Result<()> {
     let ui_path = package_dir.join("ui");
     println!("Building UI in {:?}...", ui_path);
 
@@ -268,9 +282,17 @@ async fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Resul
         if ui_path.join("package.json").exists() {
             println!("UI directory found, running npm install...");
 
+            let install = "npm install".to_string();
+            let run = "npm run build:copy".to_string();
+            let (install, run) = valid_node
+                .map(|valid_node| {(
+                    format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, install),
+                    format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, run),
+                )})
+                .unwrap_or_else(|| (install, run));
+
             run_command(Command::new("bash")
-                .arg("-c")
-                .arg("source ~/.nvm/nvm.sh && npm install")
+                .args(&["-c", &install])
                 .current_dir(&ui_path)
                 .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
                 .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
@@ -279,8 +301,7 @@ async fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Resul
             println!("Running npm run build:copy...");
 
             run_command(Command::new("bash")
-                .arg("-c")
-                .arg("source ~/.nvm/nvm.sh && npm run build:copy")
+                .args(&["-c", &run])
                 .current_dir(&ui_path)
                 .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
                 .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
@@ -307,10 +328,11 @@ async fn compile_and_copy_ui(package_dir: &Path, verbose: bool) -> anyhow::Resul
 
 async fn compile_package_and_ui(
     package_dir: &Path,
+    valid_node: Option<String>,
     verbose: bool,
     skip_deps_check: bool,
 ) -> anyhow::Result<()> {
-    compile_and_copy_ui(package_dir, verbose).await?;
+    compile_and_copy_ui(package_dir, valid_node, verbose).await?;
     compile_package(package_dir, verbose, skip_deps_check).await?;
     Ok(())
 }
@@ -334,20 +356,12 @@ async fn compile_package(
                 let python = check_py_deps()?;
                 compile_python_wasm_process(&path, &python, verbose).await?;
             } else if path.join(JAVASCRIPT_SRC_PATH).exists() {
-                let _old_node_version =
-                    if skip_deps_check {
-                        OldNodeVersion::none()
-                    } else {
-                        let (deps, old_node_version) = check_js_deps()?;
-                        if deps.is_empty() {
-                            old_node_version
-                        } else {
-                            get_deps(deps)?;
-                            set_newest_valid_node_version(None, None)?
-                                .unwrap_or(OldNodeVersion::none())
-                        }
-                    };
-                compile_javascript_wasm_process(&path, verbose).await?;
+                if !skip_deps_check {
+                    let deps = check_js_deps()?;
+                    get_deps(deps)?;
+                }
+                let valid_node = get_newest_valid_node_version(None, None)?;
+                compile_javascript_wasm_process(&path, valid_node, verbose).await?;
             }
         }
     }
@@ -381,19 +395,14 @@ pub async fn execute(
             return compile_package(package_dir, verbose, skip_deps_check).await;
         }
 
-        let _old_node_version =
-            if skip_deps_check {
-                OldNodeVersion::none()
-            } else {
-                let (deps, old_node_version) = check_js_deps()?;
-                get_deps(deps)?;
-                old_node_version
-            };
+        let deps = check_js_deps()?;
+        get_deps(deps)?;
+        let valid_node = get_newest_valid_node_version(None, None)?;
 
         if ui_only {
-            compile_and_copy_ui(package_dir, verbose).await
+            compile_and_copy_ui(package_dir, valid_node, verbose).await
         } else {
-            compile_package_and_ui(package_dir, verbose, skip_deps_check).await
+            compile_package_and_ui(package_dir, valid_node, verbose, skip_deps_check).await
         }
     }
 }
