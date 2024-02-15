@@ -43,6 +43,7 @@ fn expand_home_path(path: &PathBuf) -> Option<PathBuf> {
         .and_then(|s| Some(Path::new(&s).to_path_buf()))
 }
 
+#[autocontext::autocontext]
 fn make_node_names(nodes: Vec<Node>) -> anyhow::Result<Vec<String>> {
     nodes
         .iter()
@@ -441,6 +442,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                 compile_runtime(
                     &runtime_path,
                     config.runtime_build_verbose,
+                    config.runtime_build_release,
                 )?;
                 runtime_path.join("target/release/kinode")
             } else {

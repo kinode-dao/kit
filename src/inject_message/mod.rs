@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{self, Read};
+use std::io::Read;
 
 #[allow(deprecated)]
 use base64::{decode, encode};
@@ -32,6 +32,7 @@ impl std::fmt::Display for Response {
     }
 }
 
+#[autocontext::autocontext]
 pub fn make_message(
     process: &str,
     expects_response: Option<u64>,
@@ -39,7 +40,7 @@ pub fn make_message(
     node: Option<&str>,
     raw_bytes: Option<&[u8]>,
     bytes_path: Option<&str>,
-) -> io::Result<Value> {
+) -> anyhow::Result<Value> {
     #[allow(deprecated)]
     let data = match (raw_bytes, bytes_path) {
         (Some(bytes), None) => Some(encode(bytes)),

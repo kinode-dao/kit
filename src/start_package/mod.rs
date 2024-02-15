@@ -1,5 +1,4 @@
 use std::fs;
-use std::io;
 use std::io::{Read, Write};
 use std::path::Path;
 
@@ -7,14 +6,17 @@ use serde_json::json;
 use walkdir::WalkDir;
 use zip::write::FileOptions;
 
+use kinode_process_lib::kernel_types::Erc721Metadata;
+
 use super::inject_message;
 
+#[autocontext::autocontext]
 fn new_package(
     node: Option<&str>,
     package_name: &str,
     publisher_node: &str,
     bytes_path: &str,
-) -> io::Result<serde_json::Value> {
+) -> anyhow::Result<serde_json::Value> {
     let message = json!({
         "NewPackage": {
             "package": {"package_name": package_name, "publisher_node": publisher_node},
@@ -32,12 +34,13 @@ fn new_package(
     )
 }
 
+#[autocontext::autocontext]
 pub fn interact_with_package(
     request_type: &str,
     node: Option<&str>,
     package_name: &str,
     publisher_node: &str,
-) -> io::Result<serde_json::Value> {
+) -> anyhow::Result<serde_json::Value> {
     let message = json!({
         request_type: {
             "package_name": package_name,
@@ -55,6 +58,7 @@ pub fn interact_with_package(
     )
 }
 
+#[autocontext::autocontext]
 fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
     let file = fs::File::create(zip_filename)?;
     let walkdir = WalkDir::new(directory);
@@ -95,11 +99,10 @@ pub async fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
         ));
     }
     let pkg_dir = package_dir.join("pkg").canonicalize()?;
-    let metadata: serde_json::Value = serde_json::from_reader(fs::File::open(
-        pkg_dir.join("metadata.json")
-    )?)?;
-    let package_name = metadata["package"].as_str().unwrap();
-    let publisher = metadata["publisher"].as_str().unwrap();
+    let metadata: Erc721Metadata =
+        serde_json::from_reader(fs::File::open(package_dir.join("metadata.json"))?)?;
+    let package_name = metadata.properties.package_name.as_str();
+    let publisher = metadata.properties.publisher.as_str();
     let pkg_publisher = format!("{}:{}", package_name, publisher);
     println!("{}", pkg_publisher);
 
@@ -118,7 +121,8 @@ pub async fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
         zip_filename.to_str().unwrap(),
     )?;
     let response = inject_message::send_request(url, new_pkg_request).await?;
-    let inject_message::Response { ref body, .. } = inject_message::parse_response(response).await?;
+    let inject_message::Response { ref body, .. } =
+        inject_message::parse_response(response).await?;
     let body = serde_json::from_str::<serde_json::Value>(body)?;
     let new_package_response = body.get("NewPackageResponse");
 
@@ -131,12 +135,16 @@ pub async fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
     // Install package
     let install_request = interact_with_package("Install", None, package_name, publisher)?;
     let response = inject_message::send_request(url, install_request).await?;
-    let inject_message::Response { ref body, .. } = inject_message::parse_response(response).await?;
+    let inject_message::Response { ref body, .. } =
+        inject_message::parse_response(response).await?;
     let body = serde_json::from_str::<serde_json::Value>(body)?;
     let install_response = body.get("InstallResponse");
 
     if install_response == Some(&serde_json::Value::String("Success".to_string())) {
-        println!("Successfully installed package {} on node at {}", pkg_publisher, url);
+        println!(
+            "Successfully installed package {} on node at {}",
+            pkg_publisher, url
+        );
     } else {
         let error_message = format!("Failed to start package. Got response from node: {}", body);
         println!("{}", error_message);
