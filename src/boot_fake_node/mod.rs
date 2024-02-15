@@ -124,18 +124,17 @@ pub fn get_platform_runtime_name() -> anyhow::Result<String> {
     }
     let os_name = std::str::from_utf8(&uname.stdout)?.trim();
 
-    let uname_p = Command::new("uname").arg("-p").output()?;
-    if !uname_p.status.success() {
+    let uname_m = Command::new("uname").arg("-m").output()?;
+    if !uname_m.status.success() {
         return Err(anyhow::anyhow!("kit: Could not determine architecture."));
     }
-    let architecture_name = std::str::from_utf8(&uname_p.stdout)?.trim();
+    let architecture_name = std::str::from_utf8(&uname_m.stdout)?.trim();
 
     // TODO: update when have binaries
     let zip_name_midfix = match (os_name, architecture_name) {
         ("Linux", "x86_64") => "x86_64-unknown-linux-gnu",
         ("Darwin", "arm") => "aarch64-apple-darwin",
-        ("Darwin", "i386") => "i386-apple-darwin",
-        // ("Darwin", "x86_64") => "x86_64-apple-darwin",
+        ("Darwin", "x86_64") => "x86_64-apple-darwin",
         _ => return Err(anyhow::anyhow!("OS/Architecture {}/{} not supported.", os_name, architecture_name)),
     };
     Ok(format!("kinode-{}-simulation-mode.zip", zip_name_midfix))
