@@ -133,7 +133,7 @@ pub fn get_platform_runtime_name() -> anyhow::Result<String> {
     // TODO: update when have binaries
     let zip_name_midfix = match (os_name, architecture_name) {
         ("Linux", "x86_64") => "x86_64-unknown-linux-gnu",
-        ("Darwin", "arm") => "aarch64-apple-darwin",
+        ("Darwin", "arm64") => "aarch64-apple-darwin",
         ("Darwin", "x86_64") => "x86_64-apple-darwin",
         _ => return Err(anyhow::anyhow!("OS/Architecture {}/{} not supported.", os_name, architecture_name)),
     };
