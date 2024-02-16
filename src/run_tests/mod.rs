@@ -444,7 +444,9 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                     config.runtime_build_verbose,
                     config.runtime_build_release,
                 )?;
-                runtime_path.join("target/release/kinode")
+                runtime_path.join("target")
+                    .join(if config.runtime_build_release { "release" } else { "debug" })
+                    .join("kinode")
             } else {
                 return Err(anyhow::anyhow!(
                     "RepoPath {:?} must be a directory (the repo).",
