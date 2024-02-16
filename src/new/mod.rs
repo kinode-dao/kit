@@ -187,6 +187,6 @@ pub fn execute(
         fs::write(new_dir.join(path), content)?;
     }
 
-    println!("Template directory created successfully at {:?}.", new_dir);
+    tracing::info!("Template directory created successfully at {:?}.", new_dir);
     Ok(())
 }

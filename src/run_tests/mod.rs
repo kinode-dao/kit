@@ -2,11 +2,12 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use dirs::home_dir;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
-
-use dirs::home_dir;
 use toml;
+use tracing::{debug, info};
+
 
 use super::boot_fake_node::{compile_runtime, get_runtime_binary, run_runtime};
 use super::build;
@@ -129,18 +130,18 @@ async fn wait_until_booted(
 }
 
 async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> {
-    println!("Loading setup packages...");
+    info!("Loading setup packages...");
 
     for setup_path in setup_paths {
         start_package::execute(&setup_path, &format!("http://localhost:{}", port)).await?;
     }
 
-    println!("Done loading setup packages.");
+    info!("Done loading setup packages.");
     Ok(())
 }
 
 async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Result<()> {
-    println!("Loading tests...");
+    info!("Loading tests...");
 
     for TestPackage { ref path, .. } in test_packages {
         let basename = get_basename(path).unwrap();
@@ -197,7 +198,7 @@ async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Resu
     }
 
 
-    println!("Done loading tests.");
+    info!("Done loading tests.");
     Ok(())
 }
 
@@ -234,13 +235,12 @@ async fn run_tests(
         ).await?;
 
         if response.status() != 200 {
-            println!("Failed with status code: {}", response.status());
             return Err(anyhow::anyhow!("Failed with status code: {}", response.status()))
         }
     }
 
     // Set up master node & start tests.
-    println!("Running tests...");
+    info!("Running tests...");
     let request = inject_message::make_message(
         "tester:tester:sys",
         Some(15),
@@ -266,23 +266,17 @@ async fn run_tests(
     match inject_message::parse_response(response).await {
         Ok(inject_message::Response { ref body, .. }) => {
             match serde_json::from_str(body)? {
-                tt::TesterResponse::Pass => println!("PASS"),
+                tt::TesterResponse::Pass => info!("PASS"),
                 tt::TesterResponse::Fail { test, file, line, column } => {
-                    let s = format!("FAIL: {} {}:{}:{}", test, file, line, column);
-                    println!("{}", s);
-                    return Err(anyhow::anyhow!(s));
+                    return Err(anyhow::anyhow!("FAIL: {} {}:{}:{}", test, file, line, column));
                 },
                 tt::TesterResponse::GetFullMessage(_) => {
-                    let s = "FAIL: Unexpected Response";
-                    println!("{}", s);
-                    return Err(anyhow::anyhow!(s));
+                    return Err(anyhow::anyhow!("FAIL: Unexpected Response"));
                 },
             }
         },
         Err(e) => {
-            let s = format!("FAIL: {}", e);
-            println!("{}", s);
-            return Err(anyhow::anyhow!(s));
+            return Err(anyhow::anyhow!("FAIL: {}", e));
         },
     };
 
@@ -390,11 +384,11 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
 
     for node in &test.nodes {
         let node_home = fs::canonicalize(&node.home)?;
-        println!("Setting up node {:?}...", node_home);
+        info!("Setting up node {:?}...", node_home);
         let recv_kill_in_wait = send_to_kill.subscribe();
         wait_until_booted(node.port, 5, recv_kill_in_wait).await?;
         ports.push(node.port);
-        println!("Done setting up node {:?} on port {}.", node_home, node.port);
+        info!("Done setting up node {:?} on port {}.", node_home, node.port);
     }
 
     for port in &ports {
@@ -425,7 +419,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
     let config_content = fs::read_to_string(config_path)?;
     let config = toml::from_str::<Config>(&config_content)?.expand_home_paths();
 
-    // println!("{:?}", config);
+    debug!("{:?}", config);
 
     // TODO: factor out with boot_fake_node?
     let runtime_path = match config.runtime {

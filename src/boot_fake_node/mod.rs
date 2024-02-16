@@ -11,6 +11,7 @@ use zip::read::ZipArchive;
 use semver::Version;
 use serde::Deserialize;
 use tokio::sync::Mutex;
+use tracing::{info, warn};
 
 use super::build;
 use super::run_tests::cleanup::{cleanup, cleanup_on_signal};
@@ -69,7 +70,7 @@ fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
 
 #[autocontext::autocontext]
 pub fn compile_runtime(path: &Path, verbose: bool, release: bool) -> anyhow::Result<()> {
-    println!("Compiling Kinode runtime...");
+    info!("Compiling Kinode runtime...");
 
     let mut args = vec![
         "+nightly",
@@ -90,7 +91,7 @@ pub fn compile_runtime(path: &Path, verbose: bool, release: bool) -> anyhow::Res
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling Kinode runtime.");
+    info!("Done compiling Kinode runtime.");
     Ok(())
 }
 
@@ -196,7 +197,7 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> anyhow:
             return Ok(v.to_vec());
         },
         Err(_) => {
-            println!("github throttled! fix coming soon");
+            warn!("github throttled!");
             return Ok(vec![]);
         },
     };

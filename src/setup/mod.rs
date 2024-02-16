@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::str;
 
+use tracing::{info, warn};
+
 use super::build::run_command;
 
 const FETCH_NVM_VERSION: &str = "v0.39.7";
@@ -60,7 +62,7 @@ fn is_nvm_installed() -> anyhow::Result<bool> {
 
 #[autocontext::autocontext]
 fn install_nvm() -> anyhow::Result<()> {
-    println!("Getting nvm...");
+    info!("Getting nvm...");
     let install_nvm = format!(
         "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/{}/install.sh | bash",
         FETCH_NVM_VERSION,
@@ -69,25 +71,25 @@ fn install_nvm() -> anyhow::Result<()> {
         .args(&["-c", &install_nvm])
     )?;
 
-    println!("Done getting nvm.");
+    info!("Done getting nvm.");
     Ok(())
 }
 
 #[autocontext::autocontext]
 fn install_rust() -> anyhow::Result<()> {
-    println!("Getting rust...");
+    info!("Getting rust...");
     let install_rust = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh";
     run_command(Command::new("bash")
         .args(&["-c", install_rust])
     )?;
 
-    println!("Done getting rust.");
+    info!("Done getting rust.");
     Ok(())
 }
 
 #[autocontext::autocontext]
 fn check_python_venv(python: &str) -> anyhow::Result<()> {
-    println!("Checking for python venv...");
+    info!("Checking for python venv...");
     let venv_result = run_command(Command::new(python)
         .args(&["-m", "venv", "kinode-test-venv"])
         .current_dir("/tmp")
@@ -98,7 +100,7 @@ fn check_python_venv(python: &str) -> anyhow::Result<()> {
     }
     match venv_result {
         Ok(_) => {
-            println!("Found python venv.");
+            info!("Found python venv.");
             Ok(())
         },
         Err(_) => Err(anyhow::anyhow!("Check for python venv failed.")),
@@ -469,20 +471,20 @@ pub fn get_deps(deps: Vec<Dependency>) -> anyhow::Result<()> {
                 }
             }
         },
-        r => println!("Got '{}'; not getting deps.", r),
+        r => warn!("Got '{}'; not getting deps.", r),
     }
     Ok(())
 }
 
 #[autocontext::autocontext]
 pub fn execute() -> anyhow::Result<()> {
-    println!("Setting up...");
+    info!("Setting up...");
 
     check_py_deps()?;
     let mut missing_deps = check_js_deps()?;
     missing_deps.append(&mut check_rust_deps()?);
     get_deps(missing_deps)?;
 
-    println!("Done setting up.");
+    info!("Done setting up.");
     Ok(())
 }

@@ -3,6 +3,8 @@ use std::env;
 use std::path::PathBuf;
 
 use serde::Deserialize;
+use tracing::{warn, error};
+use tracing_subscriber::{prelude::*, fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod boot_fake_node;
 mod build;
@@ -21,6 +23,9 @@ const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_SHA");
 const GIT_BRANCH_NAME: &str = env!("GIT_BRANCH_NAME");
 const KIT_REPO: &str = "kit";
 const KIT_MASTER_BRANCH: &str = "master";
+const KIT_LOG_PATH_DEFAULT: &str = "/tmp/kinode-kit-cache/logs/log.log";
+const DEFAULT_STDOUT_LOG_LEVEL: &str = "info";
+const DEFAULT_FILE_LOG_LEVEL: &str = "info";
 
 #[derive(Debug, Deserialize)]
 struct Commit {
@@ -38,6 +43,45 @@ async fn get_latest_commit_sha_from_branch(
         &format!("commits/{branch}"),
     ).await?;
     Ok(serde_json::from_slice(&bytes)?)
+}
+
+#[autocontext::autocontext]
+fn init_tracing(log_path: PathBuf) -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard> {
+    // Define a fixed log file name with rolling based on size or execution instance.
+    let log_parent_path = log_path.parent().ok_or(anyhow::anyhow!("no log path parent"))?;
+    let log_file_name = log_path.file_name()
+        .and_then(|f| f.to_str())
+        .ok_or(anyhow::anyhow!("no log path file name"))?;
+    if !log_parent_path.exists() {
+        std::fs::create_dir_all(log_parent_path)?;
+    }
+    let file_appender = tracing_appender::rolling::never(log_parent_path, log_file_name);
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    let stdout_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(DEFAULT_STDOUT_LOG_LEVEL));
+    let file_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(DEFAULT_FILE_LOG_LEVEL));
+    tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .with_writer(std::io::stdout)
+                .with_ansi(true) // Colorful output for stdout
+                .with_target(true) // Include the target of the log (e.g., module path)
+                .fmt_fields(fmt::format::PrettyFields::new()) // Pretty print for fields
+                .without_time()
+                .with_filter(stdout_filter)
+        )
+        .with(
+            fmt::layer()
+                .with_writer(non_blocking)
+                .with_ansi(false) // Disable ANSI colors for file output
+                .json() // JSON format for file logging
+                .with_filter(file_filter)
+        )
+        .init();
+
+    Ok(guard)
 }
 
 async fn execute(
@@ -177,7 +221,6 @@ async fn execute(
                     config_path,
                     usage,
                 );
-                println!("{}", error);
                 return Err(anyhow::anyhow!(error));
             }
 
@@ -220,7 +263,7 @@ async fn execute(
             update::execute(args, branch)
         },
         _ => {
-            println!("Invalid subcommand. Usage:\n{}", usage);
+            warn!("Invalid subcommand. Usage:\n{}", usage);
             Ok(())
         },
     }
@@ -635,6 +678,10 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let log_path = std::env::var("KIT_LOG_PATH")
+        .unwrap_or_else(|_| KIT_LOG_PATH_DEFAULT.to_string());
+    let log_path = PathBuf::from(log_path);
+    let _guard = init_tracing(log_path)?;
     let current_dir = env::current_dir()?.into_os_string();
     let mut app = make_app(&current_dir).await?;
 
@@ -650,7 +697,7 @@ async fn main() -> anyhow::Result<()> {
                 None => {},
                 Some(e) => {
                     if e.is_connect() {
-                        println!("kit: error connecting; is Kinode running?");
+                        error!("kit: error connecting; is Kinode running?");
                         return Ok(());
                     }
                 },
@@ -667,10 +714,13 @@ async fn main() -> anyhow::Result<()> {
                 KIT_MASTER_BRANCH,
             ).await?;
             if GIT_COMMIT_HASH != latest.sha {
-                println!("kit is out of date! Run:\n```\nkit update\n```\nto update to the latest version.");
+                warn!("kit is out of date! Run:\n```\nkit update\n```\nto update to the latest version.");
             }
         }
     }
 
-    result
+    if let Err(ref e) = result {
+        error!("{}\nCause: {}", e, e.root_cause());
+    };
+    Ok(())
 }

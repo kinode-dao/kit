@@ -5,6 +5,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::task;
 use tokio_tungstenite::{accept_async, tungstenite::protocol::Message::{Binary, Text}, WebSocketStream};
+use tracing::{error, info};
 
 use crate::run_tests::types::*;
 use crate::run_tests::tester_types as tt;
@@ -48,7 +49,7 @@ async fn handle_connection(
                     .send(Binary(rmp_serde::to_vec(kernel_message).unwrap()))
                     .await
                 {
-                    eprintln!("Error sending message: {}", e);
+                    error!("Error sending message: {}", e);
                     break;
                 }
             },
@@ -56,7 +57,7 @@ async fn handle_connection(
                 if let Binary(ref bin) = message {
                     let kernel_message = rmp_serde::from_slice(bin).unwrap();
                     if let Err(e) = send_to_loop.send(kernel_message).await {
-                        eprintln!("Error forwarding message: {}", e);
+                        error!("Error forwarding message: {}", e);
                         break;
                     }
                 }
@@ -78,7 +79,7 @@ pub async fn execute(
 
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
 
-    println!("network_router: online at {}\r", port);
+    info!("network_router: online at {}\r", port);
 
     loop {
         tokio::select! {
@@ -96,7 +97,7 @@ pub async fn execute(
                             ws_stream, recv_in_node, recv_kill_in_conn, send_to_loop,
                         ));
                     },
-                    Err(e) => eprintln!("Handshake error: {}", e),
+                    Err(e) => error!("Handshake error: {}", e),
                 }
             },
             Some(kernel_message) = recv_in_loop.recv() => {

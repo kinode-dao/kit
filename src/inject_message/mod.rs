@@ -5,6 +5,7 @@ use std::io::Read;
 use base64::{decode, encode};
 use reqwest;
 use serde_json::{Value, json};
+use tracing::info;
 
 pub struct Response {
     pub body: String,
@@ -52,8 +53,7 @@ pub fn make_message(
         },
         (None, None) => None,
         _ => {
-            println!("Cannot accept both raw_bytes and bytes_path");
-            std::process::exit(1);
+            return Err(anyhow::anyhow!("Cannot accept both raw_bytes and bytes_path"));
         }
     };
 
@@ -171,12 +171,12 @@ pub async fn execute(
     let response = send_request(url, request).await?;
     if expects_response.is_some() {
         let response = parse_response(response).await?;
-        println!("{}", response);
+        info!("{}", response);
     } else {
         if response.status() != 200 {
             return Err(anyhow::anyhow!("Failed with status code: {}", response.status()))
         } else {
-            println!("{}", response.status());
+            info!("{}", response.status());
         }
     }
 

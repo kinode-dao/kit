@@ -1,6 +1,8 @@
 use std::path::Path;
 use std::process::Command;
 
+use tracing::info;
+
 use super::build::run_command;
 use super::setup::{check_js_deps, get_deps, get_newest_valid_node_version};
 
@@ -13,10 +15,10 @@ pub fn execute(package_dir: &Path, url: &str, skip_deps_check: bool) -> anyhow::
     let valid_node = get_newest_valid_node_version(None, None)?;
 
     let ui_path = package_dir.join("ui");
-    println!("Starting development UI in {:?}...", ui_path);
+    info!("Starting development UI in {:?}...", ui_path);
 
     if ui_path.exists() && ui_path.is_dir() && ui_path.join("package.json").exists() {
-        println!("UI directory found, running npm install...");
+        info!("UI directory found, running npm install...");
 
         let install = "npm install".to_string();
         let start = "npm start".to_string();
@@ -32,7 +34,7 @@ pub fn execute(package_dir: &Path, url: &str, skip_deps_check: bool) -> anyhow::
             .current_dir(&ui_path)
         )?;
 
-        println!("Running npm start...");
+        info!("Running npm start...");
 
         run_command(Command::new("bash")
             .args(&["-c", &start])
@@ -40,7 +42,7 @@ pub fn execute(package_dir: &Path, url: &str, skip_deps_check: bool) -> anyhow::
             .current_dir(&ui_path)
         )?;
     } else {
-        println!("'ui' directory not found or 'ui/package.json' does not exist");
+        return Err(anyhow::anyhow!("'ui' directory not found or 'ui/package.json' does not exist"));
     }
 
     Ok(())

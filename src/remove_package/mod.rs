@@ -39,7 +39,7 @@ pub async fn execute(
         process::exit(1);
     }
 
-    println!("Successfully removed package {}:{} on node at {}", package_name, publisher, url);
+    tracing::info!("Successfully removed package {}:{} on node at {}", package_name, publisher, url);
 
     Ok(())
 }
