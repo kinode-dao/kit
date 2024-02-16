@@ -371,7 +371,9 @@ pub async fn execute(
             if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(&runtime_path, true, release)?;
-                runtime_path.join("target/release/kinode")
+                runtime_path.join("target")
+                    .join(if release { "release" } else { "debug" })
+                    .join("kinode")
             } else {
                 return Err(anyhow::anyhow!(
                     "--runtime-path {:?} must be a directory (the repo).",
