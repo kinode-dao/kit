@@ -1,8 +1,11 @@
 use clap::{Arg, ArgAction, builder::PossibleValuesParser, command, Command, value_parser};
 use std::env;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use serde::Deserialize;
+use tracing::{warn, error, instrument, Level};
+use tracing_subscriber::{prelude::*, filter, fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod boot_fake_node;
 mod build;
@@ -21,6 +24,11 @@ const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_SHA");
 const GIT_BRANCH_NAME: &str = env!("GIT_BRANCH_NAME");
 const KIT_REPO: &str = "kit";
 const KIT_MASTER_BRANCH: &str = "master";
+const KIT_LOG_PATH_DEFAULT: &str = "/tmp/kinode-kit-cache/logs/log.log";
+const STDOUT_LOG_LEVEL_DEFAULT: Level = Level::INFO;
+const STDERR_LOG_LEVEL_DEFAULT: &str = "error";
+const FILE_LOG_LEVEL_DEFAULT: &str = "info";
+const RUST_LOG: &str = "RUST_LOG";
 
 #[derive(Debug, Deserialize)]
 struct Commit {
@@ -38,6 +46,70 @@ async fn get_latest_commit_sha_from_branch(
         &format!("commits/{branch}"),
     ).await?;
     Ok(serde_json::from_slice(&bytes)?)
+}
+
+#[instrument(level = "trace", err, skip_all)]
+fn init_tracing(log_path: PathBuf) -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard> {
+    // Define a fixed log file name with rolling based on size or execution instance.
+    let log_parent_path = log_path.parent().ok_or(anyhow::anyhow!("no log path parent"))?;
+    let log_file_name = log_path.file_name()
+        .and_then(|f| f.to_str())
+        .ok_or(anyhow::anyhow!("no log path file name"))?;
+    if !log_parent_path.exists() {
+        std::fs::create_dir_all(log_parent_path)?;
+    }
+    let file_appender = tracing_appender::rolling::never(log_parent_path, log_file_name);
+    let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
+
+    let level = std::env::var(RUST_LOG).ok()
+        .and_then(|l| Level::from_str(&l).ok())
+        .unwrap_or_else(|| STDOUT_LOG_LEVEL_DEFAULT);
+    let allowed_levels: Vec<Level> = vec![Level::INFO, Level::WARN]
+        .into_iter()
+        .filter(|&l| l <= level)
+        .collect();
+    let stdout_filter = filter::filter_fn(move |metadata: &tracing::Metadata<'_>| {
+        allowed_levels.iter().any(|l| metadata.level() == l)
+    });
+
+    let stderr_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(STDERR_LOG_LEVEL_DEFAULT));
+    let file_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(FILE_LOG_LEVEL_DEFAULT));
+
+    tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .without_time()
+                .with_writer(std::io::stdout)
+                .with_ansi(true)
+                .with_level(false)
+                .with_target(false)
+                .fmt_fields(fmt::format::PrettyFields::new())
+                .with_filter(stdout_filter)
+        )
+        .with(
+            fmt::layer()
+                .with_file(true)
+                .with_line_number(true)
+                .without_time()
+                .with_writer(std::io::stderr)
+                .with_ansi(true)
+                .with_level(true)
+                .with_target(false)
+                .fmt_fields(fmt::format::PrettyFields::new())
+                .with_filter(stderr_filter)
+        )
+        .with(
+            fmt::layer()
+                .with_writer(non_blocking)
+                .with_ansi(false)
+                .json()
+                .with_filter(file_filter)
+        )
+        .init();
+
+    Ok(guard)
 }
 
 async fn execute(
@@ -177,7 +249,6 @@ async fn execute(
                     config_path,
                     usage,
                 );
-                println!("{}", error);
                 return Err(anyhow::anyhow!(error));
             }
 
@@ -220,7 +291,7 @@ async fn execute(
             update::execute(args, branch)
         },
         _ => {
-            println!("Invalid subcommand. Usage:\n{}", usage);
+            warn!("Invalid subcommand. Usage:\n{}", usage);
             Ok(())
         },
     }
@@ -635,6 +706,10 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let log_path = std::env::var("KIT_LOG_PATH")
+        .unwrap_or_else(|_| KIT_LOG_PATH_DEFAULT.to_string());
+    let log_path = PathBuf::from(log_path);
+    let _guard = init_tracing(log_path)?;
     let current_dir = env::current_dir()?.into_os_string();
     let mut app = make_app(&current_dir).await?;
 
@@ -642,7 +717,7 @@ async fn main() -> anyhow::Result<()> {
     let matches = app.get_matches();
     let matches = matches.subcommand();
 
-    let result = match execute(usage, matches).await {
+    let _result = match execute(usage, matches).await {
         Ok(()) => Ok(()),
         Err(e) => {
             // TODO: add more non-"nerdview" error messages here
@@ -650,7 +725,7 @@ async fn main() -> anyhow::Result<()> {
                 None => {},
                 Some(e) => {
                     if e.is_connect() {
-                        println!("kit: error connecting; is Kinode running?");
+                        error!("kit: error connecting; is Kinode running?");
                         return Ok(());
                     }
                 },
@@ -667,10 +742,14 @@ async fn main() -> anyhow::Result<()> {
                 KIT_MASTER_BRANCH,
             ).await?;
             if GIT_COMMIT_HASH != latest.sha {
-                println!("kit is out of date! Run:\n```\nkit update\n```\nto update to the latest version.");
+                warn!("kit is out of date! Run:\n```\nkit update\n```\nto update to the latest version.");
             }
         }
     }
 
-    result
+    // Return Ok(()) here rather than result above because
+    //  #[tracing::instrument(err)] already outputs errors
+    //  that occur more locally to the error site (i.e.
+    //  with function information).
+    Ok(())
 }

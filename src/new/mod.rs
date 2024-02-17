@@ -1,5 +1,7 @@
 use std::{fs, path::{PathBuf, Path}, collections::HashMap};
 
+use tracing::instrument;
+
 include!("includes.rs");
 
 #[derive(Clone)]
@@ -71,7 +73,7 @@ fn is_url_safe(input: &str) -> bool {
     re.is_match(input)
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn execute(
     new_dir: PathBuf,
     package_name: Option<String>,
@@ -187,6 +189,6 @@ pub fn execute(
         fs::write(new_dir.join(path), content)?;
     }
 
-    println!("Template directory created successfully at {:?}.", new_dir);
+    tracing::info!("Template directory created successfully at {:?}.", new_dir);
     Ok(())
 }

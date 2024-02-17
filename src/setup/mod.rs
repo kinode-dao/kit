@@ -4,6 +4,8 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::str;
 
+use tracing::{info, warn, instrument};
+
 use super::build::run_command;
 
 const FETCH_NVM_VERSION: &str = "v0.39.7";
@@ -51,16 +53,16 @@ impl std::fmt::Display for Dependencies {
     }
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn is_nvm_installed() -> anyhow::Result<bool> {
     let home_dir = env::var("HOME")?;
     let nvm_dir = format!("{}/.nvm", home_dir);
     Ok(std::path::Path::new(&nvm_dir).exists())
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn install_nvm() -> anyhow::Result<()> {
-    println!("Getting nvm...");
+    info!("Getting nvm...");
     let install_nvm = format!(
         "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/{}/install.sh | bash",
         FETCH_NVM_VERSION,
@@ -69,25 +71,25 @@ fn install_nvm() -> anyhow::Result<()> {
         .args(&["-c", &install_nvm])
     )?;
 
-    println!("Done getting nvm.");
+    info!("Done getting nvm.");
     Ok(())
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn install_rust() -> anyhow::Result<()> {
-    println!("Getting rust...");
+    info!("Getting rust...");
     let install_rust = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh";
     run_command(Command::new("bash")
         .args(&["-c", install_rust])
     )?;
 
-    println!("Done getting rust.");
+    info!("Done getting rust.");
     Ok(())
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn check_python_venv(python: &str) -> anyhow::Result<()> {
-    println!("Checking for python venv...");
+    info!("Checking for python venv...");
     let venv_result = run_command(Command::new(python)
         .args(&["-m", "venv", "kinode-test-venv"])
         .current_dir("/tmp")
@@ -98,14 +100,14 @@ fn check_python_venv(python: &str) -> anyhow::Result<()> {
     }
     match venv_result {
         Ok(_) => {
-            println!("Found python venv.");
+            info!("Found python venv.");
             Ok(())
         },
         Err(_) => Err(anyhow::anyhow!("Check for python venv failed.")),
     }
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn is_command_installed(cmd: &str) -> anyhow::Result<bool> {
     Ok(Command::new("which")
         .arg(cmd)
@@ -115,7 +117,7 @@ fn is_command_installed(cmd: &str) -> anyhow::Result<bool> {
     )
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn is_npm_version_correct(
     node_version: String,
     required_version: (u32, u32),
@@ -132,7 +134,7 @@ fn is_npm_version_correct(
     )
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn is_version_correct(cmd: &str, required_version: (u32, u32)) -> anyhow::Result<bool> {
     let output = Command::new(cmd)
         .arg("--version")
@@ -157,7 +159,7 @@ fn strip_color_codes(input: &str) -> String {
 ///
 /// Returns `None` if no valid version; `Some(String)`:
 /// the valid version, as a String.
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn get_newest_valid_node_version(
     required_major: Option<u32>,
     minimum_minor: Option<u32>,
@@ -200,7 +202,7 @@ pub fn get_newest_valid_node_version(
     Ok(newest_node)
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn call_with_nvm_output(arg: &str) -> anyhow::Result<String> {
     let output = Command::new("bash")
         .args(&["-c", &format!("source ~/.nvm/nvm.sh && {}", arg)])
@@ -209,21 +211,21 @@ fn call_with_nvm_output(arg: &str) -> anyhow::Result<String> {
     Ok(String::from_utf8_lossy(&output).to_string())
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn call_with_nvm(arg: &str) -> anyhow::Result<()> {
     run_command(Command::new("bash")
         .args(&["-c", &format!("source ~/.nvm/nvm.sh && {}", arg)])
     )
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn call_rustup(arg: &str) -> anyhow::Result<()> {
     run_command(Command::new("bash")
         .args(&["-c", &format!("rustup {}", arg)])
     )
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn call_cargo(arg: &str) -> anyhow::Result<()> {
     run_command(Command::new("bash")
         .args(&["-c", &format!("cargo {}", arg)])
@@ -253,7 +255,7 @@ fn parse_version(version_str: &str) -> Option<(u32, u32)> {
     None
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn check_rust_toolchains_targets() -> anyhow::Result<Vec<Dependency>> {
     let mut missing_deps = Vec::new();
     let output = Command::new("rustup")
@@ -331,7 +333,7 @@ fn check_rust_toolchains_targets() -> anyhow::Result<Vec<Dependency>> {
 }
 
 /// Find the newest Python version (>= 3.10 or given major, minor)
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn get_python_version(
     required_major: Option<u32>,
     minimum_minor: Option<u32>,
@@ -373,7 +375,7 @@ pub fn get_python_version(
 }
 
 /// Check for Python deps, erroring if not found: python deps cannot be automatically fetched
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn check_py_deps() -> anyhow::Result<String> {
     let python = get_python_version(Some(REQUIRED_PY_MAJOR), Some(MINIMUM_PY_MINOR))?
         .ok_or(anyhow::anyhow!("kit requires Python 3.10 or newer"))?;
@@ -383,7 +385,7 @@ pub fn check_py_deps() -> anyhow::Result<String> {
 }
 
 /// Check for Javascript deps, returning a Vec of not found: can be automatically fetched
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn check_js_deps() -> anyhow::Result<Vec<Dependency>> {
     let mut missing_deps = Vec::new();
     if !is_nvm_installed()? {
@@ -403,7 +405,7 @@ pub fn check_js_deps() -> anyhow::Result<Vec<Dependency>> {
 }
 
 /// Check for Rust deps, returning a Vec of not found: can be automatically fetched
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn check_rust_deps() -> anyhow::Result<Vec<Dependency>> {
     if !is_command_installed("rustup")? {
         // don't have rust -> missing all
@@ -424,7 +426,7 @@ pub fn check_rust_deps() -> anyhow::Result<Vec<Dependency>> {
     Ok(missing_deps)
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn get_deps(deps: Vec<Dependency>) -> anyhow::Result<()> {
     if deps.is_empty() {
         return Ok(());
@@ -469,20 +471,20 @@ pub fn get_deps(deps: Vec<Dependency>) -> anyhow::Result<()> {
                 }
             }
         },
-        r => println!("Got '{}'; not getting deps.", r),
+        r => warn!("Got '{}'; not getting deps.", r),
     }
     Ok(())
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn execute() -> anyhow::Result<()> {
-    println!("Setting up...");
+    info!("Setting up...");
 
     check_py_deps()?;
     let mut missing_deps = check_js_deps()?;
     missing_deps.append(&mut check_rust_deps()?);
     get_deps(missing_deps)?;
 
-    println!("Done setting up.");
+    info!("Done setting up.");
     Ok(())
 }

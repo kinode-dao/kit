@@ -3,6 +3,7 @@ use std::io::{Read, Write};
 use std::path::Path;
 
 use serde_json::json;
+use tracing::{info, instrument};
 use walkdir::WalkDir;
 use zip::write::FileOptions;
 
@@ -10,7 +11,7 @@ use kinode_process_lib::kernel_types::Erc721Metadata;
 
 use super::inject_message;
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn new_package(
     node: Option<&str>,
     package_name: &str,
@@ -34,7 +35,7 @@ fn new_package(
     )
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn interact_with_package(
     request_type: &str,
     node: Option<&str>,
@@ -58,7 +59,7 @@ pub fn interact_with_package(
     )
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
     let file = fs::File::create(zip_filename)?;
     let walkdir = WalkDir::new(directory);
@@ -91,6 +92,7 @@ fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 pub async fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
     if !package_dir.join("pkg").exists() {
         return Err(anyhow::anyhow!(
@@ -104,7 +106,7 @@ pub async fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
     let package_name = metadata.properties.package_name.as_str();
     let publisher = metadata.properties.publisher.as_str();
     let pkg_publisher = format!("{}:{}", package_name, publisher);
-    println!("{}", pkg_publisher);
+    info!("{}", pkg_publisher);
 
     // Create zip and put it in /target
     let parent_dir = pkg_dir.parent().unwrap();
@@ -127,9 +129,7 @@ pub async fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
     let new_package_response = body.get("NewPackageResponse");
 
     if new_package_response != Some(&serde_json::Value::String("Success".to_string())) {
-        let error_message = format!("Failed to add package. Got response from node: {}", body);
-        println!("{}", error_message);
-        return Err(anyhow::anyhow!(error_message));
+        return Err(anyhow::anyhow!("Failed to add package. Got response from node: {}", body));
     }
 
     // Install package
@@ -141,14 +141,9 @@ pub async fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
     let install_response = body.get("InstallResponse");
 
     if install_response == Some(&serde_json::Value::String("Success".to_string())) {
-        println!(
-            "Successfully installed package {} on node at {}",
-            pkg_publisher, url
-        );
+        info!("Successfully installed package {} on node at {}", pkg_publisher, url);
     } else {
-        let error_message = format!("Failed to start package. Got response from node: {}", body);
-        println!("{}", error_message);
-        return Err(anyhow::anyhow!(error_message));
+        return Err(anyhow::anyhow!("Failed to start package. Got response from node: {}", body));
     }
 
     Ok(())

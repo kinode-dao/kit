@@ -5,6 +5,7 @@ use std::process::{Command, Stdio};
 use reqwest;
 use serde::{Serialize, Deserialize};
 use tokio::fs;
+use tracing::{info, instrument};
 
 use super::setup::{check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version, REQUIRED_PY_PACKAGE};
 
@@ -26,7 +27,7 @@ struct CargoPackage {
     name: String,
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn run_command(cmd: &mut Command) -> anyhow::Result<()> {
     let status = cmd.status()?;
     if status.success() {
@@ -41,6 +42,7 @@ pub fn run_command(cmd: &mut Command) -> anyhow::Result<()> {
     }
 }
 
+#[instrument(level = "trace", err, skip_all)]
 pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
     fs::create_dir_all(&CACHE_DIR).await?;
     let hex_url = hex::encode(url);
@@ -80,12 +82,13 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 async fn compile_javascript_wasm_process(
     process_dir: &Path,
     valid_node: Option<String>,
     verbose: bool,
 ) -> anyhow::Result<()> {
-    println!("Compiling Javascript Kinode process in {:?}...", process_dir);
+    info!("Compiling Javascript Kinode process in {:?}...", process_dir);
     let wit_dir = process_dir.join("wit");
     download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
@@ -117,16 +120,17 @@ async fn compile_javascript_wasm_process(
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling Javascript Kinode process in {:?}.", process_dir);
+    info!("Done compiling Javascript Kinode process in {:?}.", process_dir);
     Ok(())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 async fn compile_python_wasm_process(
     process_dir: &Path,
     python: &str,
     verbose: bool,
 ) -> anyhow::Result<()> {
-    println!("Compiling Python Kinode process in {:?}...", process_dir);
+    info!("Compiling Python Kinode process in {:?}...", process_dir);
     let wit_dir = process_dir.join("wit");
     download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
@@ -151,15 +155,16 @@ async fn compile_python_wasm_process(
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling Python Kinode process in {:?}.", process_dir);
+    info!("Done compiling Python Kinode process in {:?}.", process_dir);
     Ok(())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 async fn compile_rust_wasm_process(
     process_dir: &Path,
     verbose: bool,
 ) -> anyhow::Result<()> {
-    println!("Compiling Rust Kinode process in {:?}...", process_dir);
+    info!("Compiling Rust Kinode process in {:?}...", process_dir);
 
     // Paths
     let bindings_dir = process_dir
@@ -259,21 +264,22 @@ async fn compile_rust_wasm_process(
         .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
-    println!("Done compiling Rust Kinode process in {:?}.", process_dir);
+    info!("Done compiling Rust Kinode process in {:?}.", process_dir);
     Ok(())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 async fn compile_and_copy_ui(
     package_dir: &Path,
     valid_node: Option<String>,
     verbose: bool,
 ) -> anyhow::Result<()> {
     let ui_path = package_dir.join("ui");
-    println!("Building UI in {:?}...", ui_path);
+    info!("Building UI in {:?}...", ui_path);
 
     if ui_path.exists() && ui_path.is_dir() {
         if ui_path.join("package.json").exists() {
-            println!("UI directory found, running npm install...");
+            info!("UI directory found, running npm install...");
 
             let install = "npm install".to_string();
             let run = "npm run build:copy".to_string();
@@ -291,7 +297,7 @@ async fn compile_and_copy_ui(
                 .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
             )?;
 
-            println!("Running npm run build:copy...");
+            info!("Running npm run build:copy...");
 
             run_command(Command::new("bash")
                 .args(&["-c", &run])
@@ -312,13 +318,14 @@ async fn compile_and_copy_ui(
             )?;
         }
     } else {
-        println!("'ui' directory not found");
+        return Err(anyhow::anyhow!("'ui' directory not found"));
     }
 
-    println!("Done building UI in {:?}.", ui_path);
+    info!("Done building UI in {:?}.", ui_path);
     Ok(())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 async fn compile_package_and_ui(
     package_dir: &Path,
     valid_node: Option<String>,
@@ -330,6 +337,7 @@ async fn compile_package_and_ui(
     Ok(())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 async fn compile_package(
     package_dir: &Path,
     verbose: bool,
@@ -362,6 +370,7 @@ async fn compile_package(
     Ok(())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 pub async fn execute(
     package_dir: &Path,
     no_ui: bool,

@@ -2,9 +2,12 @@ use std::fs;
 use std::path::Path;
 use std::process;
 
+use tracing::instrument;
+
 use super::inject_message;
 use super::start_package::interact_with_package;
 
+#[instrument(level = "trace", err, skip_all)]
 pub async fn execute(
     project_dir: &Path,
     url: &str,
@@ -39,7 +42,7 @@ pub async fn execute(
         process::exit(1);
     }
 
-    println!("Successfully removed package {}:{} on node at {}", package_name, publisher, url);
+    tracing::info!("Successfully removed package {}:{} on node at {}", package_name, publisher, url);
 
     Ok(())
 }

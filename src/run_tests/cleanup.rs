@@ -2,6 +2,7 @@ use std::fs;
 use std::os::fd::AsRawFd;
 
 use tokio::signal::unix::{signal, SignalKind};
+use tracing::{error, info};
 
 use crate::run_tests::types::{BroadcastRecvBool, BroadcastSendBool, NodeCleanupInfo, NodeCleanupInfos, NodeHandles, RecvBool, SendBool};
 
@@ -20,14 +21,14 @@ pub async fn cleanup_on_signal(
     let mut sigusr2 = signal(SignalKind::user_defined2()).expect("kit run-tests: failed to set up SIGUSR2 handler");
 
     tokio::select! {
-        _ = sigalrm.recv() => println!("kit cleanup got SIGALRM\r"),
-        _ = sighup.recv() =>  println!("kit cleanup got SIGHUP\r"),
-        _ = sigint.recv() =>  println!("kit cleanup got SIGINT\r"),
-        _ = sigpipe.recv() => println!("kit cleanup got SIGPIPE\r"),
-        _ = sigquit.recv() => println!("kit cleanup got SIGQUIT\r"),
-        _ = sigterm.recv() => println!("kit cleanup got SIGTERM\r"),
-        _ = sigusr1.recv() => println!("kit cleanup got SIGUSR1\r"),
-        _ = sigusr2.recv() => println!("kit cleanup got SIGUSR2\r"),
+        _ = sigalrm.recv() => error!("kit cleanup got SIGALRM\r"),
+        _ = sighup.recv() =>  error!("kit cleanup got SIGHUP\r"),
+        _ = sigint.recv() =>  error!("kit cleanup got SIGINT\r"),
+        _ = sigpipe.recv() => error!("kit cleanup got SIGPIPE\r"),
+        _ = sigquit.recv() => error!("kit cleanup got SIGQUIT\r"),
+        _ = sigterm.recv() => error!("kit cleanup got SIGTERM\r"),
+        _ = sigusr1.recv() => error!("kit cleanup got SIGUSR1\r"),
+        _ = sigusr2.recv() => error!("kit cleanup got SIGUSR2\r"),
         _ = recv_kill_in_cos.recv() => {},
     }
 
@@ -49,7 +50,7 @@ pub async fn cleanup(
 
     for (i, NodeCleanupInfo { master_fd, process_id, home }) in node_cleanup_infos.iter_mut().enumerate() {
         // Send Ctrl-C to the process
-        println!("Cleaning up {:?}...\r", home);
+        info!("Cleaning up {:?}...\r", home);
         if detached {
             // 231222 Note: I (hf) tried to use the `else` method for
             //  both detached and non-detached processes and found it
@@ -83,7 +84,7 @@ pub async fn cleanup(
                 }
             }
         }
-        println!("Done cleaning up {:?}.\r", home);
+        info!("Done cleaning up {:?}.\r", home);
     }
     let _ = send_to_kill.send(true);
 }
