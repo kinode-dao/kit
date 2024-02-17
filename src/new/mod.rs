@@ -16,6 +16,7 @@ pub enum Template {
     Chat,
     Echo,
     Fibonacci,
+    FileTransfer,
 }
 
 impl Language {
@@ -34,6 +35,7 @@ impl Template {
             Template::Chat => "chat",
             Template::Echo => "echo",
             Template::Fibonacci => "fibonacci",
+            Template::FileTransfer => "file_transfer",
         }.to_string()
     }
 }
@@ -55,6 +57,7 @@ impl From<&String> for Template {
             "chat" => Template::Chat,
             "echo" => Template::Echo,
             "fibonacci" => Template::Fibonacci,
+            "file_transfer" => Template::FileTransfer,
             _ => panic!("kit: template must be 'chat', 'echo', or 'fibonacci'; not '{s}'"),
         }
     }
