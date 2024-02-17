@@ -5,7 +5,7 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::task;
 use tokio_tungstenite::{accept_async, tungstenite::protocol::Message::{Binary, Text}, WebSocketStream};
-use tracing::{error, info};
+use tracing::{info, error, instrument};
 
 use crate::run_tests::types::*;
 use crate::run_tests::tester_types as tt;
@@ -69,6 +69,7 @@ async fn handle_connection(
     }
 }
 
+#[instrument(level = "trace", err, skip_all)]
 pub async fn execute(
     port: u16,
     _defects: NetworkRouterDefects,

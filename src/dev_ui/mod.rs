@@ -1,12 +1,12 @@
 use std::path::Path;
 use std::process::Command;
 
-use tracing::info;
+use tracing::{info, instrument};
 
 use super::build::run_command;
 use super::setup::{check_js_deps, get_deps, get_newest_valid_node_version};
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn execute(package_dir: &Path, url: &str, skip_deps_check: bool) -> anyhow::Result<()> {
     if !skip_deps_check {
         let deps = check_js_deps()?;

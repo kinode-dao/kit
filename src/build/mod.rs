@@ -5,7 +5,7 @@ use std::process::{Command, Stdio};
 use reqwest;
 use serde::{Serialize, Deserialize};
 use tokio::fs;
-use tracing::info;
+use tracing::{info, instrument};
 
 use super::setup::{check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version, REQUIRED_PY_PACKAGE};
 
@@ -33,7 +33,7 @@ struct Metadata {
     version: [u32; 3],
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn run_command(cmd: &mut Command) -> anyhow::Result<()> {
     let status = cmd.status()?;
     if status.success() {
@@ -48,6 +48,7 @@ pub fn run_command(cmd: &mut Command) -> anyhow::Result<()> {
     }
 }
 
+#[instrument(level = "trace", err, skip_all)]
 pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
     fs::create_dir_all(&CACHE_DIR).await?;
     let hex_url = hex::encode(url);
@@ -87,6 +88,7 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 async fn compile_javascript_wasm_process(
     process_dir: &Path,
     valid_node: Option<String>,
@@ -128,6 +130,7 @@ async fn compile_javascript_wasm_process(
     Ok(())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 async fn compile_python_wasm_process(
     process_dir: &Path,
     python: &str,
@@ -162,7 +165,7 @@ async fn compile_python_wasm_process(
     Ok(())
 }
 
-#[tracing::instrument]
+#[instrument(level = "trace", err, skip_all)]
 async fn compile_rust_wasm_process(
     process_dir: &Path,
     verbose: bool,
@@ -272,6 +275,7 @@ async fn compile_rust_wasm_process(
     Ok(())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 async fn compile_and_copy_ui(
     package_dir: &Path,
     valid_node: Option<String>,
@@ -328,6 +332,7 @@ async fn compile_and_copy_ui(
     Ok(())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 async fn compile_package_and_ui(
     package_dir: &Path,
     valid_node: Option<String>,
@@ -339,6 +344,7 @@ async fn compile_package_and_ui(
     Ok(())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 async fn compile_package(
     package_dir: &Path,
     verbose: bool,
@@ -371,6 +377,7 @@ async fn compile_package(
     Ok(())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 pub async fn execute(
     package_dir: &Path,
     no_ui: bool,

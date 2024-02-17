@@ -1,10 +1,11 @@
 use clap::{Arg, ArgAction, builder::PossibleValuesParser, command, Command, value_parser};
 use std::env;
 use std::path::PathBuf;
+use std::str::FromStr;
 
 use serde::Deserialize;
-use tracing::{warn, error};
-use tracing_subscriber::{prelude::*, fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing::{warn, error, instrument, Level};
+use tracing_subscriber::{prelude::*, filter, fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 mod boot_fake_node;
 mod build;
@@ -24,8 +25,10 @@ const GIT_BRANCH_NAME: &str = env!("GIT_BRANCH_NAME");
 const KIT_REPO: &str = "kit";
 const KIT_MASTER_BRANCH: &str = "master";
 const KIT_LOG_PATH_DEFAULT: &str = "/tmp/kinode-kit-cache/logs/log.log";
-const DEFAULT_STDOUT_LOG_LEVEL: &str = "info";
-const DEFAULT_FILE_LOG_LEVEL: &str = "info";
+const STDOUT_LOG_LEVEL_DEFAULT: Level = Level::INFO;
+const STDERR_LOG_LEVEL_DEFAULT: &str = "error";
+const FILE_LOG_LEVEL_DEFAULT: &str = "info";
+const RUST_LOG: &str = "RUST_LOG";
 
 #[derive(Debug, Deserialize)]
 struct Commit {
@@ -45,7 +48,7 @@ async fn get_latest_commit_sha_from_branch(
     Ok(serde_json::from_slice(&bytes)?)
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn init_tracing(log_path: PathBuf) -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard> {
     // Define a fixed log file name with rolling based on size or execution instance.
     let log_parent_path = log_path.parent().ok_or(anyhow::anyhow!("no log path parent"))?;
@@ -58,25 +61,50 @@ fn init_tracing(log_path: PathBuf) -> anyhow::Result<tracing_appender::non_block
     let file_appender = tracing_appender::rolling::never(log_parent_path, log_file_name);
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
-    let stdout_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(DEFAULT_STDOUT_LOG_LEVEL));
+    let level = std::env::var(RUST_LOG).ok()
+        .and_then(|l| Level::from_str(&l).ok())
+        .unwrap_or_else(|| STDOUT_LOG_LEVEL_DEFAULT);
+    let allowed_levels: Vec<Level> = vec![Level::INFO, Level::WARN]
+        .into_iter()
+        .filter(|&l| l <= level)
+        .collect();
+    let stdout_filter = filter::filter_fn(move |metadata: &tracing::Metadata<'_>| {
+        allowed_levels.iter().any(|l| metadata.level() == l)
+    });
+
+    let stderr_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(STDERR_LOG_LEVEL_DEFAULT));
     let file_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(DEFAULT_FILE_LOG_LEVEL));
+        .unwrap_or_else(|_| EnvFilter::new(FILE_LOG_LEVEL_DEFAULT));
+
     tracing_subscriber::registry()
         .with(
             fmt::layer()
-                .with_writer(std::io::stdout)
-                .with_ansi(true) // Colorful output for stdout
-                .with_target(true) // Include the target of the log (e.g., module path)
-                .fmt_fields(fmt::format::PrettyFields::new()) // Pretty print for fields
                 .without_time()
+                .with_writer(std::io::stdout)
+                .with_ansi(true)
+                .with_level(false)
+                .with_target(false)
+                .fmt_fields(fmt::format::PrettyFields::new())
                 .with_filter(stdout_filter)
         )
         .with(
             fmt::layer()
+                .with_file(true)
+                .with_line_number(true)
+                .without_time()
+                .with_writer(std::io::stderr)
+                .with_ansi(true)
+                .with_level(true)
+                .with_target(false)
+                .fmt_fields(fmt::format::PrettyFields::new())
+                .with_filter(stderr_filter)
+        )
+        .with(
+            fmt::layer()
                 .with_writer(non_blocking)
-                .with_ansi(false) // Disable ANSI colors for file output
-                .json() // JSON format for file logging
+                .with_ansi(false)
+                .json()
                 .with_filter(file_filter)
         )
         .init();
@@ -689,7 +717,7 @@ async fn main() -> anyhow::Result<()> {
     let matches = app.get_matches();
     let matches = matches.subcommand();
 
-    let result = match execute(usage, matches).await {
+    let _result = match execute(usage, matches).await {
         Ok(()) => Ok(()),
         Err(e) => {
             // TODO: add more non-"nerdview" error messages here
@@ -719,8 +747,9 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    if let Err(ref e) = result {
-        error!("{}\nCause: {}", e, e.root_cause());
-    };
+    // Return Ok(()) here rather than result above because
+    //  #[tracing::instrument(err)] already outputs errors
+    //  that occur more locally to the error site (i.e.
+    //  with function information).
     Ok(())
 }

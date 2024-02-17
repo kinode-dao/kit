@@ -3,13 +3,13 @@ use std::io::{Read, Write};
 use std::path::Path;
 
 use serde_json::json;
-use tracing::info;
+use tracing::{info, instrument};
 use walkdir::WalkDir;
 use zip::write::FileOptions;
 
 use super::inject_message;
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn new_package(
     node: Option<&str>,
     package_name: &str,
@@ -33,7 +33,7 @@ fn new_package(
     )
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn interact_with_package(
     request_type: &str,
     node: Option<&str>,
@@ -57,7 +57,7 @@ pub fn interact_with_package(
     )
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
     let file = fs::File::create(zip_filename)?;
     let walkdir = WalkDir::new(directory);
@@ -90,6 +90,7 @@ fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 pub async fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
     if !package_dir.join("pkg").exists() {
         return Err(anyhow::anyhow!(

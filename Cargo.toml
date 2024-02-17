@@ -9,7 +9,6 @@ git2 = "0.18"
 
 [dependencies]
 anyhow = "1.0"
-autocontext = { git = "https://github.com/hosted-fornet/autocontext", rev = "ff00142" }
 base64 = "0.21"
 clap = { version = "4.4", features = ["cargo", "string"] }
 dirs = "5.0"

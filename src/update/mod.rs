@@ -1,8 +1,10 @@
 use std::process::Command;
 
+use tracing::instrument;
+
 use super::build;
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn execute(mut user_args: Vec<String>, branch: &str) -> anyhow::Result<()> {
     let mut args: Vec<String> = vec!["install",
         "--git", "https://github.com/kinode-dao/kit",

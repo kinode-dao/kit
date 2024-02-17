@@ -5,7 +5,7 @@ use std::io::Read;
 use base64::{decode, encode};
 use reqwest;
 use serde_json::{Value, json};
-use tracing::info;
+use tracing::{info, instrument};
 
 pub struct Response {
     pub body: String,
@@ -33,7 +33,7 @@ impl std::fmt::Display for Response {
     }
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn make_message(
     process: &str,
     expects_response: Option<u64>,
@@ -72,6 +72,7 @@ pub fn make_message(
     Ok(request)
 }
 
+#[instrument(level = "trace", err, skip_all)]
 pub async fn send_request(
     url: &str,
     json_data: Value,
@@ -96,6 +97,7 @@ pub async fn send_request(
     Ok(response)
 }
 
+#[instrument(level = "trace", err, skip_all)]
 pub async fn parse_response(response: reqwest::Response) -> anyhow::Result<Response> {
     if response.status() != 200 {
         return Err(anyhow::anyhow!("Failed with status code: {}", response.status()))
@@ -159,6 +161,7 @@ pub async fn parse_response(response: reqwest::Response) -> anyhow::Result<Respo
     }
 }
 
+#[instrument(level = "trace", err, skip_all)]
 pub async fn execute(
     url: &str,
     process: &str,

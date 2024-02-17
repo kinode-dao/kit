@@ -11,7 +11,7 @@ use zip::read::ZipArchive;
 use semver::Version;
 use serde::Deserialize;
 use tokio::sync::Mutex;
-use tracing::{info, warn};
+use tracing::{info, warn, instrument};
 
 use super::build;
 use super::run_tests::cleanup::{cleanup, cleanup_on_signal};
@@ -35,7 +35,7 @@ struct Asset {
     name: String,
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
     let file = fs::File::open(archive_path)?;
     let mut archive = ZipArchive::new(file)?;
@@ -68,7 +68,7 @@ fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn compile_runtime(path: &Path, verbose: bool, release: bool) -> anyhow::Result<()> {
     info!("Compiling Kinode runtime...");
 
@@ -95,6 +95,7 @@ pub fn compile_runtime(path: &Path, verbose: bool, release: bool) -> anyhow::Res
     Ok(())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 async fn get_runtime_binary_inner(
     version: &str,
     zip_name: &str,
@@ -117,7 +118,7 @@ async fn get_runtime_binary_inner(
     Ok(())
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn get_platform_runtime_name() -> anyhow::Result<String> {
     let uname = Command::new("uname").output()?;
     if !uname.status.success() {
@@ -142,6 +143,7 @@ pub fn get_platform_runtime_name() -> anyhow::Result<String> {
     Ok(format!("kinode-{}-simulation-mode.zip", zip_name_midfix))
 }
 
+#[instrument(level = "trace", err, skip_all)]
 pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     let zip_name = get_platform_runtime_name()?;
 
@@ -163,6 +165,7 @@ pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     Ok(runtime_path)
 }
 
+#[instrument(level = "trace", err, skip_all)]
 pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> anyhow::Result<Vec<u8>> {
     let cache_path = format!("{}/{}-{}-{}.bin", build::CACHE_DIR, owner, repo, endpoint);
     let cache_path = Path::new(&cache_path);
@@ -203,12 +206,18 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> anyhow:
     };
 }
 
+#[instrument(level = "trace", err, skip_all)]
 async fn fetch_releases(owner: &str, repo: &str) -> anyhow::Result<Vec<Release>> {
     let bytes = get_from_github(owner, repo, "releases").await?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 
-pub async fn find_releases_with_asset(owner: Option<&str>, repo: Option<&str>, asset_name: &str) -> anyhow::Result<Vec<String>> {
+#[instrument(level = "trace", err, skip_all)]
+pub async fn find_releases_with_asset(
+    owner: Option<&str>,
+    repo: Option<&str>,
+    asset_name: &str,
+) -> anyhow::Result<Vec<String>> {
     let owner = owner.unwrap_or(KINODE_OWNER);
     let repo = repo.unwrap_or(KINODE_REPO);
     let releases = fetch_releases(owner, repo).await?;
@@ -245,6 +254,7 @@ pub async fn find_releases_with_asset_if_online(
     Ok(remote_values)
 }
 
+#[instrument(level = "trace", err, skip_all)]
 async fn fetch_latest_release_tag(owner: &str, repo: &str) -> anyhow::Result<String> {
     fetch_releases(owner, repo)
         .await?
@@ -253,7 +263,7 @@ async fn fetch_latest_release_tag(owner: &str, repo: &str) -> anyhow::Result<Str
         .ok_or_else(|| anyhow::anyhow!("No releases found"))
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 fn get_local_versions_with_prefix(prefix: &str) -> anyhow::Result<Vec<String>> {
     let mut versions = Vec::new();
 
@@ -287,6 +297,7 @@ fn find_newest_version(versions: &Vec<String>) -> Option<String> {
     max_version.map(|v| v.to_string())
 }
 
+#[instrument(level = "trace", err, skip_all)]
 async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> anyhow::Result<String> {
     match fetch_latest_release_tag(owner, repo).await {
         Ok(v) => return Ok(v),
@@ -311,7 +322,7 @@ async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> anyhow::R
     }
 }
 
-#[autocontext::autocontext]
+#[instrument(level = "trace", err, skip_all)]
 pub fn run_runtime(
     path: &Path,
     home: &Path,
@@ -344,6 +355,7 @@ pub fn run_runtime(
     Ok((process, fds.master))
 }
 
+#[instrument(level = "trace", err, skip_all)]
 pub async fn execute(
     runtime_path: Option<PathBuf>,
     version: String,
