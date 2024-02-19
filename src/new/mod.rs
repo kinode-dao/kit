@@ -1,6 +1,6 @@
 use std::{fs, path::{PathBuf, Path}, collections::HashMap};
 
-use tracing::instrument;
+use tracing::{info, instrument};
 
 include!("includes.rs");
 
@@ -150,7 +150,7 @@ pub fn execute(
         ui_infix,
         template.to_string(),
     );
-    let mut path_to_content: HashMap<String, String> = PATH_TO_CONTENT
+    let mut path_to_content: HashMap<String, Vec<u8>> = PATH_TO_CONTENT
         .iter()
         .filter_map(|(k, v)| {
             k
@@ -158,7 +158,14 @@ pub fn execute(
                 .or_else(|| k.strip_prefix(&ui_prefix))
                 .and_then(|stripped| {
                     let key = replace_vars(stripped, &package_name, &publisher);
-                    let val = replace_vars(v, &package_name, &publisher);
+                    let val = match std::str::from_utf8(v) {
+                        Err(_) => v.to_vec(),
+                        Ok(v) => {
+                            replace_vars(v, &package_name, &publisher)
+                                .as_bytes()
+                                .to_vec()
+                        },
+                    };
                     Some((key, val))
                 })
         })
@@ -171,11 +178,17 @@ pub fn execute(
             template.to_string(),
         ));
     }
+
+    // add componentize.mjs
     match language {
         Language::Javascript => {
             path_to_content.insert(
                 format!("{}/{}", package_name, PATH_TO_CONTENT[0].0),
-                replace_vars(PATH_TO_CONTENT[0].1, &package_name, &publisher),
+                replace_vars(
+                    std::str::from_utf8(PATH_TO_CONTENT[0].1).unwrap(),
+                    &package_name,
+                    &publisher,
+                ).as_bytes().to_vec(),
             );
         },
         _ => {},
@@ -192,6 +205,6 @@ pub fn execute(
         fs::write(new_dir.join(path), content)?;
     }
 
-    tracing::info!("Template directory created successfully at {:?}.", new_dir);
+    info!("Template directory created successfully at {:?}.", new_dir);
     Ok(())
 }
