@@ -1,6 +1,6 @@
 # kit
 
-Tool**kit** for developing on [Kinode OS](https://github.com/uqbar-dao/kinode).
+Tool**kit** for developing on [Kinode OS](https://github.com/kinode-dao/kinode).
 
 Documentation in the [Kinode Book](https://book.kinode.org/kit/kit.html); example usage [here](https://book.kinode.org/my_first_app/chapter_1.html).
 
@@ -9,7 +9,7 @@ Documentation in the [Kinode Book](https://book.kinode.org/kit/kit.html); exampl
 Install with cargo:
 
 ```bash
-cargo install --git https://github.com/uqbar-dao/kit
+cargo install --git https://github.com/kinode-dao/kit
 ```
 
 ### Updating
@@ -17,7 +17,7 @@ cargo install --git https://github.com/uqbar-dao/kit
 To update, re-run
 
 ```bash
-cargo install --git https://github.com/uqbar-dao/kit
+cargo install --git https://github.com/kinode-dao/kit
 ```
 
 or use
@@ -71,7 +71,7 @@ kit boot-fake-node --runtime-path ~/git/kinode
 ```
 
 `kit` also contains tools for running tests.
-For details and examples, please see [https://github.com/uqbar-dao/core_tests](https://github.com/uqbar-dao/core_tests).
+For details and examples, please see [https://github.com/kinode-dao/core_tests](https://github.com/kinode-dao/core_tests).
 
 ## UI Development
 
