@@ -289,10 +289,10 @@ async fn run_tests(
 #[instrument(level = "trace", err, skip_all)]
 async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow::Result<()> {
     for setup_package_path in &test.setup_package_paths {
-        build::execute(&setup_package_path, false, false, test.package_build_verbose, false).await?;
+        build::execute(&setup_package_path, false, false, !test.mute_package_build, false).await?;
     }
     for TestPackage { ref path, .. } in &test.test_packages {
-        build::execute(path, false, false, test.package_build_verbose, false).await?;
+        build::execute(path, false, false, !test.mute_package_build, false).await?;
     }
 
     // Initialize variables for master node and nodes list
@@ -365,7 +365,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
             node.port,
             test.network_router.port,
             &args[..],
-            node.runtime_verbose,
+            !node.mute_runtime,
             detached,
             node.runtime_verbosity.unwrap_or_else(|| 0u8),
         )?;
@@ -441,7 +441,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                 // Compile the runtime binary
                 compile_runtime(
                     &runtime_path,
-                    config.runtime_build_verbose,
+                    !config.mute_runtime_build,
                     config.runtime_build_release,
                 )?;
                 runtime_path.join("target")
