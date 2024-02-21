@@ -58,6 +58,7 @@ pub struct Node {
     pub rpc: Option<String>,
     pub runtime_verbose: bool,
     pub is_testnet: bool,
+    pub runtime_verbosity: Option<u8>,
 }
 
 pub type NodeHandles = Arc<Mutex<Vec<Child>>>;

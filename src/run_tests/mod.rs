@@ -356,7 +356,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
             args.extend_from_slice(&["--password", password]);
         };
         if node.is_testnet {
-            args.extend_from_slice(&["--testnet"]);
+            args.push("--testnet");
         }
 
         let (runtime_process, master_fd) = run_runtime(
@@ -367,6 +367,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
             &args[..],
             node.runtime_verbose,
             detached,
+            node.runtime_verbosity.unwrap_or_else(|| 0u8),
         )?;
 
         let mut node_cleanup_infos = node_cleanup_infos.lock().await;
