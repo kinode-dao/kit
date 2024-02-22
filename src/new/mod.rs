@@ -163,6 +163,17 @@ pub fn execute(
                 })
         })
         .collect();
+
+    if path_to_content.is_empty() {
+        return Err(anyhow::anyhow!(
+            "The {}/{}/{} language/template/ui combination isn't available. See {} for available language/template/ui combinations.",
+            language.to_string(),
+            template.to_string(),
+            if ui { "'yes ui'" } else { "'no ui'" },
+            "https://book.kinode.org/kit/new.html#existshas-ui-enabled-vesion",
+        ));
+    }
+
     if ui && path_to_content.keys().filter(|p| !p.starts_with("ui")).count() == 0 {
         // Only `ui/` exists
         return Err(anyhow::anyhow!(
