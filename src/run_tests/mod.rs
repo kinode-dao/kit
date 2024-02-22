@@ -108,7 +108,7 @@ async fn wait_until_booted(
             None,
         )?;
 
-        match inject_message::send_request(
+        match inject_message::send_request_inner(
             &format!("http://localhost:{}", port),
             request,
         ).await {
