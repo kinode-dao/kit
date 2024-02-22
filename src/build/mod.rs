@@ -2,7 +2,6 @@ use std::fs::File;
 use std::path::Path;
 use std::process::{Command, Stdio};
 
-use reqwest;
 use serde::{Serialize, Deserialize};
 use tokio::fs;
 use tracing::{info, instrument};

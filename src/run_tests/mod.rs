@@ -5,7 +5,6 @@ use std::sync::Arc;
 use dirs::home_dir;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
-use toml;
 use tracing::{debug, info, instrument};
 
 use super::boot_fake_node::{compile_runtime, get_runtime_binary, run_runtime};
