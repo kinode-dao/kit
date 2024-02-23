@@ -153,17 +153,15 @@ async fn execute(
             let package_dir = PathBuf::from(build_matches.get_one::<String>("DIR").unwrap());
             let no_ui = build_matches.get_one::<bool>("NO_UI").unwrap();
             let ui_only = build_matches.get_one::<bool>("UI_ONLY").unwrap();
-            let verbose = !build_matches.get_one::<bool>("QUIET").unwrap();
             let skip_deps_check = build_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
 
-            build::execute(&package_dir, *no_ui, *ui_only, verbose, *skip_deps_check).await
+            build::execute(&package_dir, *no_ui, *ui_only, *skip_deps_check).await
         },
         Some(("build-start-package", build_start_matches)) => {
 
             let package_dir = PathBuf::from(build_start_matches.get_one::<String>("DIR").unwrap());
             let no_ui = build_start_matches.get_one::<bool>("NO_UI").unwrap();
             let ui_only = build_start_matches.get_one::<bool>("UI_ONLY").unwrap_or(&false);
-            let verbose = !build_start_matches.get_one::<bool>("QUIET").unwrap();
             let url: String = match build_start_matches.get_one::<String>("URL") {
                 Some(url) => url.clone(),
                 None => {
@@ -177,7 +175,6 @@ async fn execute(
                 &package_dir,
                 *no_ui,
                 *ui_only,
-                verbose,
                 &url,
                 *skip_deps_check,
             ).await
@@ -433,13 +430,6 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .help("If set, build ONLY the web UI for the process; no-op if passed with NO_UI")
                 .required(false)
             )
-            .arg(Arg::new("QUIET")
-                .action(ArgAction::SetTrue)
-                .short('q')
-                .long("quiet")
-                .help("If set, do not print build stdout/stderr")
-                .required(false)
-            )
             .arg(Arg::new("SKIP_DEPS_CHECK")
                 .action(ArgAction::SetTrue)
                 .short('s')
@@ -481,13 +471,6 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .action(ArgAction::SetTrue)
                 .long("ui-only")
                 .help("If set, build ONLY the web UI for the process")
-                .required(false)
-            )
-            .arg(Arg::new("QUIET")
-                .action(ArgAction::SetTrue)
-                .short('q')
-                .long("quiet")
-                .help("If set, do not print build stdout/stderr")
                 .required(false)
             )
             .arg(Arg::new("SKIP_DEPS_CHECK")

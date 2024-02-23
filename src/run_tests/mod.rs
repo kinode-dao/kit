@@ -5,7 +5,6 @@ use std::sync::Arc;
 use dirs::home_dir;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
-use toml;
 use tracing::{debug, info, instrument};
 
 use super::boot_fake_node::{compile_runtime, get_runtime_binary, run_runtime};
@@ -289,10 +288,10 @@ async fn run_tests(
 #[instrument(level = "trace", err, skip_all)]
 async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow::Result<()> {
     for setup_package_path in &test.setup_package_paths {
-        build::execute(&setup_package_path, false, false, !test.mute_package_build, false).await?;
+        build::execute(&setup_package_path, false, false, false).await?;
     }
     for TestPackage { ref path, .. } in &test.test_packages {
-        build::execute(path, false, false, !test.mute_package_build, false).await?;
+        build::execute(path, false, false, false).await?;
     }
 
     // Initialize variables for master node and nodes list
@@ -365,7 +364,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
             node.port,
             test.network_router.port,
             &args[..],
-            !node.mute_runtime,
+            false,
             detached,
             node.runtime_verbosity.unwrap_or_else(|| 0u8),
         )?;
@@ -408,13 +407,12 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
         test.timeout_secs,
     ).await;
 
-    let _ = send_to_cleanup.send(true);
+    let _ = send_to_cleanup.send(tests_result.is_err());
     for handle in task_handles {
         handle.await.unwrap();
     }
 
     tests_result?;
-
     Ok(())
 }
 
@@ -441,7 +439,6 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                 // Compile the runtime binary
                 compile_runtime(
                     &runtime_path,
-                    !config.mute_runtime_build,
                     config.runtime_build_release,
                 )?;
                 runtime_path.join("target")

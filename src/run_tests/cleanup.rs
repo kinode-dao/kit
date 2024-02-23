@@ -6,6 +6,11 @@ use tracing::{error, info};
 
 use crate::run_tests::types::{BroadcastRecvBool, BroadcastSendBool, NodeCleanupInfo, NodeCleanupInfos, NodeHandles, RecvBool, SendBool};
 
+fn remove_repeated_newlines(input: &str) -> String {
+    let re = regex::Regex::new(r"\n\n+").unwrap();
+    re.replace_all(input, "\n").into_owned()
+}
+
 /// trigger cleanup if receive signal to kill process
 pub async fn cleanup_on_signal(
     send_to_cleanup: SendBool,
@@ -44,11 +49,19 @@ pub async fn cleanup(
     remove_node_files: bool,
 ) {
     // Block until get cleanup request.
-    recv_in_cleanup.recv().await;
+    let should_print_std = recv_in_cleanup.recv().await;
 
     let mut node_cleanup_infos = node_cleanup_infos.lock().await;
+    let mut node_handles = match node_handles {
+        None => None,
+        Some(nh) => {
+            let mut nh = nh.lock().await;
+            let nh_vec = std::mem::replace(&mut *nh, Vec::new());
+            Some(nh_vec.into_iter())
+        },
+    };
 
-    for (i, NodeCleanupInfo { master_fd, process_id, home }) in node_cleanup_infos.iter_mut().enumerate() {
+    for NodeCleanupInfo { master_fd, process_id, home } in node_cleanup_infos.iter_mut() {
         // Send Ctrl-C to the process
         info!("Cleaning up {:?}...\r", home);
         if detached {
@@ -71,9 +84,15 @@ pub async fn cleanup(
             }
         }
 
-        if let Some(ref node_handles) = node_handles {
-            let mut nh = node_handles.lock().await;
-            nh[i].wait().unwrap();
+        if let Some(ref mut nh) = node_handles {
+            if should_print_std.is_some_and(|b| b) {
+                let output = nh.next().and_then(|n| n.wait_with_output().ok()).unwrap();
+                let stdout = remove_repeated_newlines(&String::from_utf8_lossy(&output.stdout));
+                let stderr = remove_repeated_newlines(&String::from_utf8_lossy(&output.stderr));
+                println!("stdout:\n{}\nstderr:\n{}", stdout, stderr);
+            } else {
+                nh.next().and_then(|mut n| n.wait().ok()).unwrap();
+            }
         }
 
         if remove_node_files && home.exists() {

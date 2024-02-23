@@ -3,7 +3,6 @@ use std::io::Read;
 
 #[allow(deprecated)]
 use base64::{decode, encode};
-use reqwest;
 use serde_json::{Value, json};
 use tracing::{info, instrument};
 

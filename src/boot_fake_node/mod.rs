@@ -69,7 +69,7 @@ fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
 }
 
 #[instrument(level = "trace", err, skip_all)]
-pub fn compile_runtime(path: &Path, verbose: bool, release: bool) -> anyhow::Result<()> {
+pub fn compile_runtime(path: &Path, release: bool) -> anyhow::Result<()> {
     info!("Compiling Kinode runtime...");
 
     let mut args = vec![
@@ -87,8 +87,6 @@ pub fn compile_runtime(path: &Path, verbose: bool, release: bool) -> anyhow::Res
     build::run_command(Command::new("cargo")
         .args(&args)
         .current_dir(path)
-        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
     info!("Done compiling Kinode runtime.");
@@ -350,8 +348,8 @@ pub fn run_runtime(
     let process = Command::new(path)
         .args(&full_args)
         .stdin(if !detached { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
-        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::piped() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::piped() })
         .spawn()?;
 
     Ok((process, fds.master))
@@ -386,7 +384,7 @@ pub async fn execute(
             }
             if runtime_path.is_dir() {
                 // Compile the runtime binary
-                compile_runtime(&runtime_path, true, release)?;
+                compile_runtime(&runtime_path, release)?;
                 runtime_path.join("target")
                     .join(if release { "release" } else { "debug" })
                     .join("kinode")
