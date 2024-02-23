@@ -93,4 +93,3 @@ fn init(our: Address) {
         };
     }
 }
-
