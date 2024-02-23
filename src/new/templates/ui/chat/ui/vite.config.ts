@@ -6,14 +6,14 @@ If you are developing a UI outside of a Kinode project,
 comment out the following 2 lines:
 */
 import manifest from '../pkg/manifest.json'
-import metadata from '../pkg/metadata.json'
+import metadata from '../metadata.json'
 
 /*
 IMPORTANT:
 This must match the process name from pkg/manifest.json + pkg/metadata.json
 The format is "/" + "process_name:package_name:publisher_node"
 */
-const BASE_URL = `/${manifest[0].process_name}:${metadata.package}:${metadata.publisher}`;
+const BASE_URL = `/${manifest[0].process_name}:${metadata.properties.package_name}:${metadata.properties.publisher}`;
 
 // This is the proxy URL, it must match the node you are developing against
 const PROXY_URL = (process.env.VITE_NODE_URL || 'http://127.0.0.1:8080').replace('localhost', '127.0.0.1');
