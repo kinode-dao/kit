@@ -3,11 +3,6 @@ name = "worker"
 version = "0.1.0"
 edition = "2021"
 
-[profile.release]
-panic = "abort"
-opt-level = "s"
-lto = true
-
 [dependencies]
 anyhow = "1.0"
 bincode = "1.3.3"
