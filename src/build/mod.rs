@@ -1,6 +1,6 @@
 use std::fs::File;
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Command;
 
 use serde::{Serialize, Deserialize};
 use tokio::fs;
@@ -28,15 +28,17 @@ struct CargoPackage {
 
 #[instrument(level = "trace", err, skip_all)]
 pub fn run_command(cmd: &mut Command) -> anyhow::Result<()> {
-    let status = cmd.status()?;
-    if status.success() {
+    let output = cmd.output()?;
+    if output.status.success() {
         Ok(())
     } else {
         Err(anyhow::anyhow!(
-            "Command `{} {:?}` failed with exit code {}",
+            "Command `{} {:?}` failed with exit code {}\nstdout: {}\nstderr: {}",
             cmd.get_program().to_str().unwrap(),
             cmd.get_args().map(|a| a.to_str().unwrap()).collect::<Vec<_>>(),
-            status.code().unwrap(),
+            output.status.code().unwrap(),
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
         ))
     }
 }
@@ -85,7 +87,6 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
 async fn compile_javascript_wasm_process(
     process_dir: &Path,
     valid_node: Option<String>,
-    verbose: bool,
 ) -> anyhow::Result<()> {
     info!("Compiling Javascript Kinode process in {:?}...", process_dir);
     let wit_dir = process_dir.join("wit");
@@ -108,15 +109,11 @@ async fn compile_javascript_wasm_process(
     run_command(Command::new("bash")
         .args(&["-c", &install])
         .current_dir(process_dir)
-        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
     run_command(Command::new("bash")
         .args(&["-c", &componentize])
         .current_dir(process_dir)
-        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
     info!("Done compiling Javascript Kinode process in {:?}.", process_dir);
@@ -127,7 +124,6 @@ async fn compile_javascript_wasm_process(
 async fn compile_python_wasm_process(
     process_dir: &Path,
     python: &str,
-    verbose: bool,
 ) -> anyhow::Result<()> {
     info!("Compiling Python Kinode process in {:?}...", process_dir);
     let wit_dir = process_dir.join("wit");
@@ -141,8 +137,6 @@ async fn compile_python_wasm_process(
     run_command(Command::new(python)
         .args(&["-m", "venv", PY_VENV_NAME])
         .current_dir(process_dir)
-        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
     run_command(Command::new("bash")
         .args(&[
@@ -150,8 +144,6 @@ async fn compile_python_wasm_process(
             &format!("source ../{PY_VENV_NAME}/bin/activate && pip install {REQUIRED_PY_PACKAGE} && componentize-py -d ../wit/ -w process componentize lib -o ../../pkg/{wasm_file_name}.wasm"),
         ])
         .current_dir(process_dir.join("src"))
-        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
     info!("Done compiling Python Kinode process in {:?}.", process_dir);
@@ -159,10 +151,7 @@ async fn compile_python_wasm_process(
 }
 
 #[instrument(level = "trace", err, skip_all)]
-async fn compile_rust_wasm_process(
-    process_dir: &Path,
-    verbose: bool,
-) -> anyhow::Result<()> {
+async fn compile_rust_wasm_process(process_dir: &Path) -> anyhow::Result<()> {
     info!("Compiling Rust Kinode process in {:?}...", process_dir);
 
     // Paths
@@ -193,8 +182,6 @@ async fn compile_rust_wasm_process(
             "-o", &bindings_dir.join("target.wasm").to_str().unwrap(),
             "--wasm",
         ])
-        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
     // Copy wit directory to bindings
@@ -216,8 +203,6 @@ async fn compile_rust_wasm_process(
             "--target-dir", "target",
         ])
         .current_dir(process_dir)
-        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
     // Adapt the module using wasm-tools
@@ -243,8 +228,6 @@ async fn compile_rust_wasm_process(
             "--adapt", wasi_snapshot_file.to_str().unwrap(),
         ])
         .current_dir(process_dir)
-        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
     let wasm_path = format!("../pkg/{}.wasm", wasm_file_name);
@@ -259,8 +242,6 @@ async fn compile_rust_wasm_process(
             "-o", wasm_path.to_str().unwrap(),
         ])
         .current_dir(process_dir)
-        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
     info!("Done compiling Rust Kinode process in {:?}.", process_dir);
@@ -271,7 +252,6 @@ async fn compile_rust_wasm_process(
 async fn compile_and_copy_ui(
     package_dir: &Path,
     valid_node: Option<String>,
-    verbose: bool,
 ) -> anyhow::Result<()> {
     let ui_path = package_dir.join("ui");
     info!("Building UI in {:?}...", ui_path);
@@ -292,8 +272,6 @@ async fn compile_and_copy_ui(
             run_command(Command::new("bash")
                 .args(&["-c", &install])
                 .current_dir(&ui_path)
-                .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-                .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
             )?;
 
             info!("Running npm run build:copy...");
@@ -301,8 +279,6 @@ async fn compile_and_copy_ui(
             run_command(Command::new("bash")
                 .args(&["-c", &run])
                 .current_dir(&ui_path)
-                .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-                .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
             )?;
         } else {
             let pkg_ui_path = package_dir.join("pkg/ui");
@@ -312,8 +288,6 @@ async fn compile_and_copy_ui(
             run_command(Command::new("cp")
                 .args(["-r", "ui", "pkg/ui"])
                 .current_dir(&package_dir)
-                .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-                .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
             )?;
         }
     } else {
@@ -328,18 +302,16 @@ async fn compile_and_copy_ui(
 async fn compile_package_and_ui(
     package_dir: &Path,
     valid_node: Option<String>,
-    verbose: bool,
     skip_deps_check: bool,
 ) -> anyhow::Result<()> {
-    compile_and_copy_ui(package_dir, valid_node, verbose).await?;
-    compile_package(package_dir, verbose, skip_deps_check).await?;
+    compile_and_copy_ui(package_dir, valid_node).await?;
+    compile_package(package_dir, skip_deps_check).await?;
     Ok(())
 }
 
 #[instrument(level = "trace", err, skip_all)]
 async fn compile_package(
     package_dir: &Path,
-    verbose: bool,
     skip_deps_check: bool,
 ) -> anyhow::Result<()> {
     for entry in package_dir.read_dir()? {
@@ -351,17 +323,17 @@ async fn compile_package(
                     let deps = check_rust_deps()?;
                     get_deps(deps)?;
                 }
-                compile_rust_wasm_process(&path, verbose).await?;
+                compile_rust_wasm_process(&path).await?;
             } else if path.join(PYTHON_SRC_PATH).exists() {
                 let python = check_py_deps()?;
-                compile_python_wasm_process(&path, &python, verbose).await?;
+                compile_python_wasm_process(&path, &python).await?;
             } else if path.join(JAVASCRIPT_SRC_PATH).exists() {
                 if !skip_deps_check {
                     let deps = check_js_deps()?;
                     get_deps(deps)?;
                 }
                 let valid_node = get_newest_valid_node_version(None, None)?;
-                compile_javascript_wasm_process(&path, valid_node, verbose).await?;
+                compile_javascript_wasm_process(&path, valid_node).await?;
             }
         }
     }
@@ -374,7 +346,6 @@ pub async fn execute(
     package_dir: &Path,
     no_ui: bool,
     ui_only: bool,
-    verbose: bool,
     skip_deps_check: bool,
 ) -> anyhow::Result<()> {
     if !package_dir.join("pkg").exists() {
@@ -389,11 +360,11 @@ pub async fn execute(
         if ui_only {
             return Err(anyhow::anyhow!("kit build: can't build UI: no ui directory exists"));
         } else {
-            compile_package(package_dir, verbose, skip_deps_check).await
+            compile_package(package_dir, skip_deps_check).await
         }
     } else {
         if no_ui {
-            return compile_package(package_dir, verbose, skip_deps_check).await;
+            return compile_package(package_dir, skip_deps_check).await;
         }
 
         let deps = check_js_deps()?;
@@ -401,9 +372,9 @@ pub async fn execute(
         let valid_node = get_newest_valid_node_version(None, None)?;
 
         if ui_only {
-            compile_and_copy_ui(package_dir, valid_node, verbose).await
+            compile_and_copy_ui(package_dir, valid_node).await
         } else {
-            compile_package_and_ui(package_dir, valid_node, verbose, skip_deps_check).await
+            compile_package_and_ui(package_dir, valid_node, skip_deps_check).await
         }
     }
 }

@@ -16,7 +16,7 @@ futures-util = "0.3"
 hex = "0.4"
 kinode_process_lib = { git = "https://github.com/kinode-dao/process_lib.git", rev = "9d185e1" }
 nix = { version = "0.27", features = ["process", "signal", "term"] }
-regex = "1.0"
+regex = "1"
 reqwest = { version = "0.11", features = ["json"] }
 rmp-serde = "1.1.2"
 semver = "1.0"
