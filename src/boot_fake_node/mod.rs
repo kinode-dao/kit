@@ -330,12 +330,15 @@ pub fn run_runtime(
     args: &[&str],
     verbose: bool,
     detached: bool,
+    verbosity: u8,
 ) -> anyhow::Result<(Child, OwnedFd)> {
     let port = format!("{}", port);
     let network_router_port = format!("{}", network_router_port);
+    let verbosity = format!("{}", verbosity);
     let mut full_args = vec![
         home.to_str().unwrap(), "--port", port.as_str(),
         "--network-router-port", network_router_port.as_str(),
+        "--verbosity", verbosity.as_str(),
     ];
 
     if !args.is_empty() {
@@ -367,6 +370,7 @@ pub async fn execute(
     password: &str,
     is_persist: bool,
     release: bool,
+    verbosity: u8,
     mut args: Vec<&str>,
 ) -> anyhow::Result<()> {
     let detached = false;  // TODO: to argument?
@@ -454,6 +458,7 @@ pub async fn execute(
         &args[..],
         true,
         detached,
+        verbosity,
     )?;
 
     let mut node_cleanup_infos = node_cleanup_infos.lock().await;

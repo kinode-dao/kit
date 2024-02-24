@@ -131,6 +131,7 @@ async fn execute(
             let password = boot_matches.get_one::<String>("PASSWORD").unwrap();
             let is_persist = boot_matches.get_one::<bool>("PERSIST").unwrap();
             let release = boot_matches.get_one::<bool>("RELEASE").unwrap();
+            let verbosity = boot_matches.get_one::<u8>("VERBOSITY").unwrap();
 
             boot_fake_node::execute(
                 runtime_path,
@@ -144,6 +145,7 @@ async fn execute(
                 password,
                 *is_persist,
                 *release,
+                *verbosity,
                 vec![],
             ).await
         },
@@ -397,6 +399,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .long("release")
                 .help("If set and given --runtime-path, compile release build [default: debug build]")
                 .required(false)
+            )
+            .arg(Arg::new("VERBOSITY")
+                .action(ArgAction::Set)
+                .long("verbosity")
+                .help("Verbosity of node: higher is more verbose")
+                .default_value("0")
+                .value_parser(value_parser!(u8))
             )
             .arg(Arg::new("help")
                 .long("help")
