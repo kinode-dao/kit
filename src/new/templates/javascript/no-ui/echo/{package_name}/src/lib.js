@@ -19,7 +19,7 @@ function inputBytesToString(byteObject) {
     // Convert the Uint8Array to a string
     const string = new TextDecoder().decode(byteArray);
 
-    return {bytes: byteArray, string: string};
+    return { bytes: byteArray, string: string };
 }
 
 function handleMessage(ourNode, messageArchive) {

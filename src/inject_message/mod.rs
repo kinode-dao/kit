@@ -12,6 +12,8 @@ pub struct Response {
     pub lazy_load_blob: Option<Vec<u8>>,
 }
 
+const ENDPOINT: &str = "/rpc:distro:sys/message";
+
 impl std::fmt::Display for Response {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(Some(ref s)) = self.lazy_load_blob_utf8 {
@@ -76,16 +78,25 @@ pub async fn send_request(
     url: &str,
     json_data: Value,
 ) -> anyhow::Result<reqwest::Response> {
-    let endpoint = "/rpc:distro:sys/message";
+    send_request_inner(url, json_data).await
+}
+
+/// send_request_inner() allows failure without logging;
+///  used for run_tests where nodes are pinged until they
+///  respond with a 200 to determine when they are online
+pub async fn send_request_inner(
+    url: &str,
+    json_data: Value,
+) -> anyhow::Result<reqwest::Response> {
     let mut url = url.to_string();
     let url =
-        if url.ends_with(endpoint) {
+        if url.ends_with(ENDPOINT) {
             url
         } else {
             if url.ends_with('/') {
                 url.pop();
             }
-            format!("{}{}", url, endpoint)
+            format!("{}{}", url, ENDPOINT)
         };
     let client = reqwest::Client::new();
     let response = client.post(&url)

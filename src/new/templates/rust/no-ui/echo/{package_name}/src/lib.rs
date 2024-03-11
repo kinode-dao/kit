@@ -37,4 +37,3 @@ fn init(our: Address) {
         };
     }
 }
-

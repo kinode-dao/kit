@@ -10,7 +10,6 @@ use serde::{Serialize, Deserialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub runtime: Runtime,
-    pub runtime_build_verbose: bool,
     pub runtime_build_release: bool,
     pub tests: Vec<Test>,
 }
@@ -25,7 +24,6 @@ pub enum Runtime {
 pub struct Test {
     pub setup_package_paths: Vec<PathBuf>,
     pub test_packages: Vec<TestPackage>,
-    pub package_build_verbose: bool,
     pub timeout_secs: u64,
     pub network_router: NetworkRouter,
     pub nodes: Vec<Node>,
@@ -56,8 +54,8 @@ pub struct Node {
     pub fake_node_name: String,
     pub password: Option<String>,
     pub rpc: Option<String>,
-    pub runtime_verbose: bool,
     pub is_testnet: bool,
+    pub runtime_verbosity: Option<u8>,
 }
 
 pub type NodeHandles = Arc<Mutex<Vec<Child>>>;

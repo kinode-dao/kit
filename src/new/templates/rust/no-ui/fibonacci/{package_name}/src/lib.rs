@@ -1,6 +1,5 @@
-use serde::{Serialize, Deserialize};
-
-use kinode_process_lib::{await_message, call_init, println, Address, Message, Response};
+use kinode_process_lib::{await_message, call_init, println, Address, Response};
+use serde::{Deserialize, Serialize};
 
 wit_bindgen::generate!({
     path: "wit",
@@ -18,96 +17,97 @@ enum FibonacciRequest {
 
 #[derive(Debug, Serialize, Deserialize)]
 enum FibonacciResponse {
-    Number(u64),
-    Numbers((u64, u32)),
+    Number(u128),
+    Numbers((u128, u32)),
 }
 
-fn fibonacci(n: u32) -> u64 {
-    match n {
-        0 => 0,
-        1 => 1,
-        _ => fibonacci(n - 1) + fibonacci(n - 2),
+/// calculate the nth Fibonacci number
+/// since we are using u128, the maximum number
+/// we can calculate is the 186th Fibonacci number
+fn fibonacci(n: u32) -> u128 {
+    if n == 0 {
+        return 0;
     }
+    let mut a = 0;
+    let mut b = 1;
+    let mut sum;
+    for _ in 1..n {
+        sum = a + b;
+        a = b;
+        b = sum;
+    }
+    b
 }
 
-fn handle_message (our: &Address) -> anyhow::Result<()> {
+fn handle_message() -> anyhow::Result<()> {
     let message = await_message()?;
 
-    match message {
-        Message::Response { .. } => {
-            return Err(anyhow::anyhow!("unexpected Response: {:?}", message))
-        },
-        Message::Request { ref source, ref body, .. } => {
-            if source.node != our.node {
-                return Err(anyhow::anyhow!("dropping foreign Request from {}", source));
+    if !message.is_request() {
+        return Err(anyhow::anyhow!("expected a request"));
+    }
+
+    match serde_json::from_slice(message.body())? {
+        FibonacciRequest::Number(number) => {
+            let start = std::time::Instant::now();
+            let result = fibonacci(number);
+            let duration = start.elapsed();
+            println!(
+                "{package_name}: fibonacci({}) = {}; {}ns",
+                number,
+                result,
+                duration.as_nanos(),
+            );
+            Response::new()
+                .body(serde_json::to_vec(&FibonacciResponse::Number(result)).unwrap())
+                .send()
+                .unwrap();
+        }
+        FibonacciRequest::Numbers((number, number_trials)) => {
+            let mut durations = Vec::new();
+            for _ in 0..number_trials {
+                let start = std::time::Instant::now();
+                let _result = fibonacci(number);
+                let duration = start.elapsed();
+                durations.push(duration);
             }
-            match serde_json::from_slice(body)? {
-                FibonacciRequest::Number(number) => {
-                    let start = std::time::Instant::now();
-                    let result = fibonacci(number);
-                    let duration = start.elapsed();
-                    println!(
-                        "{package_name}: fibonacci({}) = {}; {}ns",
-                        number,
-                        result,
-                        duration.as_nanos(),
-                    );
-                    Response::new()
-                        .body(serde_json::to_vec(&FibonacciResponse::Number(result)).unwrap())
-                        .send()
-                        .unwrap();
-                },
-                FibonacciRequest::Numbers((number, number_trials)) => {
-                    let mut durations = Vec::new();
-                    for _ in 0..number_trials {
-                        let start = std::time::Instant::now();
-                        let _result = fibonacci(number);
-                        let duration = start.elapsed();
-                        durations.push(duration);
-                    }
-                    let result = fibonacci(number);
-                    let mean = durations
-                        .iter()
-                        .fold(0, |sum, item| sum + item.as_nanos()) / number_trials as u128;
-                    let absolute_deviation = durations
-                        .iter()
-                        .fold(0, |ad, item| {
-                            let trial = item.as_nanos();
-                            ad + if mean >= trial { mean - trial } else { trial - mean }
-                        }) / number_trials as u128;
-                    println!(
-                        "{package_name}: fibonacci({}) = {}; {}±{}ns averaged over {} trials",
-                        number,
-                        result,
-                        mean,
-                        absolute_deviation,
-                        number_trials,
-                    );
-                    Response::new()
-                        .body(serde_json::to_vec(&FibonacciResponse::Numbers((
-                            result,
-                            number_trials,
-                        ))).unwrap())
-                        .send()
-                        .unwrap();
-                },
-            }
-        },
+            let result = fibonacci(number);
+            let mean =
+                durations.iter().fold(0, |sum, item| sum + item.as_nanos()) / number_trials as u128;
+            let absolute_deviation = durations.iter().fold(0, |ad, item| {
+                let trial = item.as_nanos();
+                ad + if mean >= trial {
+                    mean - trial
+                } else {
+                    trial - mean
+                }
+            }) / number_trials as u128;
+            println!(
+                "{package_name}: fibonacci({}) = {}; {}±{}ns averaged over {} trials",
+                number, result, mean, absolute_deviation, number_trials,
+            );
+            Response::new()
+                .body(
+                    serde_json::to_vec(&FibonacciResponse::Numbers((result, number_trials)))
+                        .unwrap(),
+                )
+                .send()
+                .unwrap();
+        }
     }
     Ok(())
 }
 
 call_init!(init);
 
-fn init(our: Address) {
+fn init(_our: Address) {
     println!("{package_name}: begin");
 
     loop {
-        match handle_message(&our) {
-            Ok(()) => {},
+        match handle_message() {
+            Ok(()) => {}
             Err(e) => {
                 println!("{package_name}: error: {:?}", e);
-            },
+            }
         };
     }
 }

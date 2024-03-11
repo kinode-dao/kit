@@ -107,7 +107,7 @@ async fn wait_until_booted(
             None,
         )?;
 
-        match inject_message::send_request(
+        match inject_message::send_request_inner(
             &format!("http://localhost:{}", port),
             request,
         ).await {
@@ -288,10 +288,10 @@ async fn run_tests(
 #[instrument(level = "trace", err, skip_all)]
 async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow::Result<()> {
     for setup_package_path in &test.setup_package_paths {
-        build::execute(&setup_package_path, false, false, test.package_build_verbose, false).await?;
+        build::execute(&setup_package_path, false, false, false).await?;
     }
     for TestPackage { ref path, .. } in &test.test_packages {
-        build::execute(path, false, false, test.package_build_verbose, false).await?;
+        build::execute(path, false, false, false).await?;
     }
 
     // Initialize variables for master node and nodes list
@@ -355,7 +355,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
             args.extend_from_slice(&["--password", password]);
         };
         if node.is_testnet {
-            args.extend_from_slice(&["--testnet"]);
+            args.push("--testnet");
         }
 
         let (runtime_process, master_fd) = run_runtime(
@@ -364,8 +364,9 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
             node.port,
             test.network_router.port,
             &args[..],
-            node.runtime_verbose,
+            false,
             detached,
+            node.runtime_verbosity.unwrap_or_else(|| 0u8),
         )?;
 
         let mut node_cleanup_infos = node_cleanup_infos.lock().await;
@@ -406,13 +407,12 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
         test.timeout_secs,
     ).await;
 
-    let _ = send_to_cleanup.send(true);
+    let _ = send_to_cleanup.send(tests_result.is_err());
     for handle in task_handles {
         handle.await.unwrap();
     }
 
     tests_result?;
-
     Ok(())
 }
 
@@ -439,7 +439,6 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                 // Compile the runtime binary
                 compile_runtime(
                     &runtime_path,
-                    config.runtime_build_verbose,
                     config.runtime_build_release,
                 )?;
                 runtime_path.join("target")

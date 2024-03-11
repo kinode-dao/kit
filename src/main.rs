@@ -131,6 +131,7 @@ async fn execute(
             let password = boot_matches.get_one::<String>("PASSWORD").unwrap();
             let is_persist = boot_matches.get_one::<bool>("PERSIST").unwrap();
             let release = boot_matches.get_one::<bool>("RELEASE").unwrap();
+            let verbosity = boot_matches.get_one::<u8>("VERBOSITY").unwrap();
 
             boot_fake_node::execute(
                 runtime_path,
@@ -144,6 +145,7 @@ async fn execute(
                 password,
                 *is_persist,
                 *release,
+                *verbosity,
                 vec![],
             ).await
         },
@@ -151,17 +153,15 @@ async fn execute(
             let package_dir = PathBuf::from(build_matches.get_one::<String>("DIR").unwrap());
             let no_ui = build_matches.get_one::<bool>("NO_UI").unwrap();
             let ui_only = build_matches.get_one::<bool>("UI_ONLY").unwrap();
-            let verbose = !build_matches.get_one::<bool>("QUIET").unwrap();
             let skip_deps_check = build_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
 
-            build::execute(&package_dir, *no_ui, *ui_only, verbose, *skip_deps_check).await
+            build::execute(&package_dir, *no_ui, *ui_only, *skip_deps_check).await
         },
         Some(("build-start-package", build_start_matches)) => {
 
             let package_dir = PathBuf::from(build_start_matches.get_one::<String>("DIR").unwrap());
             let no_ui = build_start_matches.get_one::<bool>("NO_UI").unwrap();
             let ui_only = build_start_matches.get_one::<bool>("UI_ONLY").unwrap_or(&false);
-            let verbose = !build_start_matches.get_one::<bool>("QUIET").unwrap();
             let url: String = match build_start_matches.get_one::<String>("URL") {
                 Some(url) => url.clone(),
                 None => {
@@ -175,7 +175,6 @@ async fn execute(
                 &package_dir,
                 *no_ui,
                 *ui_only,
-                verbose,
                 &url,
                 *skip_deps_check,
             ).await
@@ -379,6 +378,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .long("testnet")
                 .help("If set, use Sepolia testnet")
                 .required(false)
+                .default_value("true")
             )
             .arg(Arg::new("PERSIST")
                 .action(ArgAction::SetTrue)
@@ -397,6 +397,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .long("release")
                 .help("If set and given --runtime-path, compile release build [default: debug build]")
                 .required(false)
+            )
+            .arg(Arg::new("VERBOSITY")
+                .action(ArgAction::Set)
+                .long("verbosity")
+                .help("Verbosity of node: higher is more verbose")
+                .default_value("0")
+                .value_parser(value_parser!(u8))
             )
             .arg(Arg::new("help")
                 .long("help")
@@ -422,13 +429,6 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .action(ArgAction::SetTrue)
                 .long("ui-only")
                 .help("If set, build ONLY the web UI for the process; no-op if passed with NO_UI")
-                .required(false)
-            )
-            .arg(Arg::new("QUIET")
-                .action(ArgAction::SetTrue)
-                .short('q')
-                .long("quiet")
-                .help("If set, do not print build stdout/stderr")
                 .required(false)
             )
             .arg(Arg::new("SKIP_DEPS_CHECK")
@@ -472,13 +472,6 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .action(ArgAction::SetTrue)
                 .long("ui-only")
                 .help("If set, build ONLY the web UI for the process")
-                .required(false)
-            )
-            .arg(Arg::new("QUIET")
-                .action(ArgAction::SetTrue)
-                .short('q')
-                .long("quiet")
-                .help("If set, do not print build stdout/stderr")
                 .required(false)
             )
             .arg(Arg::new("SKIP_DEPS_CHECK")

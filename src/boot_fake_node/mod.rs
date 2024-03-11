@@ -69,7 +69,7 @@ fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
 }
 
 #[instrument(level = "trace", err, skip_all)]
-pub fn compile_runtime(path: &Path, verbose: bool, release: bool) -> anyhow::Result<()> {
+pub fn compile_runtime(path: &Path, release: bool) -> anyhow::Result<()> {
     info!("Compiling Kinode runtime...");
 
     let mut args = vec![
@@ -87,8 +87,6 @@ pub fn compile_runtime(path: &Path, verbose: bool, release: bool) -> anyhow::Res
     build::run_command(Command::new("cargo")
         .args(&args)
         .current_dir(path)
-        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
     )?;
 
     info!("Done compiling Kinode runtime.");
@@ -126,18 +124,17 @@ pub fn get_platform_runtime_name() -> anyhow::Result<String> {
     }
     let os_name = std::str::from_utf8(&uname.stdout)?.trim();
 
-    let uname_p = Command::new("uname").arg("-p").output()?;
-    if !uname_p.status.success() {
+    let uname_m = Command::new("uname").arg("-m").output()?;
+    if !uname_m.status.success() {
         return Err(anyhow::anyhow!("kit: Could not determine architecture."));
     }
-    let architecture_name = std::str::from_utf8(&uname_p.stdout)?.trim();
+    let architecture_name = std::str::from_utf8(&uname_m.stdout)?.trim();
 
     // TODO: update when have binaries
     let zip_name_midfix = match (os_name, architecture_name) {
         ("Linux", "x86_64") => "x86_64-unknown-linux-gnu",
-        ("Darwin", "arm") => "aarch64-apple-darwin",
-        ("Darwin", "i386") => "i386-apple-darwin",
-        // ("Darwin", "x86_64") => "x86_64-apple-darwin",
+        ("Darwin", "arm64") => "aarch64-apple-darwin",
+        ("Darwin", "x86_64") => "x86_64-apple-darwin",
         _ => return Err(anyhow::anyhow!("OS/Architecture {}/{} not supported.", os_name, architecture_name)),
     };
     Ok(format!("kinode-{}-simulation-mode.zip", zip_name_midfix))
@@ -331,12 +328,15 @@ pub fn run_runtime(
     args: &[&str],
     verbose: bool,
     detached: bool,
+    verbosity: u8,
 ) -> anyhow::Result<(Child, OwnedFd)> {
     let port = format!("{}", port);
     let network_router_port = format!("{}", network_router_port);
+    let verbosity = format!("{}", verbosity);
     let mut full_args = vec![
         home.to_str().unwrap(), "--port", port.as_str(),
         "--network-router-port", network_router_port.as_str(),
+        "--verbosity", verbosity.as_str(),
     ];
 
     if !args.is_empty() {
@@ -348,8 +348,8 @@ pub fn run_runtime(
     let process = Command::new(path)
         .args(&full_args)
         .stdin(if !detached { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
-        .stdout(if verbose { Stdio::inherit() } else { Stdio::null() })
-        .stderr(if verbose { Stdio::inherit() } else { Stdio::null() })
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::piped() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::piped() })
         .spawn()?;
 
     Ok((process, fds.master))
@@ -368,6 +368,7 @@ pub async fn execute(
     password: &str,
     is_persist: bool,
     release: bool,
+    verbosity: u8,
     mut args: Vec<&str>,
 ) -> anyhow::Result<()> {
     let detached = false;  // TODO: to argument?
@@ -383,7 +384,7 @@ pub async fn execute(
             }
             if runtime_path.is_dir() {
                 // Compile the runtime binary
-                compile_runtime(&runtime_path, true, release)?;
+                compile_runtime(&runtime_path, release)?;
                 runtime_path.join("target")
                     .join(if release { "release" } else { "debug" })
                     .join("kinode")
@@ -455,6 +456,7 @@ pub async fn execute(
         &args[..],
         true,
         detached,
+        verbosity,
     )?;
 
     let mut node_cleanup_infos = node_cleanup_infos.lock().await;
