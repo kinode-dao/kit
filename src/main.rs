@@ -378,6 +378,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .long("testnet")
                 .help("If set, use Sepolia testnet")
                 .required(false)
+                .default_value("true")
             )
             .arg(Arg::new("PERSIST")
                 .action(ArgAction::SetTrue)
