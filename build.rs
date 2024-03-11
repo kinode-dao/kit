@@ -26,7 +26,7 @@ fn visit_dirs(dir: &Path, output_buffer: &mut Vec<u8>) -> io::Result<()> {
                     .replace("\\", "/");
                 writeln!(
                     output_buffer,
-                    "    (\"{}\", include_str!(\"{}\")),",
+                    "    (\"{}\", include_bytes!(\"{}\")),",
                     path_str,
                     path_str_from_includes,
                 )?;
@@ -59,10 +59,10 @@ fn add_branch_name(repo: &git2::Repository) -> anyhow::Result<()> {
 
 fn main() -> anyhow::Result<()> {
     let mut output_buffer = Vec::new();
-    writeln!(&mut output_buffer, "const PATH_TO_CONTENT: &[(&str, &str)] = &[")?;
+    writeln!(&mut output_buffer, "const PATH_TO_CONTENT: &[(&str, &[u8])] = &[")?;
     writeln!(
-        output_buffer,
-        "    (\"{}\", include_str!(\"{}\")),",
+        &mut output_buffer,
+        "    (\"{}\", include_bytes!(\"{}\")),",
         "componentize.mjs",
         "componentize.mjs",
     )?;

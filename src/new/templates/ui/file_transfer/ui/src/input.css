@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: 'Futura';
+  src: url('./assets/fonts/Futura-Heavy.ttf');
+}
+
+@font-face {
+  font-family: 'OpenSans';
+  src: url('./assets/fonts/OpenSans-CondBold.ttf');
+}
+
+@font-face {
+  font-family: 'Barlow';
+  src: url('./assets/fonts/BarlowCondensed-Black.ttf');
+}
+
+@font-face {
+  font-family: 'Iosevka';
+  src: url('./assets/fonts/Iosevka-Regular.ttf');
+}
+
+@layer components {
+  .heading {
+    font-family: OpenSans;
+  }
+
+  .display {
+    font-family: Futura;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply heading;
+  }
+}
