@@ -126,14 +126,14 @@ pub fn get_platform_runtime_name() -> anyhow::Result<String> {
 
     let uname_m = Command::new("uname").arg("-m").output()?;
     if !uname_m.status.success() {
-        return Err(anyhow::anyhow!("kit: Could not determine architecture."));
+        return Err(anyhow::anyhow!("Could not determine architecture."));
     }
     let architecture_name = std::str::from_utf8(&uname_m.stdout)?.trim();
 
     // TODO: update when have binaries
     let zip_name_midfix = match (os_name, architecture_name) {
         ("Linux", "x86_64") => "x86_64-unknown-linux-gnu",
-        ("Darwin", "arm64") => "aarch64-apple-darwin",
+        ("Darwin", "arm64") => "arm64-apple-darwin",
         ("Darwin", "x86_64") => "x86_64-apple-darwin",
         _ => return Err(anyhow::anyhow!("OS/Architecture {}/{} not supported.", os_name, architecture_name)),
     };
