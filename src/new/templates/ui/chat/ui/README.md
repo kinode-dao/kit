@@ -10,7 +10,7 @@ If you have multiple processes in `manifest.json`, make sure the first process w
 
 ## Development
 
-Run `npm i` and then `npm start` to start working on the UI.
+Run `npm i` and then `npm run dev` to start working on the UI.
 
 You may see an error:
 
