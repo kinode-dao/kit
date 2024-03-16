@@ -12,8 +12,9 @@ pub async fn execute(
     ui_only: bool,
     url: &str,
     skip_deps_check: bool,
+    features: &str,
 ) -> anyhow::Result<()> {
-    build::execute(package_dir, no_ui, ui_only, skip_deps_check).await?;
+    build::execute(package_dir, no_ui, ui_only, skip_deps_check, features).await?;
     start_package::execute(package_dir, url).await?;
     Ok(())
 }
