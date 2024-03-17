@@ -169,7 +169,10 @@ async fn compile_python_wasm_process(process_dir: &Path, python: &str) -> anyhow
 }
 
 #[instrument(level = "trace", err, skip_all)]
-async fn compile_rust_wasm_process(process_dir: &Path) -> anyhow::Result<()> {
+async fn compile_rust_wasm_process(
+    process_dir: &Path,
+    features: &str,
+) -> anyhow::Result<()> {
     info!("Compiling Rust Kinode process in {:?}...", process_dir);
 
     // Paths
@@ -218,18 +221,23 @@ async fn compile_rust_wasm_process(process_dir: &Path) -> anyhow::Result<()> {
     File::create(bindings_dir.join("world"))?;
 
     // Build the module using Cargo
+    let mut args = vec![
+         "+nightly",
+         "build",
+         "--release",
+         "--no-default-features",
+         "--target",
+         "wasm32-wasi",
+         "--target-dir",
+         "target",
+    ];
+    if !features.is_empty() {
+        args.push("--features");
+        args.push(&features);
+    }
     run_command(
         Command::new("cargo")
-            .args(&[
-                "+nightly",
-                "build",
-                "--release",
-                "--no-default-features",
-                "--target",
-                "wasm32-wasi",
-                "--target-dir",
-                "target",
-            ])
+            .args(&args)
             .current_dir(process_dir),
     )?;
 
@@ -341,14 +349,19 @@ async fn compile_package_and_ui(
     package_dir: &Path,
     valid_node: Option<String>,
     skip_deps_check: bool,
+    features: &str,
 ) -> anyhow::Result<()> {
     compile_and_copy_ui(package_dir, valid_node).await?;
-    compile_package(package_dir, skip_deps_check).await?;
+    compile_package(package_dir, skip_deps_check, features).await?;
     Ok(())
 }
 
 #[instrument(level = "trace", err, skip_all)]
-async fn compile_package(package_dir: &Path, skip_deps_check: bool) -> anyhow::Result<()> {
+async fn compile_package(
+    package_dir: &Path,
+    skip_deps_check: bool,
+    features: &str,
+) -> anyhow::Result<()> {
     for entry in package_dir.read_dir()? {
         let entry = entry?;
         let path = entry.path();
@@ -358,7 +371,7 @@ async fn compile_package(package_dir: &Path, skip_deps_check: bool) -> anyhow::R
                     let deps = check_rust_deps()?;
                     get_deps(deps)?;
                 }
-                compile_rust_wasm_process(&path).await?;
+                compile_rust_wasm_process(&path, features).await?;
             } else if path.join(PYTHON_SRC_PATH).exists() {
                 let python = check_py_deps()?;
                 compile_python_wasm_process(&path, &python).await?;
@@ -382,6 +395,7 @@ pub async fn execute(
     no_ui: bool,
     ui_only: bool,
     skip_deps_check: bool,
+    features: &str,
 ) -> anyhow::Result<()> {
     if !package_dir.join("pkg").exists() {
         return Err(anyhow::anyhow!(
@@ -397,11 +411,11 @@ pub async fn execute(
                 "kit build: can't build UI: no ui directory exists"
             ));
         } else {
-            compile_package(package_dir, skip_deps_check).await
+            compile_package(package_dir, skip_deps_check, features).await
         }
     } else {
         if no_ui {
-            return compile_package(package_dir, skip_deps_check).await;
+            return compile_package(package_dir, skip_deps_check, features).await;
         }
 
         let deps = check_js_deps()?;
@@ -411,7 +425,12 @@ pub async fn execute(
         if ui_only {
             compile_and_copy_ui(package_dir, valid_node).await
         } else {
-            compile_package_and_ui(package_dir, valid_node, skip_deps_check).await
+            compile_package_and_ui(
+                package_dir,
+                valid_node,
+                skip_deps_check,
+                features,
+            ).await
         }
     }
 }

@@ -154,8 +154,12 @@ async fn execute(
             let no_ui = build_matches.get_one::<bool>("NO_UI").unwrap();
             let ui_only = build_matches.get_one::<bool>("UI_ONLY").unwrap();
             let skip_deps_check = build_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
+            let features = match build_matches.get_one::<String>("FEATURES") {
+                Some(f) => f.clone(),
+                None => "".into(),
+            };
 
-            build::execute(&package_dir, *no_ui, *ui_only, *skip_deps_check).await
+            build::execute(&package_dir, *no_ui, *ui_only, *skip_deps_check, &features).await
         },
         Some(("build-start-package", build_start_matches)) => {
 
@@ -170,6 +174,10 @@ async fn execute(
                 },
             };
             let skip_deps_check = build_start_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
+            let features = match build_start_matches.get_one::<String>("FEATURES") {
+                Some(f) => f.clone(),
+                None => "".into(),
+            };
 
             build_start_package::execute(
                 &package_dir,
@@ -177,6 +185,7 @@ async fn execute(
                 *ui_only,
                 &url,
                 *skip_deps_check,
+                &features,
             ).await
         },
         Some(("dev-ui", dev_ui_matches)) => {
@@ -438,6 +447,12 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .help("If set, do not check for dependencies")
                 .required(false)
             )
+            .arg(Arg::new("FEATURES")
+                .action(ArgAction::Set)
+                .long("features")
+                .help("Pass these comma-delimited feature flags to Rust cargo builds")
+                .required(false)
+            )
         )
         .subcommand(Command::new("build-start-package")
             .about("Build and start a Kinode package")
@@ -479,6 +494,12 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .short('s')
                 .long("skip-deps-check")
                 .help("If set, do not check for dependencies")
+                .required(false)
+            )
+            .arg(Arg::new("FEATURES")
+                .action(ArgAction::Set)
+                .long("features")
+                .help("Pass these comma-delimited feature flags to Rust cargo builds")
                 .required(false)
             )
         )
