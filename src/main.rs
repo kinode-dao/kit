@@ -373,7 +373,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .action(ArgAction::Set)
                 .long("network-router-port")
                 .help("The port to run the network router on (or to connect to)")
-                .default_value("9001")
+                .default_value("9000")
                 .value_parser(value_parser!(u16))
             )
             .arg(Arg::new("RPC_ENDPOINT")

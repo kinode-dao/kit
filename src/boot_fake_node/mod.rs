@@ -335,7 +335,7 @@ pub fn run_runtime(
     let verbosity = format!("{}", verbosity);
     let mut full_args = vec![
         home.to_str().unwrap(), "--port", port.as_str(),
-        "--network-router-port", network_router_port.as_str(),
+        "--ws-port", network_router_port.as_str(),
         "--verbosity", verbosity.as_str(),
     ];
 
