@@ -21,23 +21,23 @@ pub fn execute(package_dir: &Path, url: &str, skip_deps_check: bool) -> anyhow::
         info!("UI directory found, running npm install...");
 
         let install = "npm install".to_string();
-        let start = "npm start".to_string();
-        let (install, start) = valid_node
+        let dev = "npm run dev".to_string();
+        let (install, dev) = valid_node
             .map(|valid_node| {(
                 format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, install),
-                format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, start),
+                format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, dev),
             )})
-            .unwrap_or_else(|| (install, start));
+            .unwrap_or_else(|| (install, dev));
 
         run_command(Command::new("bash")
             .args(&["-c", &install])
             .current_dir(&ui_path)
         )?;
 
-        info!("Running npm start...");
+        info!("Running npm run dev...");
 
         run_command(Command::new("bash")
-            .args(&["-c", &start])
+            .args(&["-c", &dev])
             .env("VITE_NODE_URL", url)
             .current_dir(&ui_path)
         )?;
