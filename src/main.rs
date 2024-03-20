@@ -1,11 +1,13 @@
-use clap::{Arg, ArgAction, builder::PossibleValuesParser, command, Command, value_parser};
+use clap::{builder::PossibleValuesParser, command, value_parser, Arg, ArgAction, Command};
 use std::env;
 use std::path::PathBuf;
 use std::str::FromStr;
 
 use serde::Deserialize;
-use tracing::{warn, error, instrument, Level};
-use tracing_subscriber::{prelude::*, filter, fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing::{error, instrument, warn, Level};
+use tracing_subscriber::{
+    filter, fmt, layer::SubscriberExt, prelude::*, util::SubscriberInitExt, EnvFilter,
+};
 
 mod boot_fake_node;
 mod build;
@@ -40,19 +42,18 @@ async fn get_latest_commit_sha_from_branch(
     repo: &str,
     branch: &str,
 ) -> anyhow::Result<Commit> {
-    let bytes = boot_fake_node::get_from_github(
-        owner,
-        repo,
-        &format!("commits/{branch}"),
-    ).await?;
+    let bytes = boot_fake_node::get_from_github(owner, repo, &format!("commits/{branch}")).await?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 
 #[instrument(level = "trace", err, skip_all)]
 fn init_tracing(log_path: PathBuf) -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard> {
     // Define a fixed log file name with rolling based on size or execution instance.
-    let log_parent_path = log_path.parent().ok_or(anyhow::anyhow!("no log path parent"))?;
-    let log_file_name = log_path.file_name()
+    let log_parent_path = log_path
+        .parent()
+        .ok_or(anyhow::anyhow!("no log path parent"))?;
+    let log_file_name = log_path
+        .file_name()
         .and_then(|f| f.to_str())
         .ok_or(anyhow::anyhow!("no log path file name"))?;
     if !log_parent_path.exists() {
@@ -61,7 +62,8 @@ fn init_tracing(log_path: PathBuf) -> anyhow::Result<tracing_appender::non_block
     let file_appender = tracing_appender::rolling::never(log_parent_path, log_file_name);
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
 
-    let level = std::env::var(RUST_LOG).ok()
+    let level = std::env::var(RUST_LOG)
+        .ok()
         .and_then(|l| Level::from_str(&l).ok())
         .unwrap_or_else(|| STDOUT_LOG_LEVEL_DEFAULT);
     let allowed_levels: Vec<Level> = vec![Level::INFO, Level::WARN]
@@ -86,7 +88,7 @@ fn init_tracing(log_path: PathBuf) -> anyhow::Result<tracing_appender::non_block
                 .with_level(false)
                 .with_target(false)
                 .fmt_fields(fmt::format::PrettyFields::new())
-                .with_filter(stdout_filter)
+                .with_filter(stdout_filter),
         )
         .with(
             fmt::layer()
@@ -98,14 +100,14 @@ fn init_tracing(log_path: PathBuf) -> anyhow::Result<tracing_appender::non_block
                 .with_level(true)
                 .with_target(false)
                 .fmt_fields(fmt::format::PrettyFields::new())
-                .with_filter(stderr_filter)
+                .with_filter(stderr_filter),
         )
         .with(
             fmt::layer()
                 .with_writer(non_blocking)
                 .with_ansi(false)
                 .json()
-                .with_filter(file_filter)
+                .with_filter(file_filter),
         )
         .init();
 
@@ -125,7 +127,9 @@ async fn execute(
             let node_home = PathBuf::from(boot_matches.get_one::<String>("HOME").unwrap());
             let node_port = boot_matches.get_one::<u16>("NODE_PORT").unwrap();
             let network_router_port = boot_matches.get_one::<u16>("NETWORK_ROUTER_PORT").unwrap();
-            let rpc = boot_matches.get_one::<String>("RPC_ENDPOINT").and_then(|s| Some(s.as_str()));
+            let rpc = boot_matches
+                .get_one::<String>("RPC_ENDPOINT")
+                .and_then(|s| Some(s.as_str()));
             let is_testnet = boot_matches.get_one::<bool>("TESTNET").unwrap();
             let fake_node_name = boot_matches.get_one::<String>("NODE_NAME").unwrap();
             let password = boot_matches.get_one::<String>("PASSWORD").unwrap();
@@ -147,8 +151,9 @@ async fn execute(
                 *release,
                 *verbosity,
                 vec![],
-            ).await
-        },
+            )
+            .await
+        }
         Some(("build", build_matches)) => {
             let package_dir = PathBuf::from(build_matches.get_one::<String>("DIR").unwrap());
             let no_ui = build_matches.get_one::<bool>("NO_UI").unwrap();
@@ -160,20 +165,23 @@ async fn execute(
             };
 
             build::execute(&package_dir, *no_ui, *ui_only, *skip_deps_check, &features).await
-        },
+        }
         Some(("build-start-package", build_start_matches)) => {
-
             let package_dir = PathBuf::from(build_start_matches.get_one::<String>("DIR").unwrap());
             let no_ui = build_start_matches.get_one::<bool>("NO_UI").unwrap();
-            let ui_only = build_start_matches.get_one::<bool>("UI_ONLY").unwrap_or(&false);
+            let ui_only = build_start_matches
+                .get_one::<bool>("UI_ONLY")
+                .unwrap_or(&false);
             let url: String = match build_start_matches.get_one::<String>("URL") {
                 Some(url) => url.clone(),
                 None => {
                     let port = build_start_matches.get_one::<u16>("NODE_PORT").unwrap();
                     format!("http://localhost:{}", port)
-                },
+                }
             };
-            let skip_deps_check = build_start_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
+            let skip_deps_check = build_start_matches
+                .get_one::<bool>("SKIP_DEPS_CHECK")
+                .unwrap();
             let features = match build_start_matches.get_one::<String>("FEATURES") {
                 Some(f) => f.clone(),
                 None => "".into(),
@@ -186,8 +194,9 @@ async fn execute(
                 &url,
                 *skip_deps_check,
                 &features,
-            ).await
-        },
+            )
+            .await
+        }
         Some(("dev-ui", dev_ui_matches)) => {
             let package_dir = PathBuf::from(dev_ui_matches.get_one::<String>("DIR").unwrap());
             let url: String = match dev_ui_matches.get_one::<String>("URL") {
@@ -195,19 +204,20 @@ async fn execute(
                 None => {
                     let port = dev_ui_matches.get_one::<u16>("NODE_PORT").unwrap();
                     format!("http://localhost:{}", port)
-                },
+                }
             };
             let skip_deps_check = dev_ui_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
+            let release = dev_ui_matches.get_one::<bool>("RELEASE").unwrap();
 
-            dev_ui::execute(&package_dir, &url, *skip_deps_check)
-        },
+            dev_ui::execute(&package_dir, &url, *skip_deps_check, *release)
+        }
         Some(("inject-message", inject_message_matches)) => {
             let url: String = match inject_message_matches.get_one::<String>("URL") {
                 Some(url) => url.clone(),
                 None => {
                     let port = inject_message_matches.get_one::<u16>("NODE_PORT").unwrap();
                     format!("http://localhost:{}", port)
-                },
+                }
             };
             let process: &String = inject_message_matches.get_one("PROCESS").unwrap();
             let non_block: &bool = inject_message_matches.get_one("NONBLOCK").unwrap();
@@ -219,17 +229,13 @@ async fn execute(
                 .get_one("PATH")
                 .and_then(|s: &String| Some(s.as_str()));
 
-            let expects_response =
-                if *non_block {
-                    None
-                } else {
-                    Some(15)
-                };
+            let expects_response = if *non_block { None } else { Some(15) };
             inject_message::execute(&url, process, expects_response, body, node, bytes).await
-        },
+        }
         Some(("new", new_matches)) => {
             let new_dir = PathBuf::from(new_matches.get_one::<String>("DIR").unwrap());
-            let package_name = new_matches.get_one::<String>("PACKAGE")
+            let package_name = new_matches
+                .get_one::<String>("PACKAGE")
                 .map(|pn| pn.to_string());
             let publisher = new_matches.get_one::<String>("PUBLISHER").unwrap();
             let language: new::Language = new_matches.get_one::<String>("LANGUAGE").unwrap().into();
@@ -244,7 +250,7 @@ async fn execute(
                 template.clone(),
                 *ui,
             )
-        },
+        }
         Some(("run-tests", run_tests_matches)) => {
             let config_path = match run_tests_matches.get_one::<String>("PATH") {
                 Some(path) => PathBuf::from(path),
@@ -254,54 +260,58 @@ async fn execute(
             if !config_path.exists() {
                 let error = format!(
                     "Configuration file not found: {:?}\nUsage:\n{}",
-                    config_path,
-                    usage,
+                    config_path, usage,
                 );
                 return Err(anyhow::anyhow!(error));
             }
 
             run_tests::execute(config_path.to_str().unwrap()).await
-        },
+        }
         Some(("remove-package", remove_package_matches)) => {
-            let package_name = remove_package_matches.get_one::<String>("PACKAGE")
+            let package_name = remove_package_matches
+                .get_one::<String>("PACKAGE")
                 .and_then(|s: &String| Some(s.as_str()));
-            let publisher = remove_package_matches.get_one::<String>("PUBLISHER")
+            let publisher = remove_package_matches
+                .get_one::<String>("PUBLISHER")
                 .and_then(|s: &String| Some(s.as_str()));
-            let package_dir = PathBuf::from(remove_package_matches.get_one::<String>("DIR").unwrap());
+            let package_dir =
+                PathBuf::from(remove_package_matches.get_one::<String>("DIR").unwrap());
             let url: String = match remove_package_matches.get_one::<String>("URL") {
                 Some(url) => url.clone(),
                 None => {
                     let port = remove_package_matches.get_one::<u16>("NODE_PORT").unwrap();
                     format!("http://localhost:{}", port)
-                },
+                }
             };
             remove_package::execute(&package_dir, &url, package_name, publisher).await
-        },
+        }
         Some(("setup", _setup_matches)) => setup::execute(),
         Some(("start-package", start_package_matches)) => {
-            let package_dir = PathBuf::from(start_package_matches.get_one::<String>("DIR").unwrap());
+            let package_dir =
+                PathBuf::from(start_package_matches.get_one::<String>("DIR").unwrap());
             let url: String = match start_package_matches.get_one::<String>("URL") {
                 Some(url) => url.clone(),
                 None => {
                     let port = start_package_matches.get_one::<u16>("NODE_PORT").unwrap();
                     format!("http://localhost:{}", port)
-                },
+                }
             };
             start_package::execute(&package_dir, &url).await
-        },
+        }
         Some(("update", update_matches)) => {
-            let args = update_matches.get_many::<String>("ARGUMENTS")
+            let args = update_matches
+                .get_many::<String>("ARGUMENTS")
                 .unwrap_or_default()
                 .map(|v| v.to_string())
                 .collect::<Vec<_>>();
             let branch = update_matches.get_one::<String>("BRANCH").unwrap();
 
             update::execute(args, branch)
-        },
+        }
         _ => {
             warn!("Invalid subcommand. Usage:\n{}", usage);
             Ok(())
-        },
+        }
     }
 }
 
@@ -504,8 +514,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
             )
         )
         .subcommand(Command::new("dev-ui")
-            .about("Start the web UI development server with hot reloading (same as `cd ui && npm i && npm run dev`)")
+            .about("Start the web UI development server with hot reloading (same as `cd ui && npm i && npm run dev`). To instead create a production build, use the --release flag.")
             .visible_alias("d")
+            .arg(Arg::new("RELEASE")
+                .action(ArgAction::SetTrue)
+                .long("release")
+                .help("If set, create a production build")
+            )
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
                 .help("The package directory to build (must contain a `ui` directory)")
@@ -720,8 +735,8 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let log_path = std::env::var("KIT_LOG_PATH")
-        .unwrap_or_else(|_| KIT_LOG_PATH_DEFAULT.to_string());
+    let log_path =
+        std::env::var("KIT_LOG_PATH").unwrap_or_else(|_| KIT_LOG_PATH_DEFAULT.to_string());
     let log_path = PathBuf::from(log_path);
     let _guard = init_tracing(log_path)?;
     let current_dir = env::current_dir()?.into_os_string();
@@ -736,16 +751,16 @@ async fn main() -> anyhow::Result<()> {
         Err(e) => {
             // TODO: add more non-"nerdview" error messages here
             match e.downcast_ref::<reqwest::Error>() {
-                None => {},
+                None => {}
                 Some(e) => {
                     if e.is_connect() {
                         error!("kit: error connecting; is Kinode running?");
                         return Ok(());
                     }
-                },
+                }
             }
             Err(e)
-        },
+        }
     };
 
     if let Some((subcommand, _)) = matches {
@@ -754,7 +769,8 @@ async fn main() -> anyhow::Result<()> {
                 boot_fake_node::KINODE_OWNER,
                 KIT_REPO,
                 KIT_MASTER_BRANCH,
-            ).await?;
+            )
+            .await?;
             if GIT_COMMIT_HASH != latest.sha {
                 warn!("kit is out of date! Run:\n```\nkit update\n```\nto update to the latest version.");
             }

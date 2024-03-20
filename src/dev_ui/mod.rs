@@ -7,7 +7,12 @@ use super::build::run_command;
 use super::setup::{check_js_deps, get_deps, get_newest_valid_node_version};
 
 #[instrument(level = "trace", err, skip_all)]
-pub fn execute(package_dir: &Path, url: &str, skip_deps_check: bool) -> anyhow::Result<()> {
+pub fn execute(
+    package_dir: &Path,
+    url: &str,
+    skip_deps_check: bool,
+    release: bool,
+) -> anyhow::Result<()> {
     if !skip_deps_check {
         let deps = check_js_deps()?;
         get_deps(deps)?;
@@ -21,28 +26,45 @@ pub fn execute(package_dir: &Path, url: &str, skip_deps_check: bool) -> anyhow::
         info!("UI directory found, running npm install...");
 
         let install = "npm install".to_string();
-        let dev = "npm run dev".to_string();
+        let dev = if release {
+            "npm start".to_string()
+        } else {
+            "npm run dev".to_string()
+        };
         let (install, dev) = valid_node
-            .map(|valid_node| {(
-                format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, install),
-                format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, dev),
-            )})
+            .map(|valid_node| {
+                (
+                    format!(
+                        "source ~/.nvm/nvm.sh && nvm use {} && {}",
+                        valid_node, install
+                    ),
+                    format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, dev),
+                )
+            })
             .unwrap_or_else(|| (install, dev));
 
-        run_command(Command::new("bash")
-            .args(&["-c", &install])
-            .current_dir(&ui_path)
+        run_command(
+            Command::new("bash")
+                .args(&["-c", &install])
+                .current_dir(&ui_path),
         )?;
 
-        info!("Running npm run dev...");
+        if release {
+            info!("Running npm start");
+        } else {
+            info!("Running npm run dev...");
+        }
 
-        run_command(Command::new("bash")
-            .args(&["-c", &dev])
-            .env("VITE_NODE_URL", url)
-            .current_dir(&ui_path)
+        run_command(
+            Command::new("bash")
+                .args(&["-c", &dev])
+                .env("VITE_NODE_URL", url)
+                .current_dir(&ui_path),
         )?;
     } else {
-        return Err(anyhow::anyhow!("'ui' directory not found or 'ui/package.json' does not exist"));
+        return Err(anyhow::anyhow!(
+            "'ui' directory not found or 'ui/package.json' does not exist"
+        ));
     }
 
     Ok(())

@@ -91,3 +91,5 @@ VITE_NODE_URL=http://localhost:8081 npm run dev
 NodeJS (v18 or higher) and NPM are required to build and develop the UI.
 
 The UI is written in React with Vite as the bundler + reloader.
+
+To use `npm start` instead of `npm run dev`, use `kit dev-ui --release`.
