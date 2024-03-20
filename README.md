@@ -76,7 +76,7 @@ For details and examples, please see [https://github.com/kinode-dao/core_tests](
 ## UI Development
 
 The simplest way to work on the UI is to use `kit dev-ui` which develops against a running node.
-Under the hood, `kit dev-ui` is just `cd ui && npm install && npm start`.
+Under the hood, `kit dev-ui` is just `cd ui && npm install && npm run dev`.
 
 The UI should open on port `3000` (or next available port) and will proxy all websocket and HTTP requests to `http://localhost:8080` by default.
 You can choose to proxy to any URL using the `-u` flag:
@@ -85,9 +85,11 @@ kit dev-ui my_package -u http://localhost:8081
 ```
 This is the same as prepending the environment variable:
 ```bash
-VITE_NODE_URL=http://localhost:8081 npm start
+VITE_NODE_URL=http://localhost:8081 npm run dev
 ```
 
 NodeJS (v18 or higher) and NPM are required to build and develop the UI.
 
 The UI is written in React with Vite as the bundler + reloader.
+
+To use `npm start` instead of `npm run dev`, use `kit dev-ui --release`.
