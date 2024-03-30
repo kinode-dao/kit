@@ -32,15 +32,10 @@ pub fn execute(
             "npm run dev".to_string()
         };
         let (install_command, dev_command) = valid_node
-            .map(|valid_node| {
-                (
-                    format!(
-                        "source ~/.nvm/nvm.sh && nvm use {} && {}",
-                        valid_node, install
-                    ),
-                    format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, dev),
-                )
-            })
+            .map(|valid_node| {(
+                format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, install),
+                format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, dev),
+            )})
             .unwrap_or_else(|| (install, dev.clone()));
 
         run_command(
