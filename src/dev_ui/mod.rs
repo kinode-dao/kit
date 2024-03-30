@@ -31,7 +31,7 @@ pub fn execute(
         } else {
             "npm run dev".to_string()
         };
-        let (install, dev) = valid_node
+        let (install_command, dev_command) = valid_node
             .map(|valid_node| {
                 (
                     format!(
@@ -41,23 +41,19 @@ pub fn execute(
                     format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, dev),
                 )
             })
-            .unwrap_or_else(|| (install, dev));
+            .unwrap_or_else(|| (install, dev.clone()));
 
         run_command(
             Command::new("bash")
-                .args(&["-c", &install])
+                .args(&["-c", &install_command])
                 .current_dir(&ui_path),
         )?;
 
-        if release {
-            info!("Running npm start");
-        } else {
-            info!("Running npm run dev...");
-        }
+        info!("Running {}", dev);
 
         run_command(
             Command::new("bash")
-                .args(&["-c", &dev])
+                .args(&["-c", &dev_command])
                 .env("VITE_NODE_URL", url)
                 .current_dir(&ui_path),
         )?;
