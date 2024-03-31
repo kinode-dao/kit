@@ -227,8 +227,13 @@ fn call_rustup(arg: &str) -> anyhow::Result<()> {
 
 #[instrument(level = "trace", err, skip_all)]
 fn call_cargo(arg: &str) -> anyhow::Result<()> {
+    let command = if arg.contains("--color=always") {
+        format!("cargo {}", arg)
+    } else {
+        format!("cargo --color=always {}", arg)
+    };
     run_command(Command::new("bash")
-        .args(&["-c", &format!("cargo {}", arg)])
+        .args(&["-c", &command])
     )
 }
 

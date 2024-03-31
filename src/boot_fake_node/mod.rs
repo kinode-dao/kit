@@ -79,6 +79,7 @@ pub fn compile_runtime(path: &Path, release: bool) -> anyhow::Result<()> {
         "kinode",
         "--features",
         "simulation-mode",
+        "--color=always",
     ];
     if release {
         args.push("--release");
