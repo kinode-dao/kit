@@ -3,8 +3,8 @@ use std::process::Command;
 
 use tracing::{info, instrument};
 
-use super::build::run_command;
-use super::setup::{check_js_deps, get_deps, get_newest_valid_node_version};
+use crate::build::run_command;
+use crate::setup::{check_js_deps, get_deps, get_newest_valid_node_version};
 
 #[instrument(level = "trace", err, skip_all)]
 pub fn execute(

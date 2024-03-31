@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use tokio::fs;
 use tracing::{info, warn, instrument};
 
-use super::setup::{
+use crate::KIT_CACHE;
+use crate::setup::{
     check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version,
     REQUIRED_PY_PACKAGE,
 };
@@ -18,7 +19,6 @@ const RUST_SRC_PATH: &str = "src/lib.rs";
 const KINODE_WIT_URL: &str =
     "https://raw.githubusercontent.com/kinode-dao/kinode-wit/master/kinode.wit";
 const WASI_VERSION: &str = "17.0.1"; // TODO: un-hardcode
-pub const CACHE_DIR: &str = "/tmp/kinode-kit-cache";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
@@ -54,9 +54,9 @@ pub fn run_command(cmd: &mut Command) -> anyhow::Result<(String, String)> {
 
 #[instrument(level = "trace", err, skip_all)]
 pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
-    fs::create_dir_all(&CACHE_DIR).await?;
+    fs::create_dir_all(&KIT_CACHE).await?;
     let hex_url = hex::encode(url);
-    let hex_url_path = format!("{}/{}", CACHE_DIR, hex_url);
+    let hex_url_path = format!("{}/{}", KIT_CACHE, hex_url);
     let hex_url_path = Path::new(&hex_url_path);
 
     let content = if hex_url_path.exists() {

@@ -4,8 +4,8 @@ use std::process;
 
 use tracing::instrument;
 
-use super::inject_message;
-use super::start_package::interact_with_package;
+use crate::inject_message;
+use crate::start_package::interact_with_package;
 
 #[instrument(level = "trace", err, skip_all)]
 pub async fn execute(

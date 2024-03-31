@@ -9,7 +9,7 @@ use zip::write::FileOptions;
 
 use kinode_process_lib::kernel_types::Erc721Metadata;
 
-use super::inject_message;
+use crate::inject_message;
 
 #[instrument(level = "trace", err, skip_all)]
 fn new_package(
