@@ -215,14 +215,16 @@ fn call_with_nvm_output(arg: &str) -> anyhow::Result<String> {
 fn call_with_nvm(arg: &str) -> anyhow::Result<()> {
     run_command(Command::new("bash")
         .args(&["-c", &format!("source ~/.nvm/nvm.sh && {}", arg)])
-    )
+    )?;
+    Ok(())
 }
 
 #[instrument(level = "trace", err, skip_all)]
 fn call_rustup(arg: &str) -> anyhow::Result<()> {
     run_command(Command::new("bash")
         .args(&["-c", &format!("rustup {}", arg)])
-    )
+    )?;
+    Ok(())
 }
 
 #[instrument(level = "trace", err, skip_all)]
@@ -234,7 +236,8 @@ fn call_cargo(arg: &str) -> anyhow::Result<()> {
     };
     run_command(Command::new("bash")
         .args(&["-c", &command])
-    )
+    )?;
+    Ok(())
 }
 
 fn compare_versions(installed_version: (u32, u32) , required_version: (u32, u32)) -> bool {

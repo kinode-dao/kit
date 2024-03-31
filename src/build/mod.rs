@@ -4,7 +4,7 @@ use std::process::Command;
 
 use serde::{Deserialize, Serialize};
 use tokio::fs;
-use tracing::{info, instrument};
+use tracing::{info, warn, instrument};
 
 use super::setup::{
     check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version,
@@ -31,10 +31,13 @@ struct CargoPackage {
 }
 
 #[instrument(level = "trace", err, skip_all)]
-pub fn run_command(cmd: &mut Command) -> anyhow::Result<()> {
+pub fn run_command(cmd: &mut Command) -> anyhow::Result<(String, String)> {
     let output = cmd.output()?;
     if output.status.success() {
-        Ok(())
+        Ok((
+            String::from_utf8_lossy(&output.stdout).to_string(),
+            String::from_utf8_lossy(&output.stderr).to_string(),
+        ))
     } else {
         Err(anyhow::anyhow!(
             "Command `{} {:?}` failed with exit code {}\nstdout: {}\nstderr: {}",
@@ -236,11 +239,17 @@ async fn compile_rust_wasm_process(
         args.push("--features");
         args.push(&features);
     }
-    run_command(
+    let (stdout, stderr) = run_command(
         Command::new("cargo")
             .args(&args)
             .current_dir(process_dir),
     )?;
+    if stdout.contains("warning") {
+        warn!("{}", stdout);
+    }
+    if stderr.contains("warning") {
+        warn!("{}", stderr);
+    }
 
     // Adapt the module using wasm-tools
 
