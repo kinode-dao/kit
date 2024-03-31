@@ -7,10 +7,10 @@ use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, info, instrument};
 
-use super::boot_fake_node::{compile_runtime, get_runtime_binary, run_runtime};
-use super::build;
-use super::inject_message;
-use super::start_package;
+use crate::boot_fake_node::{compile_runtime, get_runtime_binary, run_runtime};
+use crate::build;
+use crate::inject_message;
+use crate::start_package;
 
 pub mod cleanup;
 use cleanup::{cleanup, cleanup_on_signal};

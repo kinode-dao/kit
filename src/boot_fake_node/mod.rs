@@ -13,10 +13,11 @@ use serde::Deserialize;
 use tokio::sync::Mutex;
 use tracing::{info, warn, instrument};
 
-use super::build;
-use super::run_tests::cleanup::{cleanup, cleanup_on_signal};
-use super::run_tests::network_router;
-use super::run_tests::types::*;
+use crate::KIT_CACHE;
+use crate::build;
+use crate::run_tests::cleanup::{cleanup, cleanup_on_signal};
+use crate::run_tests::network_router;
+use crate::run_tests::types::*;
 
 const KINODE_RELEASE_BASE_URL: &str = "https://github.com/kinode-dao/kinode/releases/download";
 pub const KINODE_OWNER: &str = "kinode-dao";
@@ -165,7 +166,7 @@ pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
 
 #[instrument(level = "trace", err, skip_all)]
 pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> anyhow::Result<Vec<u8>> {
-    let cache_path = format!("{}/{}-{}-{}.bin", build::CACHE_DIR, owner, repo, endpoint);
+    let cache_path = format!("{}/{}-{}-{}.bin", KIT_CACHE, owner, repo, endpoint);
     let cache_path = Path::new(&cache_path);
     if cache_path.exists() {
         if let Some(local_bytes) = std::fs::metadata(&cache_path).ok()

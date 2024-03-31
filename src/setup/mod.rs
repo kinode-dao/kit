@@ -6,7 +6,7 @@ use std::str;
 
 use tracing::{info, warn, instrument};
 
-use super::build::run_command;
+use crate::build::run_command;
 
 const FETCH_NVM_VERSION: &str = "v0.39.7";
 const REQUIRED_NODE_MAJOR: u32 = 20;

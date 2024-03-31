@@ -9,17 +9,20 @@ use tracing_subscriber::{
     filter, fmt, layer::SubscriberExt, prelude::*, util::SubscriberInitExt, EnvFilter,
 };
 
-mod boot_fake_node;
-mod build;
-mod build_start_package;
-mod dev_ui;
-mod inject_message;
-mod new;
-mod remove_package;
-mod run_tests;
-mod setup;
-mod start_package;
-mod update;
+use kit::{
+    boot_fake_node,
+    build,
+    build_start_package,
+    dev_ui,
+    inject_message,
+    new,
+    remove_package,
+    reset_cache,
+    run_tests,
+    setup,
+    start_package,
+    update,
+};
 
 const MAX_REMOTE_VALUES: usize = 3;
 const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_SHA");
@@ -251,22 +254,6 @@ async fn execute(
                 *ui,
             )
         }
-        Some(("run-tests", run_tests_matches)) => {
-            let config_path = match run_tests_matches.get_one::<String>("PATH") {
-                Some(path) => PathBuf::from(path),
-                None => std::env::current_dir()?.join("tests.toml"),
-            };
-
-            if !config_path.exists() {
-                let error = format!(
-                    "Configuration file not found: {:?}\nUsage:\n{}",
-                    config_path, usage,
-                );
-                return Err(anyhow::anyhow!(error));
-            }
-
-            run_tests::execute(config_path.to_str().unwrap()).await
-        }
         Some(("remove-package", remove_package_matches)) => {
             let package_name = remove_package_matches
                 .get_one::<String>("PACKAGE")
@@ -284,6 +271,25 @@ async fn execute(
                 }
             };
             remove_package::execute(&package_dir, &url, package_name, publisher).await
+        }
+        Some(("reset-cache", _reset_cache_matches)) => {
+            reset_cache::execute()
+        }
+        Some(("run-tests", run_tests_matches)) => {
+            let config_path = match run_tests_matches.get_one::<String>("PATH") {
+                Some(path) => PathBuf::from(path),
+                None => std::env::current_dir()?.join("tests.toml"),
+            };
+
+            if !config_path.exists() {
+                let error = format!(
+                    "Configuration file not found: {:?}\nUsage:\n{}",
+                    config_path, usage,
+                );
+                return Err(anyhow::anyhow!(error));
+            }
+
+            run_tests::execute(config_path.to_str().unwrap()).await
         }
         Some(("setup", _setup_matches)) => setup::execute(),
         Some(("start-package", start_package_matches)) => {
@@ -642,15 +648,6 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .required(false)
             )
         )
-        .subcommand(Command::new("run-tests")
-            .about("Run Kinode tests")
-            .visible_alias("t")
-            .arg(Arg::new("PATH")
-                .action(ArgAction::Set)
-                .help("Path to tests configuration file")
-                .default_value("tests.toml")
-            )
-        )
         .subcommand(Command::new("remove-package")
             .about("Remove a running package from a node")
             .visible_alias("r")
@@ -687,6 +684,18 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
                 .help("Node URL (overrides NODE_PORT)")
                 .required(false)
                 //.default_value("http://localhost:8080")
+            )
+        )
+        .subcommand(Command::new("reset-cache")
+            .about("Reset kit cache (Kinode core binaries, logs, etc.)")
+        )
+        .subcommand(Command::new("run-tests")
+            .about("Run Kinode tests")
+            .visible_alias("t")
+            .arg(Arg::new("PATH")
+                .action(ArgAction::Set)
+                .help("Path to tests configuration file")
+                .default_value("tests.toml")
             )
         )
         .subcommand(Command::new("setup")
