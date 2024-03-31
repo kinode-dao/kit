@@ -230,6 +230,7 @@ async fn compile_rust_wasm_process(
          "wasm32-wasi",
          "--target-dir",
          "target",
+         "--color=always"
     ];
     if !features.is_empty() {
         args.push("--features");
