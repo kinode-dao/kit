@@ -162,7 +162,7 @@ fn handle_message(
             }
         }
         _ => {
-            println!("{package_name} worker: got something else than request...");
+            println!("worker: got something else than request...");
         }
     }
     Ok(false)
@@ -171,7 +171,7 @@ fn handle_message(
 call_init!(init);
 
 fn init(our: Address) {
-    println!("{package_name} worker: begin");
+    println!("worker: begin");
     let start = std::time::Instant::now();
 
     let drive_path = format!("{}/files", our.package_id());
@@ -185,14 +185,14 @@ fn init(our: Address) {
             Ok(exit) => {
                 if exit {
                     println!(
-                        "{package_name} worker done: exiting, took {:?}",
+                        "worker: done: exiting, took {:?}",
                         start.elapsed()
                     );
                     break;
                 }
             }
             Err(e) => {
-                println!("{package_name}: worker error: {:?}", e);
+                println!("worker: error: {:?}", e);
             }
         };
     }

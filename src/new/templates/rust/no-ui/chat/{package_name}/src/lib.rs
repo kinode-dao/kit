@@ -40,7 +40,7 @@ fn handle_message(our: &Address, message_archive: &mut MessageArchive) -> anyhow
             ref message,
         } => {
             if target == &our.node {
-                println!("{package_name}|{}: {}", source.node, message);
+                println!("{}: {}", source.node, message);
                 message_archive.push((source.node.clone(), message.clone()));
             } else {
                 let _ = Request::new()
@@ -76,7 +76,7 @@ fn handle_message(our: &Address, message_archive: &mut MessageArchive) -> anyhow
 
 call_init!(init);
 fn init(our: Address) {
-    println!("{package_name}: begin");
+    println!("begin");
 
     let mut message_archive: MessageArchive = Vec::new();
 
@@ -84,7 +84,7 @@ fn init(our: Address) {
         match handle_message(&our, &mut message_archive) {
             Ok(()) => {}
             Err(e) => {
-                println!("{package_name}: error: {:?}", e);
+                println!("error: {:?}", e);
             }
         };
     }

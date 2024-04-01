@@ -16,7 +16,7 @@ fn handle_message(_our: &Address) -> anyhow::Result<()> {
     }
 
     let body: serde_json::Value = serde_json::from_slice(message.body())?;
-    println!("{package_name}: got {body:?}");
+    println!("got {body:?}");
     Response::new()
         .body(serde_json::to_vec(&serde_json::json!("Ack")).unwrap())
         .send()
@@ -26,13 +26,13 @@ fn handle_message(_our: &Address) -> anyhow::Result<()> {
 
 call_init!(init);
 fn init(our: Address) {
-    println!("{package_name}: begin");
+    println!("begin");
 
     loop {
         match handle_message(&our) {
             Ok(()) => {}
             Err(e) => {
-                println!("{package_name}: error: {:?}", e);
+                println!("error: {:?}", e);
             }
         };
     }

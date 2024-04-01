@@ -126,7 +126,7 @@ fn handle_transfer_request(
             }
         }
         TransferRequest::Progress { name, progress } => {
-            println!("file: {} progress: {}%", name, progress);
+            println!("{} progress: {}%", name, progress);
         }
     }
 
@@ -170,7 +170,7 @@ fn handle_message(our: &Address, files_dir: &Directory) -> anyhow::Result<()> {
 call_init!(init);
 
 fn init(our: Address) {
-    println!("{package_name}: begin");
+    println!("begin");
 
     let drive_path = create_drive(our.package_id(), "files").unwrap();
     let files_dir = open_dir(&drive_path, false).unwrap();
@@ -179,7 +179,7 @@ fn init(our: Address) {
         match handle_message(&our, &files_dir) {
             Ok(()) => {}
             Err(e) => {
-                println!("{package_name}: error: {:?}", e);
+                println!("error: {:?}", e);
             }
         };
     }
