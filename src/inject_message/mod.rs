@@ -110,7 +110,13 @@ pub async fn send_request_inner(
 #[instrument(level = "trace", err, skip_all)]
 pub async fn parse_response(response: reqwest::Response) -> anyhow::Result<Response> {
     if response.status() != 200 {
-        return Err(anyhow::anyhow!("Failed with status code: {}", response.status()))
+        let response_status = response.status();
+        let response_text = response.text().await.unwrap_or_default();
+        return Err(anyhow::anyhow!(
+            "Failed with status code: {}\nResponse: {}",
+            response_status,
+            response_text,
+        ))
     } else {
         let content: String = response.text().await?;
         let data: Value = serde_json::from_str(&content)?;
