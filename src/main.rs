@@ -22,6 +22,7 @@ use kit::{
     setup,
     start_package,
     update,
+    KIT_LOG_PATH_DEFAULT,
 };
 
 const MAX_REMOTE_VALUES: usize = 3;
@@ -29,10 +30,9 @@ const GIT_COMMIT_HASH: &str = env!("GIT_COMMIT_SHA");
 const GIT_BRANCH_NAME: &str = env!("GIT_BRANCH_NAME");
 const KIT_REPO: &str = "kit";
 const KIT_MASTER_BRANCH: &str = "master";
-const KIT_LOG_PATH_DEFAULT: &str = "/tmp/kinode-kit-cache/logs/log.log";
 const STDOUT_LOG_LEVEL_DEFAULT: Level = Level::INFO;
 const STDERR_LOG_LEVEL_DEFAULT: &str = "error";
-const FILE_LOG_LEVEL_DEFAULT: &str = "info";
+const FILE_LOG_LEVEL_DEFAULT: &str = "debug";
 const RUST_LOG: &str = "RUST_LOG";
 
 #[derive(Debug, Deserialize)]
@@ -80,7 +80,9 @@ fn init_tracing(log_path: PathBuf) -> anyhow::Result<tracing_appender::non_block
     let stderr_filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new(STDERR_LOG_LEVEL_DEFAULT));
     let file_filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new(FILE_LOG_LEVEL_DEFAULT));
+        .unwrap_or_else(|_| EnvFilter::new(FILE_LOG_LEVEL_DEFAULT))
+        .add_directive("hyper=off".parse().unwrap())
+        .add_directive("reqwest=off".parse().unwrap());
 
     tracing_subscriber::registry()
         .with(
@@ -763,7 +765,7 @@ async fn main() -> anyhow::Result<()> {
                 None => {}
                 Some(e) => {
                     if e.is_connect() {
-                        error!("kit: error connecting; is Kinode running?");
+                        error!("error connecting\n\nhint: is Kinode running?");
                         return Ok(());
                     }
                 }

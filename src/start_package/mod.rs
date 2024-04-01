@@ -9,7 +9,7 @@ use zip::write::FileOptions;
 
 use kinode_process_lib::kernel_types::Erc721Metadata;
 
-use crate::inject_message;
+use crate::{inject_message, KIT_LOG_PATH_DEFAULT};
 
 #[instrument(level = "trace", err, skip_all)]
 fn new_package(
@@ -124,7 +124,16 @@ pub async fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
     )?;
     let response = inject_message::send_request(url, new_pkg_request).await?;
     let inject_message::Response { ref body, .. } =
-        inject_message::parse_response(response).await?;
+        inject_message::parse_response(response)
+            .await
+            .map_err(|e| {
+                let e_string = e.to_string();
+                if e_string.contains("Failed with status code:") {
+                    anyhow::anyhow!("{}\ncheck logs (default at {}) for full http response\n\nhint: is Kinode running at url {}?", e_string, KIT_LOG_PATH_DEFAULT, url)
+                } else {
+                    anyhow::anyhow!(e_string)
+                }
+            })?;
     let body = serde_json::from_str::<serde_json::Value>(body)?;
     let new_package_response = body.get("NewPackageResponse");
 

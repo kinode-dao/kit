@@ -4,7 +4,7 @@ use std::io::Read;
 #[allow(deprecated)]
 use base64::{decode, encode};
 use serde_json::{Value, json};
-use tracing::{info, instrument};
+use tracing::{debug, info, instrument};
 
 pub struct Response {
     pub body: String,
@@ -112,11 +112,13 @@ pub async fn parse_response(response: reqwest::Response) -> anyhow::Result<Respo
     if response.status() != 200 {
         let response_status = response.status();
         let response_text = response.text().await.unwrap_or_default();
-        return Err(anyhow::anyhow!(
+
+        debug!(
             "Failed with status code: {}\nResponse: {}",
             response_status,
             response_text,
-        ))
+        );
+        return Err(anyhow::anyhow!("Failed with status code: {}", response_status))
     } else {
         let content: String = response.text().await?;
         let data: Value = serde_json::from_str(&content)?;

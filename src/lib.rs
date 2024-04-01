@@ -12,3 +12,4 @@ pub mod start_package;
 pub mod update;
 
 pub const KIT_CACHE: &str = "/tmp/kinode-kit-cache";
+pub const KIT_LOG_PATH_DEFAULT: &str = "/tmp/kinode-kit-cache/logs/log.log";
