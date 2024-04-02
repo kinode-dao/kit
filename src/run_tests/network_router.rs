@@ -4,7 +4,7 @@ use futures_util::{SinkExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::task;
-use tokio_tungstenite::{accept_async, tungstenite::protocol::Message::{Binary, Text}, WebSocketStream};
+use tokio_tungstenite::{accept_async, connect_async, tungstenite::protocol::Message::{Binary, Ping, Pong, Text}, WebSocketStream};
 use tracing::{info, error, instrument};
 
 use crate::run_tests::types::*;
@@ -20,17 +20,39 @@ struct Connection {
 
 type Connections = HashMap<String, Connection>;
 
-async fn handshake(stream: TcpStream) -> anyhow::Result<(String, WebSocketStream<TcpStream>)> {
-    let ws_stream = accept_async(stream).await?;
-    let (send_to_ws, mut recv_from_ws) = ws_stream.split();
+pub const PING_TEXT: &str = "Hello, Kinode network router?";
+pub const PONG_TEXT: &str = "Yes hello, Kinode network router department.";
 
-    if let Some(Ok(Text(identifier))) = recv_from_ws.next().await {
-        let ws_stream = send_to_ws.reunite(recv_from_ws)?;
-        Ok((identifier, ws_stream))
-    } else {
-        Err(anyhow::anyhow!(
-            "Handshake failed: first message was not text or did not contain the identifier"
-        ))
+async fn handshake(
+    stream: TcpStream,
+) -> anyhow::Result<Option<(String, WebSocketStream<TcpStream>)>> {
+    let ws_stream = accept_async(stream).await?;
+    let (mut send_to_ws, mut recv_from_ws) = ws_stream.split();
+
+    let Some(Ok(message)) = recv_from_ws.next().await else {
+        return Err(anyhow::anyhow!(
+            "Handshake failed: first message was not received properly"
+        ));
+    };
+    match message {
+        Ping(message) => {
+            let message = String::from_utf8(message)?;
+            if message != PING_TEXT.to_string() {
+                return Err(anyhow::anyhow!("Received Ping with unexpected message {}", message))
+            }
+            if let Err(_) = send_to_ws
+                .send(Pong(PONG_TEXT.as_bytes().to_vec()))
+                .await
+            {
+                return Err(anyhow::anyhow!("Failed to reply to Ping with Pong"))
+            }
+            Ok(None)
+        },
+        Text(identifier) => {
+            let ws_stream = send_to_ws.reunite(recv_from_ws)?;
+            Ok(Some((identifier, ws_stream)))
+        },
+        _ => Err(anyhow::anyhow!("Handshake failed: first message was not Ping or Text")),
     }
 }
 
@@ -78,7 +100,23 @@ pub async fn execute(
     let (send_to_loop, mut recv_in_loop): (Sender, Receiver) = mpsc::channel(32);
     let mut connections: Connections = HashMap::new();
 
-    let listener = TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
+    let url = format!("127.0.0.1:{}", port);
+
+    // Try hitting given port with Ping/Pong protocol to determine
+    //  if another fake node already has a network_router running.
+    if let Ok((ws_stream, _)) = connect_async(format!("ws://{}", url)).await {
+        let (mut send_to_ws, mut recv_from_ws) = ws_stream.split();
+
+        send_to_ws.send(Ping(PING_TEXT.as_bytes().to_vec())).await?;
+        if let Some(Ok(Pong(message))) = recv_from_ws.next().await {
+            if String::from_utf8(message).unwrap_or_default() == PONG_TEXT.to_string() {
+                return Ok(());
+            }
+        };
+    }
+
+    // Didn't find one already running? Start network_router.
+    let listener = TcpListener::bind(&url).await?;
 
     info!("network_router: online at {}\r", port);
 
@@ -87,7 +125,7 @@ pub async fn execute(
             Ok((stream, _)) = listener.accept() => {
                 let send_to_loop = send_to_loop.clone();
                 match handshake(stream).await {
-                    Ok((identifier, ws_stream)) => {
+                    Ok(Some((identifier, ws_stream))) => {
                         let (send_to_node, recv_in_node) = mpsc::channel(32);
                         let (send_to_kill_conn, recv_kill_in_conn) = mpsc::channel::<bool>(1);
                         connections.insert(
@@ -98,6 +136,7 @@ pub async fn execute(
                             ws_stream, recv_in_node, recv_kill_in_conn, send_to_loop,
                         ));
                     },
+                    Ok(None) => {},
                     Err(e) => error!("Handshake error: {}", e),
                 }
             },
