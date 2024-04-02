@@ -8,7 +8,7 @@ use tracing::{info, warn, instrument};
 
 use crate::KIT_CACHE;
 use crate::setup::{
-    check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version,
+    check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version, get_python_version,
     REQUIRED_PY_PACKAGE,
 };
 
@@ -367,33 +367,62 @@ async fn compile_package_and_ui(
 }
 
 #[instrument(level = "trace", err, skip_all)]
+async fn compile_package_item(
+    entry: std::io::Result<std::fs::DirEntry>,
+    features: String,
+) -> anyhow::Result<()> {
+    let entry = entry?;
+    let path = entry.path();
+    if path.is_dir() {
+        if path.join(RUST_SRC_PATH).exists() {
+            compile_rust_wasm_process(&path, &features).await?;
+        } else if path.join(PYTHON_SRC_PATH).exists() {
+            let python = get_python_version(None, None)?
+                .ok_or(anyhow::anyhow!("kit requires Python 3.10 or newer"))?;
+            compile_python_wasm_process(&path, &python).await?;
+        } else if path.join(JAVASCRIPT_SRC_PATH).exists() {
+            let valid_node = get_newest_valid_node_version(None, None)?;
+            compile_javascript_wasm_process(&path, valid_node).await?;
+        }
+    }
+    Ok(())
+}
+
+#[instrument(level = "trace", err, skip_all)]
 async fn compile_package(
     package_dir: &Path,
     skip_deps_check: bool,
     features: &str,
 ) -> anyhow::Result<()> {
+    let mut checked_rust = false;
+    let mut checked_py = false;
+    let mut checked_js = false;
     for entry in package_dir.read_dir()? {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir() {
-            if path.join(RUST_SRC_PATH).exists() {
-                if !skip_deps_check {
-                    let deps = check_rust_deps()?;
-                    get_deps(deps)?;
-                }
-                compile_rust_wasm_process(&path, features).await?;
-            } else if path.join(PYTHON_SRC_PATH).exists() {
-                let python = check_py_deps()?;
-                compile_python_wasm_process(&path, &python).await?;
-            } else if path.join(JAVASCRIPT_SRC_PATH).exists() {
-                if !skip_deps_check {
-                    let deps = check_js_deps()?;
-                    get_deps(deps)?;
-                }
-                let valid_node = get_newest_valid_node_version(None, None)?;
-                compile_javascript_wasm_process(&path, valid_node).await?;
+            if path.join(RUST_SRC_PATH).exists() && !checked_rust && !skip_deps_check {
+                let deps = check_rust_deps()?;
+                get_deps(deps)?;
+                checked_rust = true;
+            } else if path.join(PYTHON_SRC_PATH).exists() && !checked_py {
+                check_py_deps()?;
+                checked_py = true;
+            } else if path.join(JAVASCRIPT_SRC_PATH).exists() && !checked_js && !skip_deps_check {
+                let deps = check_js_deps()?;
+                get_deps(deps)?;
+                checked_js = true;
             }
         }
+    }
+
+    let mut tasks = tokio::task::JoinSet::new();
+    let features = features.to_string();
+    for entry in package_dir.read_dir()? {
+        tasks.spawn(compile_package_item(entry, features.clone()));
+    }
+    while let Some(res) = tasks.join_next().await {
+        res??;
     }
 
     Ok(())
