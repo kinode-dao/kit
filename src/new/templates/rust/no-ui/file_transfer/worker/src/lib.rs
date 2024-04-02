@@ -33,6 +33,8 @@ pub enum WorkerRequest {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum TransferRequest {
+    ListFiles,
+    Download { name: String, target: Address },
     Progress { name: String, progress: u64 },
 }
 
@@ -62,7 +64,7 @@ fn handle_message(
 
                     // open/create empty file in both cases.
                     let mut active_file =
-                        open_file(&format!("{}/{}", files_dir.path, &name), true)?;
+                        open_file(&format!("{}/{}", files_dir.path, &name), true, None)?;
 
                     match target_worker {
                         Some(target_worker) => {
@@ -162,7 +164,7 @@ fn handle_message(
             }
         }
         _ => {
-            println!("{package_name} worker: got something else than request...");
+            println!("worker: got something else than request...");
         }
     }
     Ok(false)
@@ -171,11 +173,11 @@ fn handle_message(
 call_init!(init);
 
 fn init(our: Address) {
-    println!("{package_name} worker: begin");
+    println!("worker: begin");
     let start = std::time::Instant::now();
 
     let drive_path = format!("{}/files", our.package_id());
-    let files_dir = open_dir(&drive_path, false).unwrap();
+    let files_dir = open_dir(&drive_path, false, None).unwrap();
 
     let mut file: Option<File> = None;
     let mut size: Option<u64> = None;
@@ -185,14 +187,14 @@ fn init(our: Address) {
             Ok(exit) => {
                 if exit {
                     println!(
-                        "{package_name} worker done: exiting, took {:?}",
+                        "worker: done: exiting, took {:?}",
                         start.elapsed()
                     );
                     break;
                 }
             }
             Err(e) => {
-                println!("{package_name}: worker error: {:?}", e);
+                println!("worker: error: {:?}", e);
             }
         };
     }

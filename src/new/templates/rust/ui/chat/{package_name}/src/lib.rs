@@ -5,7 +5,7 @@ use kinode_process_lib::{
     await_message, call_init, get_blob,
     http::{
         bind_http_path, bind_ws_path, send_response, send_ws_push, serve_ui, HttpServerRequest,
-        IncomingHttpRequest, StatusCode, WsMessageType,
+        StatusCode, WsMessageType,
     },
     println, Address, LazyLoadBlob, Message, ProcessId, Request, Response,
 };
@@ -149,24 +149,16 @@ fn handle_chat_request(
             };
 
             // If the target is not us, send a request to the target
-
-            if target != &our.node {
-                println!("new message from {}: {}", source.node, message);
-
-                match Request::new()
+            if target == &our.node {
+                println!("{}: {}", source.node, message);
+            } else {
+                Request::new()
                     .target(Address {
                         node: target.clone(),
                         process: ProcessId::from_str("{package_name}:{package_name}:{publisher}")?,
                     })
                     .body(body)
-                    .send_and_await_response(5)
-                {
-                    Ok(_) => {}
-                    Err(e) => {
-                        println!("testing: send request error: {:?}", e);
-                        return Ok(());
-                    }
-                };
+                    .send_and_await_response(5)??;
             }
 
             // Retreive the message archive for the counterparty, or create a new one if it doesn't exist
@@ -248,7 +240,7 @@ fn handle_message(
 
     match message {
         Message::Response { .. } => {
-            println!("{package_name}: got response - {:?}", message);
+            println!("got response - {:?}", message);
             return Ok(());
         }
         Message::Request {
@@ -267,9 +259,8 @@ fn handle_message(
 }
 
 call_init!(init);
-
 fn init(our: Address) {
-    println!("{package_name}: begin");
+    println!("begin");
 
     let mut message_archive: MessageArchive = HashMap::new();
     let mut channel_id = 0;
@@ -287,7 +278,7 @@ fn init(our: Address) {
         match handle_message(&our, &mut message_archive, &mut channel_id) {
             Ok(()) => {}
             Err(e) => {
-                println!("{package_name}: error: {:?}", e);
+                println!("error: {:?}", e);
             }
         };
     }

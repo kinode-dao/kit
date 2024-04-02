@@ -1,0 +1,13 @@
+{
+    "number.wasm": {
+        "root": false,
+        "public": false,
+        "request_networking": false,
+        "request_capabilities": [
+            "{package_name}:{package_name}:{publisher}"
+        ],
+        "grant_capabilities": [
+            "{package_name}:{package_name}:{publisher}"
+        ]
+    }
+}

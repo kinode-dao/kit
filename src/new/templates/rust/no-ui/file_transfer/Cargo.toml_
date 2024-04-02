@@ -3,6 +3,8 @@ resolver = "2"
 members = [
     "{package_name}",
     "worker",
+    "download",
+    "list_files"
 ]
 
 [profile.release]

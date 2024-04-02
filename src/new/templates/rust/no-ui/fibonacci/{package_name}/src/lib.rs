@@ -52,7 +52,7 @@ fn handle_message() -> anyhow::Result<()> {
             let result = fibonacci(number);
             let duration = start.elapsed();
             println!(
-                "{package_name}: fibonacci({}) = {}; {}ns",
+                "fibonacci({}) = {}; {}ns",
                 number,
                 result,
                 duration.as_nanos(),
@@ -82,7 +82,7 @@ fn handle_message() -> anyhow::Result<()> {
                 }
             }) / number_trials as u128;
             println!(
-                "{package_name}: fibonacci({}) = {}; {}±{}ns averaged over {} trials",
+                "fibonacci({}) = {}; {}±{}ns averaged over {} trials",
                 number, result, mean, absolute_deviation, number_trials,
             );
             Response::new()
@@ -98,15 +98,14 @@ fn handle_message() -> anyhow::Result<()> {
 }
 
 call_init!(init);
-
 fn init(_our: Address) {
-    println!("{package_name}: begin");
+    println!("begin");
 
     loop {
         match handle_message() {
             Ok(()) => {}
             Err(e) => {
-                println!("{package_name}: error: {:?}", e);
+                println!("error: {:?}", e);
             }
         };
     }
