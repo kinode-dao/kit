@@ -98,7 +98,6 @@ fn handle_message() -> anyhow::Result<()> {
 }
 
 call_init!(init);
-
 fn init(_our: Address) {
     println!("begin");
 
