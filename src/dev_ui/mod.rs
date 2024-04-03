@@ -1,18 +1,19 @@
 use std::path::Path;
 use std::process::Command;
 
+use color_eyre::{eyre::eyre, Result};
 use tracing::{info, instrument};
 
 use crate::build::run_command;
 use crate::setup::{check_js_deps, get_deps, get_newest_valid_node_version};
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 pub fn execute(
     package_dir: &Path,
     url: &str,
     skip_deps_check: bool,
     release: bool,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     if !skip_deps_check {
         let deps = check_js_deps()?;
         get_deps(deps)?;
@@ -53,9 +54,7 @@ pub fn execute(
                 .current_dir(&ui_path),
         )?;
     } else {
-        return Err(anyhow::anyhow!(
-            "'ui' directory not found or 'ui/package.json' does not exist"
-        ));
+        return Err(eyre!("'ui' directory not found or 'ui/package.json' does not exist"));
     }
 
     Ok(())

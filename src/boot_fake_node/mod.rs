@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use zip::read::ZipArchive;
 
+use color_eyre::eyre::{eyre, Result};
 use fs_err as fs;
 use semver::Version;
 use serde::Deserialize;
@@ -37,8 +38,8 @@ struct Asset {
     name: String,
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+fn extract_zip(archive_path: &Path) -> Result<()> {
     let file = fs::File::open(archive_path)?;
     let mut archive = ZipArchive::new(file)?;
 
@@ -70,8 +71,8 @@ fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-pub fn compile_runtime(path: &Path, release: bool) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+pub fn compile_runtime(path: &Path, release: bool) -> Result<()> {
     info!("Compiling Kinode runtime...");
 
     let mut args = vec![
@@ -96,12 +97,12 @@ pub fn compile_runtime(path: &Path, release: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 async fn get_runtime_binary_inner(
     version: &str,
     zip_name: &str,
     runtime_dir: &PathBuf,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let url = format!("{KINODE_RELEASE_BASE_URL}/{version}/{zip_name}");
 
     let runtime_zip_path = runtime_dir.join(zip_name);
@@ -119,17 +120,17 @@ async fn get_runtime_binary_inner(
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-pub fn get_platform_runtime_name() -> anyhow::Result<String> {
+#[instrument(level = "trace", skip_all)]
+pub fn get_platform_runtime_name() -> Result<String> {
     let uname = Command::new("uname").output()?;
     if !uname.status.success() {
-        return Err(anyhow::anyhow!("Could not determine OS."));
+        return Err(eyre!("Could not determine OS."));
     }
     let os_name = std::str::from_utf8(&uname.stdout)?.trim();
 
     let uname_m = Command::new("uname").arg("-m").output()?;
     if !uname_m.status.success() {
-        return Err(anyhow::anyhow!("Could not determine architecture."));
+        return Err(eyre!("Could not determine architecture."));
     }
     let architecture_name = std::str::from_utf8(&uname_m.stdout)?.trim();
 
@@ -138,13 +139,17 @@ pub fn get_platform_runtime_name() -> anyhow::Result<String> {
         ("Linux", "x86_64") => "x86_64-unknown-linux-gnu",
         ("Darwin", "arm64") => "arm64-apple-darwin",
         ("Darwin", "x86_64") => "x86_64-apple-darwin",
-        _ => return Err(anyhow::anyhow!("OS/Architecture {}/{} not supported.", os_name, architecture_name)),
+        _ => return Err(eyre!(
+            "OS/Architecture {}/{} not supported.",
+            os_name,
+            architecture_name,
+        )),
     };
     Ok(format!("kinode-{}-simulation-mode.zip", zip_name_midfix))
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
+#[instrument(level = "trace", skip_all)]
+pub async fn get_runtime_binary(version: &str) -> Result<PathBuf> {
     let zip_name = get_platform_runtime_name()?;
 
     let version =
@@ -165,8 +170,8 @@ pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     Ok(runtime_path)
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> anyhow::Result<Vec<u8>> {
+#[instrument(level = "trace", skip_all)]
+pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> Result<Vec<u8>> {
     let cache_path = format!("{}/{}-{}-{}.bin", KIT_CACHE, owner, repo, endpoint);
     let cache_path = Path::new(&cache_path);
     if cache_path.exists() {
@@ -194,7 +199,7 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> anyhow:
         .await {
         Ok(v) => {
             fs::create_dir_all(
-                cache_path.parent().ok_or(anyhow::anyhow!("path doesn't have parent"))?
+                cache_path.parent().ok_or_else(|| eyre!("path doesn't have parent"))?
             )?;
             fs::write(&cache_path, &v)?;
             return Ok(v.to_vec());
@@ -206,18 +211,18 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> anyhow:
     };
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-async fn fetch_releases(owner: &str, repo: &str) -> anyhow::Result<Vec<Release>> {
+#[instrument(level = "trace", skip_all)]
+async fn fetch_releases(owner: &str, repo: &str) -> Result<Vec<Release>> {
     let bytes = get_from_github(owner, repo, "releases").await?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 pub async fn find_releases_with_asset(
     owner: Option<&str>,
     repo: Option<&str>,
     asset_name: &str,
-) -> anyhow::Result<Vec<String>> {
+) -> Result<Vec<String>> {
     let owner = owner.unwrap_or(KINODE_OWNER);
     let repo = repo.unwrap_or(KINODE_REPO);
     let releases = fetch_releases(owner, repo).await?;
@@ -232,7 +237,7 @@ pub async fn find_releases_with_asset_if_online(
     owner: Option<&str>,
     repo: Option<&str>,
     asset_name: &str,
-) -> anyhow::Result<Vec<String>> {
+) -> Result<Vec<String>> {
     let remote_values = match find_releases_with_asset(owner, repo, asset_name).await {
         Ok(v) => v,
         Err(e) => {
@@ -254,17 +259,17 @@ pub async fn find_releases_with_asset_if_online(
     Ok(remote_values)
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-async fn fetch_latest_release_tag(owner: &str, repo: &str) -> anyhow::Result<String> {
+#[instrument(level = "trace", skip_all)]
+async fn fetch_latest_release_tag(owner: &str, repo: &str) -> Result<String> {
     fetch_releases(owner, repo)
         .await?
         .first()
         .map(|release| release.tag_name.clone())
-        .ok_or_else(|| anyhow::anyhow!("No releases found"))
+        .ok_or_else(|| eyre!("No releases found"))
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-fn get_local_versions_with_prefix(prefix: &str) -> anyhow::Result<Vec<String>> {
+#[instrument(level = "trace", skip_all)]
+fn get_local_versions_with_prefix(prefix: &str) -> Result<Vec<String>> {
     let mut versions = Vec::new();
 
     for entry in fs::read_dir(Path::new(prefix).parent().unwrap())? {
@@ -297,8 +302,8 @@ fn find_newest_version(versions: &Vec<String>) -> Option<String> {
     max_version.map(|v| v.to_string())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> anyhow::Result<String> {
+#[instrument(level = "trace", skip_all)]
+async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> Result<String> {
     match fetch_latest_release_tag(owner, repo).await {
         Ok(v) => return Ok(v),
         Err(e) => {
@@ -309,9 +314,9 @@ async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> anyhow::R
                         let local_versions = get_local_versions_with_prefix(
                             &format!("{}v", LOCAL_PREFIX)
                         )?;
-                        let newest_local = find_newest_version(&local_versions).ok_or(
-                            anyhow::anyhow!("Could not connect to github nor find local copy; please connect to the internet and try again.")
-                        )?;
+                        let newest_local = find_newest_version(&local_versions).ok_or_else(|| {
+                            eyre!("Could not connect to github nor find local copy; please connect to the internet and try again.")
+                        })?;
                         Ok(format!("v{}", newest_local))
                     } else {
                         return Err(e);
@@ -322,7 +327,7 @@ async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> anyhow::R
     }
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 pub fn run_runtime(
     path: &Path,
     home: &Path,
@@ -332,7 +337,7 @@ pub fn run_runtime(
     verbose: bool,
     detached: bool,
     verbosity: u8,
-) -> anyhow::Result<(Child, OwnedFd)> {
+) -> Result<(Child, OwnedFd)> {
     let port = format!("{}", port);
     let network_router_port = format!("{}", network_router_port);
     let verbosity = format!("{}", verbosity);
@@ -358,7 +363,7 @@ pub fn run_runtime(
     Ok((process, fds.master))
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 pub async fn execute(
     runtime_path: Option<PathBuf>,
     version: String,
@@ -373,17 +378,14 @@ pub async fn execute(
     release: bool,
     verbosity: u8,
     mut args: Vec<&str>,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let detached = false;  // TODO: to argument?
     // TODO: factor out with run_tests?
     let runtime_path = match runtime_path {
         None => get_runtime_binary(&version).await?,
         Some(runtime_path) => {
             if !runtime_path.exists() {
-                return Err(anyhow::anyhow!(
-                    "--runtime-path {:?} does not exist.",
-                    runtime_path,
-                ));
+                return Err(eyre!("--runtime-path {:?} does not exist.", runtime_path));
             }
             if runtime_path.is_dir() {
                 // Compile the runtime binary
@@ -392,7 +394,7 @@ pub async fn execute(
                     .join(if release { "release" } else { "debug" })
                     .join("kinode")
             } else {
-                return Err(anyhow::anyhow!(
+                return Err(eyre!(
                     "--runtime-path {:?} must be a directory (the repo).",
                     runtime_path,
                 ));

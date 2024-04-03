@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use color_eyre::{eyre::eyre, Result};
 use dirs::home_dir;
 use fs_err as fs;
 use tokio::sync::Mutex;
@@ -42,8 +43,8 @@ fn expand_home_path(path: &PathBuf) -> Option<PathBuf> {
         .and_then(|s| Some(Path::new(&s).to_path_buf()))
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-fn make_node_names(nodes: Vec<Node>) -> anyhow::Result<Vec<String>> {
+#[instrument(level = "trace", skip_all)]
+fn make_node_names(nodes: Vec<Node>) -> Result<Vec<String>> {
     nodes
         .iter()
         .map(|node| get_basename(&node.home)
@@ -54,7 +55,7 @@ fn make_node_names(nodes: Vec<Node>) -> anyhow::Result<Vec<String>> {
                 }
                 Some(base)
             })
-            .ok_or(anyhow::anyhow!(
+            .ok_or(eyre!(
                 "run_tests:make_node_names: did not find basename for {:?}",
                 node.home,
             ))
@@ -88,12 +89,12 @@ impl Config {
     }
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 async fn wait_until_booted(
     port: u16,
     max_waits: u16,
     mut recv_kill_in_wait: BroadcastRecvBool,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     for _ in 0..max_waits {
         let request = inject_message::make_message(
             "vfs:distro:sys",
@@ -121,15 +122,15 @@ async fn wait_until_booted(
         tokio::select! {
             _ = sleep(Duration::from_secs(1)) => {}
             _ = recv_kill_in_wait.recv() => {
-                return Err(anyhow::anyhow!("received exit"));
+                return Err(eyre!("received exit"));
             }
         };
     }
-    Err(anyhow::anyhow!("kit run-tests: could not connect to Kinode"))
+    Err(eyre!("kit run-tests: could not connect to Kinode"))
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> Result<()> {
     info!("Loading setup packages...");
 
     for setup_path in setup_paths {
@@ -140,8 +141,8 @@ async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> Result<()> {
     info!("Loading tests...");
 
     for TestPackage { ref path, .. } in test_packages {
@@ -164,7 +165,7 @@ async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Resu
         ).await?;
         match inject_message::parse_response(response).await {
             Ok(_) => {},
-            Err(e) => return Err(anyhow::anyhow!("Failed to load tests: {}", e)),
+            Err(e) => return Err(eyre!("Failed to load tests: {}", e)),
         }
     }
 
@@ -195,7 +196,7 @@ async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Resu
     ).await?;
     match inject_message::parse_response(response).await {
         Ok(_) => {},
-        Err(e) => return Err(anyhow::anyhow!("Failed to load tests capabilities: {}", e)),
+        Err(e) => return Err(eyre!("Failed to load tests capabilities: {}", e)),
     }
 
 
@@ -203,13 +204,13 @@ async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Resu
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 async fn run_tests(
     test_packages: &Vec<TestPackage>,
     mut ports: Vec<u16>,
     node_names: Vec<String>,
     test_timeout: u64,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let master_port = ports.remove(0);
 
     // Set up non-master nodes.
@@ -237,7 +238,7 @@ async fn run_tests(
         ).await?;
 
         if response.status() != 200 {
-            return Err(anyhow::anyhow!("Failed with status code: {}", response.status()))
+            return Err(eyre!("Failed with status code: {}", response.status()))
         }
     }
 
@@ -270,23 +271,23 @@ async fn run_tests(
             match serde_json::from_str(body)? {
                 tt::TesterResponse::Pass => info!("PASS"),
                 tt::TesterResponse::Fail { test, file, line, column } => {
-                    return Err(anyhow::anyhow!("FAIL: {} {}:{}:{}", test, file, line, column));
+                    return Err(eyre!("FAIL: {} {}:{}:{}", test, file, line, column));
                 },
                 tt::TesterResponse::GetFullMessage(_) => {
-                    return Err(anyhow::anyhow!("FAIL: Unexpected Response"));
+                    return Err(eyre!("FAIL: Unexpected Response"));
                 },
             }
         },
         Err(e) => {
-            return Err(anyhow::anyhow!("FAIL: {}", e));
+            return Err(eyre!("FAIL: {}", e));
         },
     };
 
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<()> {
     for setup_package_path in &test.setup_package_paths {
         build::execute(&setup_package_path, false, false, false, "").await?;
     }
@@ -416,8 +417,8 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-pub async fn execute(config_path: &str) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+pub async fn execute(config_path: &str) -> Result<()> {
     let detached = true; // TODO: to arg?
 
     let config_content = fs::read_to_string(config_path)?;
@@ -430,10 +431,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
         Runtime::FetchVersion(ref version) => get_runtime_binary(version).await?,
         Runtime::RepoPath(runtime_path) => {
             if !runtime_path.exists() {
-                return Err(anyhow::anyhow!(
-                    "RepoPath {:?} does not exist.",
-                    runtime_path,
-                ));
+                return Err(eyre!("RepoPath {:?} does not exist.", runtime_path));
             }
             if runtime_path.is_dir() {
                 // Compile the runtime binary
@@ -445,7 +443,7 @@ pub async fn execute(config_path: &str) -> anyhow::Result<()> {
                     .join(if config.runtime_build_release { "release" } else { "debug" })
                     .join("kinode")
             } else {
-                return Err(anyhow::anyhow!(
+                return Err(eyre!(
                     "RepoPath {:?} must be a directory (the repo).",
                     runtime_path
                 ));

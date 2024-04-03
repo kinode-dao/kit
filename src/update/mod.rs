@@ -1,13 +1,14 @@
 use std::process::Command;
 
+use color_eyre::Result;
 use fs_err as fs;
 use tracing::instrument;
 
 use crate::KIT_CACHE;
 use crate::build;
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-pub fn execute(mut user_args: Vec<String>, branch: &str) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+pub fn execute(mut user_args: Vec<String>, branch: &str) -> Result<()> {
     let mut args: Vec<String> = vec!["install",
         "--git", "https://github.com/kinode-dao/kit",
         "--branch", branch,

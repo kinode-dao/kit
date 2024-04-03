@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::str;
 
+use color_eyre::{eyre::eyre, Result};
 use fs_err as fs;
 use tracing::{info, warn, instrument};
 
@@ -54,15 +55,15 @@ impl std::fmt::Display for Dependencies {
     }
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-fn is_nvm_installed() -> anyhow::Result<bool> {
+#[instrument(level = "trace", skip_all)]
+fn is_nvm_installed() -> Result<bool> {
     let home_dir = env::var("HOME")?;
     let nvm_dir = format!("{}/.nvm", home_dir);
     Ok(std::path::Path::new(&nvm_dir).exists())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-fn install_nvm() -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+fn install_nvm() -> Result<()> {
     info!("Getting nvm...");
     let install_nvm = format!(
         "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/{}/install.sh | bash",
@@ -76,8 +77,8 @@ fn install_nvm() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-fn install_rust() -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+fn install_rust() -> Result<()> {
     info!("Getting rust...");
     let install_rust = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh";
     run_command(Command::new("bash")
@@ -88,8 +89,8 @@ fn install_rust() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-fn check_python_venv(python: &str) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+fn check_python_venv(python: &str) -> Result<()> {
     info!("Checking for python venv...");
     let venv_result = run_command(Command::new(python)
         .args(&["-m", "venv", "kinode-test-venv"])
@@ -104,12 +105,12 @@ fn check_python_venv(python: &str) -> anyhow::Result<()> {
             info!("Found python venv.");
             Ok(())
         },
-        Err(_) => Err(anyhow::anyhow!("Check for python venv failed.")),
+        Err(_) => Err(eyre!("Check for python venv failed.")),
     }
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-fn is_command_installed(cmd: &str) -> anyhow::Result<bool> {
+#[instrument(level = "trace", skip_all)]
+fn is_command_installed(cmd: &str) -> Result<bool> {
     Ok(Command::new("which")
         .arg(cmd)
         .stdout(Stdio::null())
@@ -118,11 +119,11 @@ fn is_command_installed(cmd: &str) -> anyhow::Result<bool> {
     )
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 fn is_npm_version_correct(
     node_version: String,
     required_version: (u32, u32),
-) -> anyhow::Result<bool> {
+) -> Result<bool> {
     let version = call_with_nvm_output(&format!("nvm use {node_version} && npm --version"))?;
     let version = version.split('\n')
         .filter(|s| !s.is_empty())
@@ -135,8 +136,8 @@ fn is_npm_version_correct(
     )
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-fn is_version_correct(cmd: &str, required_version: (u32, u32)) -> anyhow::Result<bool> {
+#[instrument(level = "trace", skip_all)]
+fn is_version_correct(cmd: &str, required_version: (u32, u32)) -> Result<bool> {
     let output = Command::new(cmd)
         .arg("--version")
         .output()?
@@ -160,11 +161,11 @@ fn strip_color_codes(input: &str) -> String {
 ///
 /// Returns `None` if no valid version; `Some(String)`:
 /// the valid version, as a String.
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 pub fn get_newest_valid_node_version(
     required_major: Option<u32>,
     minimum_minor: Option<u32>,
-) -> anyhow::Result<Option<String>> {
+) -> Result<Option<String>> {
     let required_major = required_major.unwrap_or(REQUIRED_NODE_MAJOR);
     let minimum_minor = minimum_minor.unwrap_or(MINIMUM_NODE_MINOR);
 
@@ -203,8 +204,8 @@ pub fn get_newest_valid_node_version(
     Ok(newest_node)
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-fn call_with_nvm_output(arg: &str) -> anyhow::Result<String> {
+#[instrument(level = "trace", skip_all)]
+fn call_with_nvm_output(arg: &str) -> Result<String> {
     let output = Command::new("bash")
         .args(&["-c", &format!("source ~/.nvm/nvm.sh && {}", arg)])
         .output()?
@@ -212,24 +213,24 @@ fn call_with_nvm_output(arg: &str) -> anyhow::Result<String> {
     Ok(String::from_utf8_lossy(&output).to_string())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-fn call_with_nvm(arg: &str) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+fn call_with_nvm(arg: &str) -> Result<()> {
     run_command(Command::new("bash")
         .args(&["-c", &format!("source ~/.nvm/nvm.sh && {}", arg)])
     )?;
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-fn call_rustup(arg: &str) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+fn call_rustup(arg: &str) -> Result<()> {
     run_command(Command::new("bash")
         .args(&["-c", &format!("rustup {}", arg)])
     )?;
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-fn call_cargo(arg: &str) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+fn call_cargo(arg: &str) -> Result<()> {
     let command = if arg.contains("--color=always") {
         format!("cargo {}", arg)
     } else {
@@ -264,8 +265,8 @@ fn parse_version(version_str: &str) -> Option<(u32, u32)> {
     None
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-fn check_rust_toolchains_targets() -> anyhow::Result<Vec<Dependency>> {
+#[instrument(level = "trace", skip_all)]
+fn check_rust_toolchains_targets() -> Result<Vec<Dependency>> {
     let mut missing_deps = Vec::new();
     let output = Command::new("rustup")
         .arg("show")
@@ -342,11 +343,11 @@ fn check_rust_toolchains_targets() -> anyhow::Result<Vec<Dependency>> {
 }
 
 /// Find the newest Python version (>= 3.10 or given major, minor)
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 pub fn get_python_version(
     required_major: Option<u32>,
     minimum_minor: Option<u32>,
-) -> anyhow::Result<Option<String>> {
+) -> Result<Option<String>> {
     let required_major = required_major.unwrap_or(REQUIRED_PY_MAJOR);
     let minimum_minor = minimum_minor.unwrap_or(MINIMUM_PY_MINOR);
     let output = Command::new("bash")
@@ -384,18 +385,18 @@ pub fn get_python_version(
 }
 
 /// Check for Python deps, erroring if not found: python deps cannot be automatically fetched
-#[instrument(level = "trace", err(Debug), skip_all)]
-pub fn check_py_deps() -> anyhow::Result<String> {
+#[instrument(level = "trace", skip_all)]
+pub fn check_py_deps() -> Result<String> {
     let python = get_python_version(Some(REQUIRED_PY_MAJOR), Some(MINIMUM_PY_MINOR))?
-        .ok_or(anyhow::anyhow!("kit requires Python 3.10 or newer"))?;
+        .ok_or_else(|| eyre!("kit requires Python 3.10 or newer"))?;
     check_python_venv(&python)?;
 
     Ok(python)
 }
 
 /// Check for Javascript deps, returning a Vec of not found: can be automatically fetched
-#[instrument(level = "trace", err(Debug), skip_all)]
-pub fn check_js_deps() -> anyhow::Result<Vec<Dependency>> {
+#[instrument(level = "trace", skip_all)]
+pub fn check_js_deps() -> Result<Vec<Dependency>> {
     let mut missing_deps = Vec::new();
     if !is_nvm_installed()? {
         missing_deps.push(Dependency::Nvm);
@@ -414,8 +415,8 @@ pub fn check_js_deps() -> anyhow::Result<Vec<Dependency>> {
 }
 
 /// Check for Rust deps, returning a Vec of not found: can be automatically fetched
-#[instrument(level = "trace", err(Debug), skip_all)]
-pub fn check_rust_deps() -> anyhow::Result<Vec<Dependency>> {
+#[instrument(level = "trace", skip_all)]
+pub fn check_rust_deps() -> Result<Vec<Dependency>> {
     if !is_command_installed("rustup")? {
         // don't have rust -> missing all
         return Ok(vec![
@@ -435,8 +436,8 @@ pub fn check_rust_deps() -> anyhow::Result<Vec<Dependency>> {
     Ok(missing_deps)
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-pub fn get_deps(deps: Vec<Dependency>) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+pub fn get_deps(deps: Vec<Dependency>) -> Result<()> {
     if deps.is_empty() {
         return Ok(());
     }
@@ -485,8 +486,8 @@ pub fn get_deps(deps: Vec<Dependency>) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-pub fn execute() -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+pub fn execute() -> Result<()> {
     info!("Setting up...");
 
     check_py_deps()?;

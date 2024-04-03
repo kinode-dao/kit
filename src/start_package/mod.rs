@@ -1,7 +1,7 @@
 use std::io::{Read, Write};
 use std::path::Path;
 
-use anyhow::Context;
+use color_eyre::eyre::{eyre, Result, WrapErr};
 use fs_err as fs;
 use serde_json::json;
 use tracing::{info, instrument};
@@ -12,13 +12,13 @@ use kinode_process_lib::kernel_types::Erc721Metadata;
 
 use crate::{inject_message, KIT_LOG_PATH_DEFAULT};
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 fn new_package(
     node: Option<&str>,
     package_name: &str,
     publisher_node: &str,
     bytes_path: &str,
-) -> anyhow::Result<serde_json::Value> {
+) -> Result<serde_json::Value> {
     let message = json!({
         "NewPackage": {
             "package": {"package_name": package_name, "publisher_node": publisher_node},
@@ -36,13 +36,13 @@ fn new_package(
     )
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 pub fn interact_with_package(
     request_type: &str,
     node: Option<&str>,
     package_name: &str,
     publisher_node: &str,
-) -> anyhow::Result<serde_json::Value> {
+) -> Result<serde_json::Value> {
     let message = json!({
         request_type: {
             "package_name": package_name,
@@ -60,8 +60,8 @@ pub fn interact_with_package(
     )
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
     let file = fs::File::create(zip_filename)?;
     let walkdir = WalkDir::new(directory);
     let it = walkdir.into_iter();
@@ -93,10 +93,10 @@ fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-pub async fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     if !package_dir.join("pkg").exists() {
-        return Err(anyhow::anyhow!(
+        return Err(eyre!(
             "Required `pkg/` dir not found within given input dir {:?} (or cwd, if none given). Please re-run targeting a package.",
             package_dir,
         ));
@@ -104,9 +104,8 @@ pub async fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
     let pkg_dir = package_dir.join("pkg").canonicalize()?;
     let metadata: Erc721Metadata =
         serde_json::from_reader(fs::File::open(package_dir.join("metadata.json"))
-            .with_context(|| "Missing required metadata.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=metadata.json#metadatajson")?
+            .wrap_err_with(|| "Missing required metadata.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=metadata.json#metadatajson")?
         )?;
-        //serde_json::from_reader(fs::File::open(package_dir.join("metadata.json"))?)?;
     let package_name = metadata.properties.package_name.as_str();
     let publisher = metadata.properties.publisher.as_str();
     let pkg_publisher = format!("{}:{}", package_name, publisher);
@@ -133,16 +132,16 @@ pub async fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
             .map_err(|e| {
                 let e_string = e.to_string();
                 if e_string.contains("Failed with status code:") {
-                    anyhow::anyhow!("{}\ncheck logs (default at {}) for full http response\n\nhint: is Kinode running at url {}?", e_string, KIT_LOG_PATH_DEFAULT, url)
+                    eyre!("{}\ncheck logs (default at {}) for full http response\n\nhint: is Kinode running at url {}?", e_string, KIT_LOG_PATH_DEFAULT, url)
                 } else {
-                    anyhow::anyhow!(e_string)
+                    eyre!(e_string)
                 }
             })?;
     let body = serde_json::from_str::<serde_json::Value>(body)?;
     let new_package_response = body.get("NewPackageResponse");
 
     if new_package_response != Some(&serde_json::Value::String("Success".to_string())) {
-        return Err(anyhow::anyhow!("Failed to add package. Got response from node: {}", body));
+        return Err(eyre!("Failed to add package. Got response from node: {}", body));
     }
 
     // Install package
@@ -156,7 +155,7 @@ pub async fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
     if install_response == Some(&serde_json::Value::String("Success".to_string())) {
         info!("Successfully installed package {} on node at {}", pkg_publisher, url);
     } else {
-        return Err(anyhow::anyhow!("Failed to start package. Got response from node: {}", body));
+        return Err(eyre!("Failed to start package. Got response from node: {}", body));
     }
 
     Ok(())

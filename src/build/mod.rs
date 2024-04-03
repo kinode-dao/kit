@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::process::Command;
 
+use color_eyre::{eyre::eyre, Result};
 use fs_err as fs;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn, instrument};
@@ -29,8 +30,8 @@ struct CargoPackage {
     name: String,
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-pub fn run_command(cmd: &mut Command) -> anyhow::Result<(String, String)> {
+#[instrument(level = "trace", skip_all)]
+pub fn run_command(cmd: &mut Command) -> Result<(String, String)> {
     let output = cmd.output()?;
     if output.status.success() {
         Ok((
@@ -38,7 +39,7 @@ pub fn run_command(cmd: &mut Command) -> anyhow::Result<(String, String)> {
             String::from_utf8_lossy(&output.stderr).to_string(),
         ))
     } else {
-        Err(anyhow::anyhow!(
+        Err(eyre!(
             "Command `{} {:?}` failed with exit code {}\nstdout: {}\nstderr: {}",
             cmd.get_program().to_str().unwrap(),
             cmd.get_args()
@@ -51,8 +52,8 @@ pub fn run_command(cmd: &mut Command) -> anyhow::Result<(String, String)> {
     }
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+pub async fn download_file(url: &str, path: &Path) -> Result<()> {
     fs::create_dir_all(&KIT_CACHE)?;
     let hex_url = hex::encode(url);
     let hex_url_path = format!("{}/{}", KIT_CACHE, hex_url);
@@ -65,10 +66,7 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
 
         // Check if response status is 200 (OK)
         if response.status() != reqwest::StatusCode::OK {
-            return Err(anyhow::anyhow!(
-                "Failed to download file: HTTP Status {}",
-                response.status()
-            ));
+            return Err(eyre!("Failed to download file: HTTP Status {}", response.status()));
         }
 
         let content = response.bytes().await?.to_vec();
@@ -88,17 +86,17 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
     }
     fs::create_dir_all(
         path.parent()
-            .ok_or(anyhow::anyhow!("path doesn't have parent"))?,
+            .ok_or_else(|| eyre!("path doesn't have parent"))?,
     )?;
     fs::write(path, &content)?;
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 async fn compile_javascript_wasm_process(
     process_dir: &Path,
     valid_node: Option<String>,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     info!(
         "Compiling Javascript Kinode process in {:?}...",
         process_dir
@@ -144,8 +142,8 @@ async fn compile_javascript_wasm_process(
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-async fn compile_python_wasm_process(process_dir: &Path, python: &str) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+async fn compile_python_wasm_process(process_dir: &Path, python: &str) -> Result<()> {
     info!("Compiling Python Kinode process in {:?}...", process_dir);
     let wit_dir = process_dir.join("wit");
     download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
@@ -169,11 +167,11 @@ async fn compile_python_wasm_process(process_dir: &Path, python: &str) -> anyhow
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 async fn compile_rust_wasm_process(
     process_dir: &Path,
     features: &str,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     info!("Compiling Rust Kinode process in {:?}...", process_dir);
 
     // Paths
@@ -296,8 +294,8 @@ async fn compile_rust_wasm_process(
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-async fn compile_and_copy_ui(package_dir: &Path, valid_node: Option<String>) -> anyhow::Result<()> {
+#[instrument(level = "trace", skip_all)]
+async fn compile_and_copy_ui(package_dir: &Path, valid_node: Option<String>) -> Result<()> {
     let ui_path = package_dir.join("ui");
     info!("Building UI in {:?}...", ui_path);
 
@@ -344,30 +342,30 @@ async fn compile_and_copy_ui(package_dir: &Path, valid_node: Option<String>) -> 
             )?;
         }
     } else {
-        return Err(anyhow::anyhow!("'ui' directory not found"));
+        return Err(eyre!("'ui' directory not found"));
     }
 
     info!("Done building UI in {:?}.", ui_path);
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 async fn compile_package_and_ui(
     package_dir: &Path,
     valid_node: Option<String>,
     skip_deps_check: bool,
     features: &str,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     compile_and_copy_ui(package_dir, valid_node).await?;
     compile_package(package_dir, skip_deps_check, features).await?;
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 async fn compile_package_item(
     entry: std::io::Result<std::fs::DirEntry>,
     features: String,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let entry = entry?;
     let path = entry.path();
     if path.is_dir() {
@@ -375,7 +373,7 @@ async fn compile_package_item(
             compile_rust_wasm_process(&path, &features).await?;
         } else if path.join(PYTHON_SRC_PATH).exists() {
             let python = get_python_version(None, None)?
-                .ok_or(anyhow::anyhow!("kit requires Python 3.10 or newer"))?;
+                .ok_or_else(|| eyre!("kit requires Python 3.10 or newer"))?;
             compile_python_wasm_process(&path, &python).await?;
         } else if path.join(JAVASCRIPT_SRC_PATH).exists() {
             let valid_node = get_newest_valid_node_version(None, None)?;
@@ -385,12 +383,12 @@ async fn compile_package_item(
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 async fn compile_package(
     package_dir: &Path,
     skip_deps_check: bool,
     features: &str,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let mut checked_rust = false;
     let mut checked_py = false;
     let mut checked_js = false;
@@ -425,16 +423,16 @@ async fn compile_package(
     Ok(())
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 pub async fn execute(
     package_dir: &Path,
     no_ui: bool,
     ui_only: bool,
     skip_deps_check: bool,
     features: &str,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     if !package_dir.join("pkg").exists() {
-        return Err(anyhow::anyhow!(
+        return Err(eyre!(
             "Required `pkg/` dir not found within given input dir {:?} (or cwd, if none given). Please re-run targeting a package.",
             package_dir,
         ));
@@ -443,9 +441,7 @@ pub async fn execute(
     let ui_dir = package_dir.join("ui");
     if !ui_dir.exists() {
         if ui_only {
-            return Err(anyhow::anyhow!(
-                "kit build: can't build UI: no ui directory exists"
-            ));
+            return Err(eyre!("kit build: can't build UI: no ui directory exists"));
         } else {
             compile_package(package_dir, skip_deps_check, features).await
         }
