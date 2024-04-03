@@ -1,5 +1,6 @@
-use std::{fs, path::{PathBuf, Path}, collections::HashMap};
+use std::{path::{PathBuf, Path}, collections::HashMap};
 
+use fs_err as fs;
 use tracing::instrument;
 
 include!("includes.rs");
@@ -76,7 +77,7 @@ fn is_url_safe(input: &str) -> bool {
     re.is_match(input)
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub fn execute(
     new_dir: PathBuf,
     package_name: Option<String>,

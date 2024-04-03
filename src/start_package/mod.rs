@@ -1,7 +1,8 @@
-use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
 
+use anyhow::Context;
+use fs_err as fs;
 use serde_json::json;
 use tracing::{info, instrument};
 use walkdir::WalkDir;
@@ -11,7 +12,7 @@ use kinode_process_lib::kernel_types::Erc721Metadata;
 
 use crate::{inject_message, KIT_LOG_PATH_DEFAULT};
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 fn new_package(
     node: Option<&str>,
     package_name: &str,
@@ -35,7 +36,7 @@ fn new_package(
     )
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub fn interact_with_package(
     request_type: &str,
     node: Option<&str>,
@@ -59,7 +60,7 @@ pub fn interact_with_package(
     )
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
     let file = fs::File::create(zip_filename)?;
     let walkdir = WalkDir::new(directory);
@@ -92,7 +93,7 @@ fn zip_directory(directory: &Path, zip_filename: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub async fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
     if !package_dir.join("pkg").exists() {
         return Err(anyhow::anyhow!(
@@ -102,7 +103,10 @@ pub async fn execute(package_dir: &Path, url: &str) -> anyhow::Result<()> {
     }
     let pkg_dir = package_dir.join("pkg").canonicalize()?;
     let metadata: Erc721Metadata =
-        serde_json::from_reader(fs::File::open(package_dir.join("metadata.json"))?)?;
+        serde_json::from_reader(fs::File::open(package_dir.join("metadata.json"))
+            .with_context(|| "Missing required metadata.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=metadata.json#metadatajson")?
+        )?;
+        //serde_json::from_reader(fs::File::open(package_dir.join("metadata.json"))?)?;
     let package_name = metadata.properties.package_name.as_str();
     let publisher = metadata.properties.publisher.as_str();
     let pkg_publisher = format!("{}:{}", package_name, publisher);

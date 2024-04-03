@@ -1,8 +1,8 @@
-use std::fs;
 use std::io::Read;
 
 #[allow(deprecated)]
 use base64::{decode, encode};
+use fs_err as fs;
 use serde_json::{Value, json};
 use tracing::{debug, info, instrument};
 
@@ -34,7 +34,7 @@ impl std::fmt::Display for Response {
     }
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub fn make_message(
     process: &str,
     expects_response: Option<u64>,
@@ -73,7 +73,7 @@ pub fn make_message(
     Ok(request)
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub async fn send_request(
     url: &str,
     json_data: Value,
@@ -107,7 +107,7 @@ pub async fn send_request_inner(
     Ok(response)
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub async fn parse_response(response: reqwest::Response) -> anyhow::Result<Response> {
     if response.status() != 200 {
         let response_status = response.status();
@@ -179,7 +179,7 @@ pub async fn parse_response(response: reqwest::Response) -> anyhow::Result<Respo
     }
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub async fn execute(
     url: &str,
     process: &str,

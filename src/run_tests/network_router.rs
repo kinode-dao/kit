@@ -91,7 +91,7 @@ async fn handle_connection(
     }
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub async fn execute(
     port: u16,
     _defects: NetworkRouterDefects,

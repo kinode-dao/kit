@@ -3,6 +3,7 @@ use std::env;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use fs_err as fs;
 use serde::Deserialize;
 use tracing::{error, instrument, warn, Level};
 use tracing_subscriber::{
@@ -49,7 +50,7 @@ async fn get_latest_commit_sha_from_branch(
     Ok(serde_json::from_slice(&bytes)?)
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 fn init_tracing(log_path: PathBuf) -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard> {
     // Define a fixed log file name with rolling based on size or execution instance.
     let log_parent_path = log_path
@@ -60,7 +61,7 @@ fn init_tracing(log_path: PathBuf) -> anyhow::Result<tracing_appender::non_block
         .and_then(|f| f.to_str())
         .ok_or(anyhow::anyhow!("no log path file name"))?;
     if !log_parent_path.exists() {
-        std::fs::create_dir_all(log_parent_path)?;
+        fs::create_dir_all(log_parent_path)?;
     }
     let file_appender = tracing_appender::rolling::never(log_parent_path, log_file_name);
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);

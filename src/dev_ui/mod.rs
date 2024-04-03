@@ -6,7 +6,7 @@ use tracing::{info, instrument};
 use crate::build::run_command;
 use crate::setup::{check_js_deps, get_deps, get_newest_valid_node_version};
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub fn execute(
     package_dir: &Path,
     url: &str,

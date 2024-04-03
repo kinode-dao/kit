@@ -1,8 +1,8 @@
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use dirs::home_dir;
+use fs_err as fs;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, info, instrument};
@@ -42,7 +42,7 @@ fn expand_home_path(path: &PathBuf) -> Option<PathBuf> {
         .and_then(|s| Some(Path::new(&s).to_path_buf()))
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 fn make_node_names(nodes: Vec<Node>) -> anyhow::Result<Vec<String>> {
     nodes
         .iter()
@@ -88,7 +88,7 @@ impl Config {
     }
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 async fn wait_until_booted(
     port: u16,
     max_waits: u16,
@@ -128,7 +128,7 @@ async fn wait_until_booted(
     Err(anyhow::anyhow!("kit run-tests: could not connect to Kinode"))
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()> {
     info!("Loading setup packages...");
 
@@ -140,7 +140,7 @@ async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> anyhow::Result<()
     Ok(())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Result<()> {
     info!("Loading tests...");
 
@@ -203,7 +203,7 @@ async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> anyhow::Resu
     Ok(())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 async fn run_tests(
     test_packages: &Vec<TestPackage>,
     mut ports: Vec<u16>,
@@ -285,7 +285,7 @@ async fn run_tests(
     Ok(())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow::Result<()> {
     for setup_package_path in &test.setup_package_paths {
         build::execute(&setup_package_path, false, false, false, "").await?;
@@ -416,7 +416,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> anyhow:
     Ok(())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub async fn execute(config_path: &str) -> anyhow::Result<()> {
     let detached = true; // TODO: to arg?
 

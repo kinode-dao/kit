@@ -1,4 +1,4 @@
-use std::{fs, io, thread, time};
+use std::{io, thread, time};
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::{FromRawFd, OwnedFd};
@@ -8,6 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use zip::read::ZipArchive;
 
+use fs_err as fs;
 use semver::Version;
 use serde::Deserialize;
 use tokio::sync::Mutex;
@@ -36,7 +37,7 @@ struct Asset {
     name: String,
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
     let file = fs::File::open(archive_path)?;
     let mut archive = ZipArchive::new(file)?;
@@ -52,11 +53,11 @@ fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
         let outpath = archive_dir.join(outpath);
 
         if file.name().ends_with('/') {
-            std::fs::create_dir_all(&outpath)?;
+            fs::create_dir_all(&outpath)?;
         } else {
             if let Some(p) = outpath.parent() {
                 if !p.exists() {
-                    std::fs::create_dir_all(&p)?;
+                    fs::create_dir_all(&p)?;
                 }
             }
             let mut outfile = fs::File::create(&outpath)?;
@@ -69,7 +70,7 @@ fn extract_zip(archive_path: &Path) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub fn compile_runtime(path: &Path, release: bool) -> anyhow::Result<()> {
     info!("Compiling Kinode runtime...");
 
@@ -95,7 +96,7 @@ pub fn compile_runtime(path: &Path, release: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 async fn get_runtime_binary_inner(
     version: &str,
     zip_name: &str,
@@ -118,7 +119,7 @@ async fn get_runtime_binary_inner(
     Ok(())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub fn get_platform_runtime_name() -> anyhow::Result<String> {
     let uname = Command::new("uname").output()?;
     if !uname.status.success() {
@@ -142,7 +143,7 @@ pub fn get_platform_runtime_name() -> anyhow::Result<String> {
     Ok(format!("kinode-{}-simulation-mode.zip", zip_name_midfix))
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     let zip_name = get_platform_runtime_name()?;
 
@@ -164,12 +165,12 @@ pub async fn get_runtime_binary(version: &str) -> anyhow::Result<PathBuf> {
     Ok(runtime_path)
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> anyhow::Result<Vec<u8>> {
     let cache_path = format!("{}/{}-{}-{}.bin", KIT_CACHE, owner, repo, endpoint);
     let cache_path = Path::new(&cache_path);
     if cache_path.exists() {
-        if let Some(local_bytes) = std::fs::metadata(&cache_path).ok()
+        if let Some(local_bytes) = fs::metadata(&cache_path).ok()
             .and_then(|m| m.modified().ok())
             .and_then(|m| m.elapsed().ok())
             .and_then(|since_modified| {
@@ -205,13 +206,13 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> anyhow:
     };
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 async fn fetch_releases(owner: &str, repo: &str) -> anyhow::Result<Vec<Release>> {
     let bytes = get_from_github(owner, repo, "releases").await?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub async fn find_releases_with_asset(
     owner: Option<&str>,
     repo: Option<&str>,
@@ -253,7 +254,7 @@ pub async fn find_releases_with_asset_if_online(
     Ok(remote_values)
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 async fn fetch_latest_release_tag(owner: &str, repo: &str) -> anyhow::Result<String> {
     fetch_releases(owner, repo)
         .await?
@@ -262,7 +263,7 @@ async fn fetch_latest_release_tag(owner: &str, repo: &str) -> anyhow::Result<Str
         .ok_or_else(|| anyhow::anyhow!("No releases found"))
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 fn get_local_versions_with_prefix(prefix: &str) -> anyhow::Result<Vec<String>> {
     let mut versions = Vec::new();
 
@@ -296,7 +297,7 @@ fn find_newest_version(versions: &Vec<String>) -> Option<String> {
     max_version.map(|v| v.to_string())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> anyhow::Result<String> {
     match fetch_latest_release_tag(owner, repo).await {
         Ok(v) => return Ok(v),
@@ -321,7 +322,7 @@ async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> anyhow::R
     }
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub fn run_runtime(
     path: &Path,
     home: &Path,
@@ -357,7 +358,7 @@ pub fn run_runtime(
     Ok((process, fds.master))
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub async fn execute(
     runtime_path: Option<PathBuf>,
     version: String,

@@ -1,9 +1,8 @@
-use std::fs::File;
 use std::path::Path;
 use std::process::Command;
 
+use fs_err as fs;
 use serde::{Deserialize, Serialize};
-use tokio::fs;
 use tracing::{info, warn, instrument};
 
 use crate::KIT_CACHE;
@@ -30,7 +29,7 @@ struct CargoPackage {
     name: String,
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub fn run_command(cmd: &mut Command) -> anyhow::Result<(String, String)> {
     let output = cmd.output()?;
     if output.status.success() {
@@ -52,15 +51,15 @@ pub fn run_command(cmd: &mut Command) -> anyhow::Result<(String, String)> {
     }
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
-    fs::create_dir_all(&KIT_CACHE).await?;
+    fs::create_dir_all(&KIT_CACHE)?;
     let hex_url = hex::encode(url);
     let hex_url_path = format!("{}/{}", KIT_CACHE, hex_url);
     let hex_url_path = Path::new(&hex_url_path);
 
     let content = if hex_url_path.exists() {
-        fs::read(hex_url_path).await?
+        fs::read(hex_url_path)?
     } else {
         let response = reqwest::get(url).await?;
 
@@ -73,15 +72,15 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
         }
 
         let content = response.bytes().await?.to_vec();
-        fs::write(hex_url_path, &content).await?;
+        fs::write(hex_url_path, &content)?;
         content
     };
 
     if path.exists() {
         if path.is_dir() {
-            fs::remove_dir_all(path).await?;
+            fs::remove_dir_all(path)?;
         } else {
-            let existing_content = fs::read(path).await?;
+            let existing_content = fs::read(path)?;
             if content == existing_content {
                 return Ok(());
             }
@@ -90,13 +89,12 @@ pub async fn download_file(url: &str, path: &Path) -> anyhow::Result<()> {
     fs::create_dir_all(
         path.parent()
             .ok_or(anyhow::anyhow!("path doesn't have parent"))?,
-    )
-    .await?;
-    fs::write(path, &content).await?;
+    )?;
+    fs::write(path, &content)?;
     Ok(())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 async fn compile_javascript_wasm_process(
     process_dir: &Path,
     valid_node: Option<String>,
@@ -146,7 +144,7 @@ async fn compile_javascript_wasm_process(
     Ok(())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 async fn compile_python_wasm_process(process_dir: &Path, python: &str) -> anyhow::Result<()> {
     info!("Compiling Python Kinode process in {:?}...", process_dir);
     let wit_dir = process_dir.join("wit");
@@ -171,7 +169,7 @@ async fn compile_python_wasm_process(process_dir: &Path, python: &str) -> anyhow
     Ok(())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 async fn compile_rust_wasm_process(
     process_dir: &Path,
     features: &str,
@@ -186,7 +184,7 @@ async fn compile_rust_wasm_process(
     let wit_dir = process_dir.join("wit");
 
     // Ensure the bindings directory exists
-    fs::create_dir_all(&bindings_dir).await?;
+    fs::create_dir_all(&bindings_dir)?;
 
     // Check and download kinode.wit if wit_dir does not exist
     download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
@@ -210,18 +208,17 @@ async fn compile_rust_wasm_process(
     ]))?;
 
     // Copy wit directory to bindings
-    fs::create_dir_all(&bindings_dir.join("wit")).await?;
-    let mut entries = fs::read_dir(&wit_dir).await?;
-    while let Some(entry) = entries.next_entry().await? {
+    fs::create_dir_all(&bindings_dir.join("wit"))?;
+    for entry in fs::read_dir(&wit_dir)? {
+        let entry = entry?;
         fs::copy(
             entry.path(),
             bindings_dir.join("wit").join(entry.file_name()),
-        )
-        .await?;
+        )?;
     }
 
     // Create an empty world file
-    File::create(bindings_dir.join("world"))?;
+    fs::File::create(bindings_dir.join("world"))?;
 
     // Build the module using Cargo
     let mut args = vec![
@@ -299,7 +296,7 @@ async fn compile_rust_wasm_process(
     Ok(())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 async fn compile_and_copy_ui(package_dir: &Path, valid_node: Option<String>) -> anyhow::Result<()> {
     let ui_path = package_dir.join("ui");
     info!("Building UI in {:?}...", ui_path);
@@ -338,7 +335,7 @@ async fn compile_and_copy_ui(package_dir: &Path, valid_node: Option<String>) -> 
         } else {
             let pkg_ui_path = package_dir.join("pkg/ui");
             if pkg_ui_path.exists() {
-                fs::remove_dir_all(&pkg_ui_path).await?;
+                fs::remove_dir_all(&pkg_ui_path)?;
             }
             run_command(
                 Command::new("cp")
@@ -354,7 +351,7 @@ async fn compile_and_copy_ui(package_dir: &Path, valid_node: Option<String>) -> 
     Ok(())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 async fn compile_package_and_ui(
     package_dir: &Path,
     valid_node: Option<String>,
@@ -366,7 +363,7 @@ async fn compile_package_and_ui(
     Ok(())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 async fn compile_package_item(
     entry: std::io::Result<std::fs::DirEntry>,
     features: String,
@@ -388,7 +385,7 @@ async fn compile_package_item(
     Ok(())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 async fn compile_package(
     package_dir: &Path,
     skip_deps_check: bool,
@@ -428,7 +425,7 @@ async fn compile_package(
     Ok(())
 }
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub async fn execute(
     package_dir: &Path,
     no_ui: bool,

@@ -1,13 +1,13 @@
-use std::fs;
 use std::path::Path;
 use std::process;
 
+use fs_err as fs;
 use tracing::instrument;
 
 use crate::inject_message;
 use crate::start_package::interact_with_package;
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub async fn execute(
     project_dir: &Path,
     url: &str,

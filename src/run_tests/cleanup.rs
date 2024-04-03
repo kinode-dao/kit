@@ -1,6 +1,6 @@
-use std::fs;
 use std::os::fd::AsRawFd;
 
+use fs_err as fs;
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{error, info};
 

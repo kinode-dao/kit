@@ -1,11 +1,12 @@
 use std::process::Command;
 
+use fs_err as fs;
 use tracing::instrument;
 
 use crate::KIT_CACHE;
 use crate::build;
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub fn execute(mut user_args: Vec<String>, branch: &str) -> anyhow::Result<()> {
     let mut args: Vec<String> = vec!["install",
         "--git", "https://github.com/kinode-dao/kit",
@@ -21,7 +22,7 @@ pub fn execute(mut user_args: Vec<String>, branch: &str) -> anyhow::Result<()> {
     let cache_path = format!("{}/kinode-dao-kit-commits", KIT_CACHE);
     let cache_path = std::path::Path::new(&cache_path);
     if cache_path.exists() {
-        std::fs::remove_dir_all(&cache_path)?;
+        fs::remove_dir_all(&cache_path)?;
     }
     Ok(())
 }

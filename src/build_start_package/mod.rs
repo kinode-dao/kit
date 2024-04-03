@@ -5,7 +5,7 @@ use tracing::instrument;
 use crate::build;
 use crate::start_package;
 
-#[instrument(level = "trace", err, skip_all)]
+#[instrument(level = "trace", err(Debug), skip_all)]
 pub async fn execute(
     package_dir: &Path,
     no_ui: bool,
