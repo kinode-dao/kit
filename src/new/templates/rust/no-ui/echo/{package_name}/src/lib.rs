@@ -3,9 +3,6 @@ use kinode_process_lib::{await_message, call_init, println, Address, Response};
 wit_bindgen::generate!({
     path: "wit",
     world: "process",
-    exports: {
-        world: Component,
-    },
 });
 
 fn handle_message(_our: &Address) -> anyhow::Result<()> {
