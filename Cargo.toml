@@ -1,6 +1,6 @@
 [package]
 name = "kit"
-version = "0.3.0"
+version = "0.3.1"
 edition = "2021"
 
 [build-dependencies]
@@ -8,9 +8,9 @@ anyhow = "1.0"
 git2 = "0.18"
 
 [dependencies]
-anyhow = "1.0"
 base64 = "0.21"
 clap = { version = "4.4", features = ["cargo", "string"] }
+color-eyre = { version = "0.6", features = ["capture-spantrace"] }
 dirs = "5.0"
 fs-err = "2.11"
 futures-util = "0.3"
@@ -36,6 +36,7 @@ tokio-tungstenite = "*"
 toml = "0.8"
 tracing = "0.1"
 tracing-appender = "0.2"
+tracing-error = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json", "std"] }
 walkdir = "2.4"
 zip = "0.6"

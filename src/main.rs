@@ -3,9 +3,11 @@ use std::env;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use color_eyre::{eyre::{eyre, Result}, Section};
 use fs_err as fs;
 use serde::Deserialize;
-use tracing::{error, instrument, warn, Level};
+use tracing::{error, warn, Level};
+use tracing_error::ErrorLayer;
 use tracing_subscriber::{
     filter, fmt, layer::SubscriberExt, prelude::*, util::SubscriberInitExt, EnvFilter,
 };
@@ -45,23 +47,22 @@ async fn get_latest_commit_sha_from_branch(
     owner: &str,
     repo: &str,
     branch: &str,
-) -> anyhow::Result<Commit> {
+) -> Result<Commit> {
     let bytes = boot_fake_node::get_from_github(owner, repo, &format!("commits/{branch}")).await?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
-fn init_tracing(log_path: PathBuf) -> anyhow::Result<tracing_appender::non_blocking::WorkerGuard> {
+fn init_tracing(log_path: PathBuf) -> tracing_appender::non_blocking::WorkerGuard {
     // Define a fixed log file name with rolling based on size or execution instance.
     let log_parent_path = log_path
         .parent()
-        .ok_or(anyhow::anyhow!("no log path parent"))?;
+        .unwrap();
     let log_file_name = log_path
         .file_name()
         .and_then(|f| f.to_str())
-        .ok_or(anyhow::anyhow!("no log path file name"))?;
+        .unwrap();
     if !log_parent_path.exists() {
-        fs::create_dir_all(log_parent_path)?;
+        fs::create_dir_all(log_parent_path).unwrap();
     }
     let file_appender = tracing_appender::rolling::never(log_parent_path, log_file_name);
     let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
@@ -115,15 +116,16 @@ fn init_tracing(log_path: PathBuf) -> anyhow::Result<tracing_appender::non_block
                 .json()
                 .with_filter(file_filter),
         )
+        .with(ErrorLayer::default())
         .init();
 
-    Ok(guard)
+    guard
 }
 
 async fn execute(
     usage: clap::builder::StyledStr,
     matches: Option<(&str, &clap::ArgMatches)>,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     match matches {
         Some(("boot-fake-node", boot_matches)) => {
             let runtime_path = boot_matches
@@ -289,7 +291,7 @@ async fn execute(
                     "Configuration file not found: {:?}\nUsage:\n{}",
                     config_path, usage,
                 );
-                return Err(anyhow::anyhow!(error));
+                return Err(eyre!(error));
             }
 
             run_tests::execute(config_path.to_str().unwrap()).await
@@ -324,7 +326,7 @@ async fn execute(
     }
 }
 
-async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
+async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
     Ok(command!()
         .name("kit")
         .version(env!("CARGO_PKG_VERSION"))
@@ -746,11 +748,14 @@ async fn make_app(current_dir: &std::ffi::OsString) -> anyhow::Result<Command> {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<()> {
     let log_path =
         std::env::var("KIT_LOG_PATH").unwrap_or_else(|_| KIT_LOG_PATH_DEFAULT.to_string());
     let log_path = PathBuf::from(log_path);
-    let _guard = init_tracing(log_path)?;
+    let _guard = init_tracing(log_path);
+    color_eyre::config::HookBuilder::default()
+        .display_env_section(false)
+        .install()?;
     let current_dir = env::current_dir()?.into_os_string();
     let mut app = make_app(&current_dir).await?;
 
@@ -758,16 +763,15 @@ async fn main() -> anyhow::Result<()> {
     let matches = app.get_matches();
     let matches = matches.subcommand();
 
-    let _result = match execute(usage, matches).await {
+    let result = match execute(usage, matches).await {
         Ok(()) => Ok(()),
-        Err(e) => {
+        Err(mut e) => {
             // TODO: add more non-"nerdview" error messages here
             match e.downcast_ref::<reqwest::Error>() {
                 None => {}
-                Some(e) => {
-                    if e.is_connect() {
-                        error!("error connecting\n\nhint: is Kinode running?");
-                        return Ok(());
+                Some(ee) => {
+                    if ee.is_connect() {
+                        e = e.with_suggestion(|| "is Kinode running?");
                     }
                 }
             }
@@ -789,9 +793,8 @@ async fn main() -> anyhow::Result<()> {
         }
     }
 
-    // Return Ok(()) here rather than result above because
-    //  #[tracing::instrument(err)] already outputs errors
-    //  that occur more locally to the error site (i.e.
-    //  with function information).
+    if let Err(e) = result {
+        error!("{:?}", e);
+    };
     Ok(())
 }

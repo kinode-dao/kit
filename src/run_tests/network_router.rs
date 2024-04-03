@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use color_eyre::{eyre::eyre, Result};
 use futures_util::{SinkExt, StreamExt};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
@@ -25,26 +26,24 @@ pub const PONG_TEXT: &str = "Yes hello, Kinode network router department.";
 
 async fn handshake(
     stream: TcpStream,
-) -> anyhow::Result<Option<(String, WebSocketStream<TcpStream>)>> {
+) -> Result<Option<(String, WebSocketStream<TcpStream>)>> {
     let ws_stream = accept_async(stream).await?;
     let (mut send_to_ws, mut recv_from_ws) = ws_stream.split();
 
     let Some(Ok(message)) = recv_from_ws.next().await else {
-        return Err(anyhow::anyhow!(
-            "Handshake failed: first message was not received properly"
-        ));
+        return Err(eyre!("Handshake failed: first message was not received properly"));
     };
     match message {
         Ping(message) => {
             let message = String::from_utf8(message)?;
             if message != PING_TEXT.to_string() {
-                return Err(anyhow::anyhow!("Received Ping with unexpected message {}", message))
+                return Err(eyre!("Received Ping with unexpected message {}", message))
             }
             if let Err(_) = send_to_ws
                 .send(Pong(PONG_TEXT.as_bytes().to_vec()))
                 .await
             {
-                return Err(anyhow::anyhow!("Failed to reply to Ping with Pong"))
+                return Err(eyre!("Failed to reply to Ping with Pong"))
             }
             Ok(None)
         },
@@ -52,7 +51,7 @@ async fn handshake(
             let ws_stream = send_to_ws.reunite(recv_from_ws)?;
             Ok(Some((identifier, ws_stream)))
         },
-        _ => Err(anyhow::anyhow!("Handshake failed: first message was not Ping or Text")),
+        _ => Err(eyre!("Handshake failed: first message was not Ping or Text")),
     }
 }
 
@@ -91,12 +90,12 @@ async fn handle_connection(
     }
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 pub async fn execute(
     port: u16,
     _defects: NetworkRouterDefects,
     mut recv_kill_in_router: BroadcastRecvBool,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let (send_to_loop, mut recv_in_loop): (Sender, Receiver) = mpsc::channel(32);
     let mut connections: Connections = HashMap::new();
 

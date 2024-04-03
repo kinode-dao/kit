@@ -1,19 +1,20 @@
 use std::path::Path;
 use std::process;
 
+use color_eyre::Result;
 use fs_err as fs;
 use tracing::instrument;
 
 use crate::inject_message;
 use crate::start_package::interact_with_package;
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 pub async fn execute(
     project_dir: &Path,
     url: &str,
     arg_package_name: Option<&str>,
     arg_publisher: Option<&str>,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     let (package_name, publisher): (String, String) = match (arg_package_name, arg_publisher) {
         (Some(package_name), Some(publisher)) => (package_name.into(), publisher.into()),
         _ => {

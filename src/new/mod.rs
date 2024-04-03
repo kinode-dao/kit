@@ -1,5 +1,6 @@
 use std::{path::{PathBuf, Path}, collections::HashMap};
 
+use color_eyre::{eyre::eyre, Result};
 use fs_err as fs;
 use tracing::instrument;
 
@@ -77,7 +78,7 @@ fn is_url_safe(input: &str) -> bool {
     re.is_match(input)
 }
 
-#[instrument(level = "trace", err(Debug), skip_all)]
+#[instrument(level = "trace", skip_all)]
 pub fn execute(
     new_dir: PathBuf,
     package_name: Option<String>,
@@ -85,14 +86,14 @@ pub fn execute(
     language: Language,
     template: Template,
     ui: bool,
-) -> anyhow::Result<()> {
+) -> Result<()> {
     // Check if the directory already exists
     if new_dir.exists() {
         let error = format!(
             "Directory {:?} already exists. `kit new` creates a new directory to place the template in. Either remove given directory or provide a non-existing directory to create.",
             new_dir,
         );
-        return Err(anyhow::anyhow!(error));
+        return Err(eyre!(error));
     }
 
     let (package_name, is_from_dir) = match package_name {
@@ -103,9 +104,9 @@ pub fn execute(
     if !is_url_safe(&package_name) {
         let error =
             if !is_from_dir {
-                anyhow::anyhow!("`package_name` '{}' must be URL safe.", package_name)
+                eyre!("`package_name` '{}' must be URL safe.", package_name)
             } else {
-                anyhow::anyhow!(
+                eyre!(
                     "`package_name` (derived from given directory {:?}) '{}' must be URL safe.",
                     new_dir,
                     package_name,
@@ -114,7 +115,7 @@ pub fn execute(
         return Err(error);
     }
     if !is_url_safe(&publisher) {
-        return Err(anyhow::anyhow!("`publisher` '{}' must be URL safe.", publisher));
+        return Err(eyre!("`publisher` '{}' must be URL safe.", publisher));
     }
 
     match language {
@@ -122,12 +123,12 @@ pub fn execute(
             if package_name.contains('-') {
                 let error =
                     if !is_from_dir {
-                        anyhow::anyhow!(
+                        eyre!(
                             "rust `package_name`s cannot contain `-`s (given '{}')",
                             package_name,
                         )
                     } else {
-                        anyhow::anyhow!(
+                        eyre!(
                             "rust `package_name` (derived from given directory {:?}) cannot contain `-`s (given '{}')",
                             new_dir,
                             package_name,
@@ -166,7 +167,7 @@ pub fn execute(
         .collect();
 
     if path_to_content.is_empty() {
-        return Err(anyhow::anyhow!(
+        return Err(eyre!(
             "The {}/{}/{} language/template/ui combination isn't available. See {} for available language/template/ui combinations.",
             language.to_string(),
             template.to_string(),
@@ -177,7 +178,7 @@ pub fn execute(
 
     if ui && path_to_content.keys().filter(|p| !p.starts_with("ui")).count() == 0 {
         // Only `ui/` exists
-        return Err(anyhow::anyhow!(
+        return Err(eyre!(
             "kit new: cannot use `--ui` for {} {}; template does not exist",
             language.to_string(),
             template.to_string(),
