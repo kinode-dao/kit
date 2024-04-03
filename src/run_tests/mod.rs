@@ -55,10 +55,9 @@ fn make_node_names(nodes: Vec<Node>) -> Result<Vec<String>> {
                 }
                 Some(base)
             })
-            .ok_or(eyre!(
-                "run_tests:make_node_names: did not find basename for {:?}",
-                node.home,
-            ))
+            .ok_or_else(|| {
+                eyre!("run_tests:make_node_names: did not find basename for {:?}", node.home)
+            })
         )
         .collect()
 }
