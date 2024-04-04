@@ -45,7 +45,7 @@ def handle_message(our_node, message_archive):
                             target,
                             ProcessId("{package_name}", "{package_name}", "{publisher}"),
                         ),
-                        Request(False, 5, message.value.body, None),
+                        Request(False, 5, message.value.body, None, []),
                         None,
                     )
                 send_response(
@@ -57,7 +57,8 @@ def handle_message(our_node, message_archive):
                     Response(
                         False,
                         json.dumps({"History": {"messages": message_archive}}).encode("utf-8"),
-                        None
+                        None,
+                        [],
                     ),
                     None,
                 )
