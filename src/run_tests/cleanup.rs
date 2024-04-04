@@ -99,7 +99,7 @@ pub async fn cleanup(
             for dir in &["kernel", "kv", "sqlite", "vfs"] {
                 let dir = home.join(dir);
                 if dir.exists() {
-                    fs::remove_dir_all(&home.join(dir)).unwrap();
+                    fs::remove_dir_all(&dir).unwrap();
                 }
             }
         }
