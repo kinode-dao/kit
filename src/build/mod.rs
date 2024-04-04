@@ -18,7 +18,7 @@ const PYTHON_SRC_PATH: &str = "src/lib.py";
 const RUST_SRC_PATH: &str = "src/lib.rs";
 const KINODE_WIT_URL: &str =
     "https://raw.githubusercontent.com/kinode-dao/kinode-wit/master/kinode.wit";
-const WASI_VERSION: &str = "17.0.1"; // TODO: un-hardcode
+const WASI_VERSION: &str = "19.0.1"; // TODO: un-hardcode
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
