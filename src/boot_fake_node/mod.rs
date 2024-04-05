@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use zip::read::ZipArchive;
 
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::eyre::{eyre, Result, WrapErr};
 use fs_err as fs;
 use semver::Version;
 use serde::Deserialize;
@@ -358,7 +358,8 @@ pub fn run_runtime(
         .stdin(if !detached { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
         .stdout(if verbose { Stdio::inherit() } else { Stdio::piped() })
         .stderr(if verbose { Stdio::inherit() } else { Stdio::piped() })
-        .spawn()?;
+        .spawn()
+        .wrap_err_with(|| format!("Couldn't open binary at path {:?}", path))?;
 
     Ok((process, fds.master))
 }
