@@ -10,9 +10,6 @@ use kinode_process_lib::{
 wit_bindgen::generate!({
     path: "wit",
     world: "process",
-    exports: {
-        world: Component,
-    },
 });
 
 const CHUNK_SIZE: u64 = 1048576; // 1MB
@@ -171,7 +168,6 @@ fn handle_message(
 }
 
 call_init!(init);
-
 fn init(our: Address) {
     println!("worker: begin");
     let start = std::time::Instant::now();

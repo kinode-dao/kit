@@ -6,9 +6,6 @@ use kinode_process_lib::{await_message, call_init, println, Address, ProcessId, 
 wit_bindgen::generate!({
     path: "wit",
     world: "process",
-    exports: {
-        world: Component,
-    },
 });
 
 #[derive(Debug, Serialize, Deserialize)]

@@ -7,9 +7,6 @@ use kinode_process_lib::{
 wit_bindgen::generate!({
     path: "wit",
     world: "process",
-    exports: {
-        world: Component,
-    },
 });
 
 #[derive(Debug, Serialize, Deserialize)]

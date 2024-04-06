@@ -17,8 +17,8 @@ const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
 const PYTHON_SRC_PATH: &str = "src/lib.py";
 const RUST_SRC_PATH: &str = "src/lib.rs";
 const KINODE_WIT_URL: &str =
-    "https://raw.githubusercontent.com/kinode-dao/kinode-wit/master/kinode.wit";
-const WASI_VERSION: &str = "17.0.1"; // TODO: un-hardcode
+    "https://raw.githubusercontent.com/kinode-dao/kinode-wit/aa2c8b11c9171b949d1991c32f58591c0e881f85/kinode.wit";
+const WASI_VERSION: &str = "19.0.1"; // TODO: un-hardcode
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
@@ -181,10 +181,8 @@ async fn compile_rust_wasm_process(
         .join(process_dir.file_name().unwrap());
     let wit_dir = process_dir.join("wit");
 
-    // Ensure the bindings directory exists
     fs::create_dir_all(&bindings_dir)?;
 
-    // Check and download kinode.wit if wit_dir does not exist
     download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
     // Check and download wasi_snapshot_preview1.wasm if it does not exist

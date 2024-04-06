@@ -8,9 +8,6 @@ use serde::{Deserialize, Serialize};
 wit_bindgen::generate!({
     path: "wit",
     world: "process",
-    exports: {
-        world: Component,
-    },
 });
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -136,7 +133,6 @@ fn handle_message(our: &Address, files_dir: &Directory) -> anyhow::Result<()> {
 }
 
 call_init!(init);
-
 fn init(our: Address) {
     println!("begin");
 
