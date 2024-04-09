@@ -1,9 +1,11 @@
 use std::path::Path;
 use std::process;
 
-use color_eyre::Result;
+use color_eyre::{Result, eyre::WrapErr};
 use fs_err as fs;
-use tracing::instrument;
+use tracing::{info, instrument};
+
+use kinode_process_lib::kernel_types::Erc721Metadata;
 
 use crate::inject_message;
 use crate::start_package::interact_with_package;
@@ -18,12 +20,14 @@ pub async fn execute(
     let (package_name, publisher): (String, String) = match (arg_package_name, arg_publisher) {
         (Some(package_name), Some(publisher)) => (package_name.into(), publisher.into()),
         _ => {
-            let pkg_dir = project_dir.join("pkg").canonicalize()?;
-            let metadata: serde_json::Value = serde_json::from_reader(fs::File::open(pkg_dir
-                .join("metadata.json")
-            )?)?;
-            let package_name = metadata["package"].as_str().unwrap();
-            let publisher = metadata["publisher"].as_str().unwrap();
+            let metadata: Erc721Metadata = serde_json::from_reader(fs::File::open(
+                    project_dir.join("metadata.json")
+                )
+                .wrap_err_with(|| "Missing required metadata.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=metadata.json#metadatajson")?
+            )?;
+            let package_name = metadata.properties.package_name.as_str();
+            let publisher = metadata.properties.publisher.as_str();
+            let pkg_publisher = format!("{}:{}", package_name, publisher);
             (package_name.into(), publisher.into())
         },
     };
@@ -43,7 +47,7 @@ pub async fn execute(
         process::exit(1);
     }
 
-    tracing::info!("Successfully removed package {}:{} on node at {}", package_name, publisher, url);
+    info!("Successfully removed package {}:{} on node at {}", package_name, publisher, url);
 
     Ok(())
 }
