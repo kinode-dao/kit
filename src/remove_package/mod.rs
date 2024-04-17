@@ -27,7 +27,6 @@ pub async fn execute(
             )?;
             let package_name = metadata.properties.package_name.as_str();
             let publisher = metadata.properties.publisher.as_str();
-            let pkg_publisher = format!("{}:{}", package_name, publisher);
             (package_name.into(), publisher.into())
         },
     };
