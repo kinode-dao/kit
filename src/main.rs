@@ -138,7 +138,6 @@ async fn execute(
             let rpc = boot_matches
                 .get_one::<String>("RPC_ENDPOINT")
                 .and_then(|s| Some(s.as_str()));
-            let is_testnet = boot_matches.get_one::<bool>("TESTNET").unwrap();
             let fake_node_name = boot_matches.get_one::<String>("NODE_NAME").unwrap();
             let password = boot_matches.get_one::<String>("PASSWORD").unwrap();
             let is_persist = boot_matches.get_one::<bool>("PERSIST").unwrap();
@@ -152,7 +151,6 @@ async fn execute(
                 *node_port,
                 *network_router_port,
                 rpc,
-                *is_testnet,
                 fake_node_name,
                 password,
                 *is_persist,
