@@ -54,7 +54,6 @@ pub struct Node {
     pub fake_node_name: String,
     pub password: Option<String>,
     pub rpc: Option<String>,
-    pub is_testnet: bool,
     pub runtime_verbosity: Option<u8>,
 }
 

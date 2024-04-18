@@ -354,9 +354,6 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
         if let Some(ref password) = node.password {
             args.extend_from_slice(&["--password", password]);
         };
-        if node.is_testnet {
-            args.push("--testnet");
-        }
 
         let (runtime_process, master_fd) = run_runtime(
             &runtime_path,
