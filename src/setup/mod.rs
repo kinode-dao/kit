@@ -29,6 +29,8 @@ pub enum Dependency {
     RustWasm32Wasi,
     RustNightlyWasm32Wasi,
     WasmTools,
+    Forge, 
+    Anvil,
 }
 
 impl std::fmt::Display for Dependency {
@@ -42,6 +44,8 @@ impl std::fmt::Display for Dependency {
             Dependency::RustWasm32Wasi => write!(f, "rust wasm32-wasi target"),
             Dependency::RustNightlyWasm32Wasi => write!(f, "rust nightly wasm32-wasi target"),
             Dependency::WasmTools => write!(f, "wasm-tools"),
+            Dependency::Forge => write!(f, "forge"),
+            Dependency::Anvil => write!(f, "anvil"),
         }
     }
 }
@@ -414,6 +418,26 @@ pub fn check_js_deps() -> Result<Vec<Dependency>> {
     Ok(missing_deps)
 }
 
+// Check for Foundry deps, returning a Vec of not found: can be automatically fetched?
+#[instrument(level = "trace", skip_all)]
+pub fn check_foundry_deps() -> Result<Vec<Dependency>> {
+    let mut missing_deps = Vec::new();
+    if !is_command_installed("forge")? {
+        missing_deps.push(Dependency::Forge);
+    }
+    if !is_command_installed("anvil")? {
+        missing_deps.push(Dependency::Anvil);
+    }
+    Ok(missing_deps)
+}
+
+// install forge+anvil+others, could be separated into binary extractions from github releases.
+pub fn install_foundry() -> Result<()> {
+    let install_cmd = "curl -L https://foundry.paradigm.xyz | bash";
+    run_command(Command::new("bash").args(&["-c", install_cmd]))?;
+
+    Ok(())
+}
 /// Check for Rust deps, returning a Vec of not found: can be automatically fetched
 #[instrument(level = "trace", skip_all)]
 pub fn check_rust_deps() -> Result<Vec<Dependency>> {
@@ -478,6 +502,9 @@ pub fn get_deps(deps: Vec<Dependency>) -> Result<()> {
                         call_rustup("target add wasm32-wasi --toolchain nightly")?
                     },
                     Dependency::WasmTools => call_cargo("install wasm-tools")?,
+                    Dependency::Forge | Dependency::Anvil => {
+                        install_foundry()?
+                    },
                 }
             }
         },
