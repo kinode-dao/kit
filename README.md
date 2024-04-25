@@ -2,7 +2,7 @@
 
 Tool**kit** for developing on [Kinode OS](https://github.com/kinode-dao/kinode).
 
-Documentation in the [Kinode Book](https://book.kinode.org/kit/kit.html); example usage [here](https://book.kinode.org/my_first_app/chapter_1.html).
+Documentation in the [Kinode Book](https://book.kinode.org/kit-dev-toolkit.html); example usage [here](https://book.kinode.org/my_first_app/chapter_1.html).
 
 ## Installing
 
