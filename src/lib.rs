@@ -7,6 +7,7 @@ pub mod new;
 pub mod remove_package;
 pub mod reset_cache;
 pub mod run_tests;
+pub mod chain;
 pub mod setup;
 pub mod start_package;
 pub mod update;
