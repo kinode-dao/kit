@@ -18,6 +18,8 @@ use register::{
     RegisterHelpers::{registerCall, setAllIpCall, setKeyCall},
 };
 
+use crate::KIT_CACHE;
+
 pub async fn start_chain_and_register(
     chain_port: u16,
     name: &str,
@@ -99,6 +101,8 @@ pub fn start_chain(port: u16) -> Result<Child> {
             let child = Command::new("anvil")
                 .arg("--port")
                 .arg(port.to_string())
+                .arg("--load-state")
+                .arg(format!("{}/kinostate.json", KIT_CACHE))
                 .stdout(std::process::Stdio::piped())
                 .spawn()?;
             Ok(child)

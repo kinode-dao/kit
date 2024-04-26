@@ -327,6 +327,23 @@ async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> Result<St
     }
 }
 
+pub async fn fetch_kinostate() -> Result<()> {
+    let json_path = format!("{}/kinostate.json", KIT_CACHE);
+    let json_url = "https://gist.githubusercontent.com/bitful-pannul/be02f6085dbc4bc8a4cda0c40039fb3c/raw/7ac92c0cfc61ff4cd4f8b455e83404a0f51fe75e/kinostate.json";
+
+    // TODO: statefile versioning
+    if fs::metadata(&json_path).is_ok() {
+        println!("kinostate.json exists");
+    } else {
+        println!("kinostate.json does not exist");
+
+        let json_content = reqwest::get(json_url).await?;
+        let json_content = json_content.text().await?;
+        fs::write(&json_path, json_content)?;
+    }
+    Ok(())
+}
+
 #[instrument(level = "trace", skip_all)]
 pub fn run_runtime(
     path: &Path,
@@ -457,6 +474,8 @@ pub async fn execute(
         .await;
     });
     task_handles.push(handle);
+
+    fetch_kinostate().await?;
 
     let anvil_process = chain::start_chain_and_register(
         8545,
