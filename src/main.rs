@@ -151,7 +151,7 @@ async fn execute(
                 *node_port,
                 *network_router_port,
                 rpc,
-                fake_node_name,
+                fake_node_name.clone(),
                 password,
                 *is_persist,
                 *release,
@@ -386,7 +386,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('f')
                 .long("fake-node-name")
                 .help("Name for fake node")
-                .default_value("fake.os")
+                .default_value("fake.dev")
             )
             .arg(Arg::new("NETWORK_ROUTER_PORT")
                 .action(ArgAction::Set)

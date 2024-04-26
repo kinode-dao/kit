@@ -13,10 +13,8 @@ use std::str::FromStr;
 
 pub mod register;
 
-use register::{
-    dns_encode_fqdn, encode_namehash,
-    RegisterHelpers::{registerCall, setAllIpCall, setKeyCall},
-};
+pub use register::*;
+pub use register::RegisterHelpers::*;
 
 use crate::KIT_CACHE;
 

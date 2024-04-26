@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
-use std::{io, thread, time};
+use std::io;
 use zip::read::ZipArchive;
 
 use color_eyre::eyre::{eyre, Result, WrapErr};
@@ -17,9 +17,8 @@ use tracing::{info, instrument, warn};
 
 use crate::build;
 use crate::run_tests::cleanup::{cleanup, cleanup_on_signal};
-use crate::run_tests::network_router;
 use crate::run_tests::types::*;
-use crate::{chain, KIT_CACHE};
+pub use crate::{chain, KIT_CACHE};
 
 const KINODE_RELEASE_BASE_URL: &str = "https://github.com/kinode-dao/kinode/releases/download";
 pub const KINODE_OWNER: &str = "kinode-dao";
@@ -350,6 +349,8 @@ pub fn run_runtime(
     home: &Path,
     port: u16,
     network_router_port: u16,
+    net_pk: &str,
+    name: &str,
     args: &[&str],
     verbose: bool,
     detached: bool,
@@ -366,6 +367,10 @@ pub fn run_runtime(
         network_router_port.as_str(),
         "--verbosity",
         verbosity.as_str(),
+        "--networking-pk",
+        net_pk,
+        "--fake-node-name",
+        name,
     ];
 
     if !args.is_empty() {
@@ -405,7 +410,7 @@ pub async fn execute(
     node_port: u16,
     network_router_port: u16,
     rpc: Option<&str>,
-    fake_node_name: &str,
+    mut fake_node_name: String,
     password: &str,
     is_persist: bool,
     release: bool,
@@ -443,7 +448,6 @@ pub async fn execute(
     let (send_to_cleanup, recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
     let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
     let recv_kill_in_cos = send_to_kill.subscribe();
-    let recv_kill_in_router = send_to_kill.subscribe();
 
     let node_cleanup_infos_for_cleanup = Arc::clone(&node_cleanup_infos);
     let handle = tokio::spawn(cleanup(
@@ -464,24 +468,21 @@ pub async fn execute(
     let send_to_cleanup_for_cleanup = send_to_cleanup.clone();
     let _cleanup_context = CleanupContext::new(send_to_cleanup_for_cleanup);
 
-    let network_router_port_for_router = network_router_port.clone();
-    let handle = tokio::spawn(async move {
-        let _ = network_router::execute(
-            network_router_port_for_router,
-            NetworkRouterDefects::None,
-            recv_kill_in_router,
-        )
-        .await;
-    });
-    task_handles.push(handle);
+
+    if !fake_node_name.ends_with(".dev") {
+        fake_node_name.push_str(".dev");
+    }
+    
 
     fetch_kinostate().await?;
 
+    let (pubkey, net_pk) = chain::generate_networking_key();
+
     let anvil_process = chain::start_chain_and_register(
-        8545,
-        "bombo.dev",
-        8080,
-        "0x1134567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+        network_router_port,
+        &fake_node_name,
+        node_port,
+        &pubkey,
     )
     .await;
     println!("got anvil result: {:?}", anvil_process);
@@ -490,13 +491,10 @@ pub async fn execute(
         fs::remove_dir_all(&node_home)?;
     }
 
-    // TODO: can remove?
-    thread::sleep(time::Duration::from_secs(1));
-
     if let Some(ref rpc) = rpc {
         args.extend_from_slice(&["--rpc", rpc]);
     };
-    args.extend_from_slice(&["--fake-node-name", fake_node_name]);
+
     args.extend_from_slice(&["--password", password]);
 
     let (mut runtime_process, master_fd) = run_runtime(
@@ -504,6 +502,8 @@ pub async fn execute(
         &node_home,
         node_port,
         network_router_port,
+        &hex::encode(&net_pk),
+        &fake_node_name,
         &args[..],
         true,
         detached,

@@ -20,6 +20,7 @@ kinode_process_lib = { git = "https://github.com/kinode-dao/process_lib.git", re
 nix = { version = "0.27", features = ["process", "signal", "term"] }
 regex = "1"
 reqwest = { version = "0.11", features = ["json"] }
+ring = "0.16.20"
 rmp-serde = "1.1.2"
 semver = "1.0"
 serde = { version = "1.0", features = ["derive"] }
