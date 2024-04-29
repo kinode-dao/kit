@@ -13,12 +13,13 @@ use fs_err as fs;
 use semver::Version;
 use serde::Deserialize;
 use tokio::sync::Mutex;
-use tracing::{info, instrument, warn};
+use tracing::{info, warn, instrument};
 
+use crate::KIT_CACHE;
 use crate::build;
+pub use crate::chain;
 use crate::run_tests::cleanup::{cleanup, cleanup_on_signal};
 use crate::run_tests::types::*;
-pub use crate::{chain, KIT_CACHE};
 
 const KINODE_RELEASE_BASE_URL: &str = "https://github.com/kinode-dao/kinode/releases/download";
 pub const KINODE_OWNER: &str = "kinode-dao";
@@ -87,7 +88,10 @@ pub fn compile_runtime(path: &Path, release: bool) -> Result<()> {
         args.push("--release");
     }
 
-    build::run_command(Command::new("cargo").args(&args).current_dir(path))?;
+    build::run_command(Command::new("cargo")
+        .args(&args)
+        .current_dir(path)
+    )?;
 
     info!("Done compiling Kinode runtime.");
     Ok(())
@@ -135,13 +139,11 @@ pub fn get_platform_runtime_name() -> Result<String> {
         ("Linux", "x86_64") => "x86_64-unknown-linux-gnu",
         ("Darwin", "arm64") => "arm64-apple-darwin",
         ("Darwin", "x86_64") => "x86_64-apple-darwin",
-        _ => {
-            return Err(eyre!(
-                "OS/Architecture {}/{} not supported.",
-                os_name,
-                architecture_name,
-            ))
-        }
+        _ => return Err(eyre!(
+            "OS/Architecture {}/{} not supported.",
+            os_name,
+            architecture_name,
+        )),
     };
     Ok(format!("kinode-{}-simulation-mode.zip", zip_name_midfix))
 }
@@ -150,11 +152,12 @@ pub fn get_platform_runtime_name() -> Result<String> {
 pub async fn get_runtime_binary(version: &str) -> Result<PathBuf> {
     let zip_name = get_platform_runtime_name()?;
 
-    let version = if version != "latest" {
-        version.to_string()
-    } else {
-        fetch_latest_release_tag_or_local(KINODE_OWNER, KINODE_REPO).await?
-    };
+    let version =
+        if version != "latest" {
+            version.to_string()
+        } else {
+            fetch_latest_release_tag_or_local(KINODE_OWNER, KINODE_REPO).await?
+        };
 
     let runtime_dir = PathBuf::from(format!("{}{}", LOCAL_PREFIX, version));
     let runtime_path = runtime_dir.join("kinode");
@@ -172,8 +175,7 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> Result<
     let cache_path = format!("{}/{}-{}-{}.bin", KIT_CACHE, owner, repo, endpoint);
     let cache_path = Path::new(&cache_path);
     if cache_path.exists() {
-        if let Some(local_bytes) = fs::metadata(&cache_path)
-            .ok()
+        if let Some(local_bytes) = fs::metadata(&cache_path).ok()
             .and_then(|m| m.modified().ok())
             .and_then(|m| m.elapsed().ok())
             .and_then(|since_modified| {
@@ -182,35 +184,30 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> Result<
                 } else {
                     None
                 }
-            })
-        {
+            }) {
             return Ok(local_bytes);
         }
     }
 
     let url = format!("https://api.github.com/repos/{owner}/{repo}/{endpoint}");
     let client = reqwest::Client::new();
-    match client
-        .get(url)
+    match client.get(url)
         .header("User-Agent", "request")
         .send()
         .await?
         .bytes()
-        .await
-    {
+        .await {
         Ok(v) => {
             fs::create_dir_all(
-                cache_path
-                    .parent()
-                    .ok_or_else(|| eyre!("path doesn't have parent"))?,
+                cache_path.parent().ok_or_else(|| eyre!("path doesn't have parent"))?
             )?;
             fs::write(&cache_path, &v)?;
             return Ok(v.to_vec());
-        }
+        },
         Err(_) => {
             warn!("github throttled!");
             return Ok(vec![]);
-        }
+        },
     };
 }
 
@@ -229,8 +226,7 @@ pub async fn find_releases_with_asset(
     let owner = owner.unwrap_or(KINODE_OWNER);
     let repo = repo.unwrap_or(KINODE_REPO);
     let releases = fetch_releases(owner, repo).await?;
-    let filtered_releases: Vec<String> = releases
-        .into_iter()
+    let filtered_releases: Vec<String> = releases.into_iter()
         .filter(|release| release.assets.iter().any(|asset| asset.name == asset_name))
         .map(|release| release.tag_name)
         .collect();
@@ -244,17 +240,19 @@ pub async fn find_releases_with_asset_if_online(
 ) -> Result<Vec<String>> {
     let remote_values = match find_releases_with_asset(owner, repo, asset_name).await {
         Ok(v) => v,
-        Err(e) => match e.downcast_ref::<reqwest::Error>() {
-            None => return Err(e),
-            Some(ee) => {
-                if ee.is_connect() {
-                    get_local_versions_with_prefix(&format!("{}v", LOCAL_PREFIX))?
-                        .iter()
-                        .map(|v| format!("v{}", v))
-                        .collect()
-                } else {
-                    return Err(e);
-                }
+        Err(e) => {
+            match e.downcast_ref::<reqwest::Error>() {
+                None => return Err(e),
+                Some(ee) => {
+                    if ee.is_connect() {
+                        get_local_versions_with_prefix(&format!("{}v", LOCAL_PREFIX))?
+                            .iter()
+                            .map(|v| format!("v{}", v))
+                            .collect()
+                    } else {
+                        return Err(e);
+                    }
+                },
             }
         },
     };
@@ -308,19 +306,22 @@ fn find_newest_version(versions: &Vec<String>) -> Option<String> {
 async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> Result<String> {
     match fetch_latest_release_tag(owner, repo).await {
         Ok(v) => return Ok(v),
-        Err(e) => match e.downcast_ref::<reqwest::Error>() {
-            None => return Err(e),
-            Some(ee) => {
-                if ee.is_connect() {
-                    let local_versions =
-                        get_local_versions_with_prefix(&format!("{}v", LOCAL_PREFIX))?;
-                    let newest_local = find_newest_version(&local_versions).ok_or_else(|| {
+        Err(e) => {
+            match e.downcast_ref::<reqwest::Error>() {
+                None => return Err(e),
+                Some(ee) => {
+                    if ee.is_connect() {
+                        let local_versions = get_local_versions_with_prefix(
+                            &format!("{}v", LOCAL_PREFIX)
+                        )?;
+                        let newest_local = find_newest_version(&local_versions).ok_or_else(|| {
                             eyre!("Could not connect to github nor find local copy; please connect to the internet and try again.")
                         })?;
-                    Ok(format!("v{}", newest_local))
-                } else {
-                    return Err(e);
-                }
+                        Ok(format!("v{}", newest_local))
+                    } else {
+                        return Err(e);
+                    }
+                },
             }
         },
     }
@@ -328,7 +329,7 @@ async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> Result<St
 
 pub async fn fetch_kinostate() -> Result<()> {
     let json_path = format!("{}/kinostate.json", KIT_CACHE);
-    let json_url = "https://gist.githubusercontent.com/bitful-pannul/be02f6085dbc4bc8a4cda0c40039fb3c/raw/7ac92c0cfc61ff4cd4f8b455e83404a0f51fe75e/kinostate.json";
+    let json_url = "https://gist.githubusercontent.com/bitful-pannul/be02f6085dbc4bc8a4cda0c40039fb3c/raw/9b51cc3116b6a3839c3c42e8aa6bcacb43f4753d/kinostate.json";
 
     // TODO: statefile versioning
     if fs::metadata(&json_path).is_ok() {
@@ -356,15 +357,10 @@ pub fn run_runtime(
     let network_router_port = format!("{}", network_router_port);
     let verbosity = format!("{}", verbosity);
     let mut full_args = vec![
-        home.to_str().unwrap(),
-        "--port",
-        port.as_str(),
-        "--network-router-port",
-        network_router_port.as_str(),
-        "--verbosity",
-        verbosity.as_str(),
-        "--fake-node-name",
-        name,
+        home.to_str().unwrap(), "--port", port.as_str(),
+        "--name", name,
+        "--network-router-port", network_router_port.as_str(),
+        "--verbosity", verbosity.as_str(),
     ];
 
     if !args.is_empty() {
@@ -375,21 +371,9 @@ pub fn run_runtime(
 
     let process = Command::new(path)
         .args(&full_args)
-        .stdin(if !detached {
-            Stdio::inherit()
-        } else {
-            unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) }
-        })
-        .stdout(if verbose {
-            Stdio::inherit()
-        } else {
-            Stdio::piped()
-        })
-        .stderr(if verbose {
-            Stdio::inherit()
-        } else {
-            Stdio::piped()
-        })
+        .stdin(if !detached { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
+        .stdout(if verbose { Stdio::inherit() } else { Stdio::piped() })
+        .stderr(if verbose { Stdio::inherit() } else { Stdio::piped() })
         .spawn()
         .wrap_err_with(|| format!("Couldn't open binary at path {:?}", path))?;
 
@@ -411,8 +395,8 @@ pub async fn execute(
     verbosity: u8,
     mut args: Vec<&str>,
 ) -> Result<()> {
-    let detached = false; // TODO: to argument?
-                          // TODO: factor out with run_tests?
+    let detached = false;  // TODO: to argument?
+    // TODO: factor out with run_tests?
     let runtime_path = match runtime_path {
         None => get_runtime_binary(&version).await?,
         Some(runtime_path) => {
@@ -422,8 +406,7 @@ pub async fn execute(
             if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(&runtime_path, release)?;
-                runtime_path
-                    .join("target")
+                    runtime_path.join("target")
                     .join(if release { "release" } else { "debug" })
                     .join("kinode")
             } else {
@@ -432,7 +415,7 @@ pub async fn execute(
                     runtime_path,
                 ));
             }
-        }
+        },
     };
 
     let mut task_handles = Vec::new();
@@ -454,10 +437,7 @@ pub async fn execute(
     ));
     task_handles.push(handle);
     let send_to_cleanup_for_signal = send_to_cleanup.clone();
-    let handle = tokio::spawn(cleanup_on_signal(
-        send_to_cleanup_for_signal,
-        recv_kill_in_cos,
-    ));
+    let handle = tokio::spawn(cleanup_on_signal(send_to_cleanup_for_signal, recv_kill_in_cos));
     task_handles.push(handle);
     let send_to_cleanup_for_cleanup = send_to_cleanup.clone();
     let _cleanup_context = CleanupContext::new(send_to_cleanup_for_cleanup);
