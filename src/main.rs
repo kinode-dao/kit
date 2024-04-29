@@ -3,10 +3,7 @@ use std::env;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use color_eyre::{
-    eyre::{eyre, Result},
-    Section,
-};
+use color_eyre::{eyre::{eyre, Result}, Section};
 use fs_err as fs;
 use serde::Deserialize;
 use tracing::{error, warn, Level};
@@ -16,8 +13,19 @@ use tracing_subscriber::{
 };
 
 use kit::{
-    boot_fake_node, build, build_start_package, dev_ui, inject_message, new, remove_package,
-    reset_cache, run_tests, setup, start_package, update, KIT_LOG_PATH_DEFAULT,
+    boot_fake_node,
+    build,
+    build_start_package,
+    dev_ui,
+    inject_message,
+    new,
+    remove_package,
+    reset_cache,
+    run_tests,
+    setup,
+    start_package,
+    update,
+    KIT_LOG_PATH_DEFAULT,
 };
 
 const MAX_REMOTE_VALUES: usize = 3;
@@ -46,8 +54,13 @@ async fn get_latest_commit_sha_from_branch(
 
 fn init_tracing(log_path: PathBuf) -> tracing_appender::non_blocking::WorkerGuard {
     // Define a fixed log file name with rolling based on size or execution instance.
-    let log_parent_path = log_path.parent().unwrap();
-    let log_file_name = log_path.file_name().and_then(|f| f.to_str()).unwrap();
+    let log_parent_path = log_path
+        .parent()
+        .unwrap();
+    let log_file_name = log_path
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap();   
     if !log_parent_path.exists() {
         fs::create_dir_all(log_parent_path).unwrap();
     }
