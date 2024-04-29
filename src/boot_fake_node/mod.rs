@@ -1,3 +1,4 @@
+use std::io;
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::{FromRawFd, OwnedFd};
@@ -5,7 +6,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
-use std::io;
 use zip::read::ZipArchive;
 
 use color_eyre::eyre::{eyre, Result, WrapErr};
@@ -332,10 +332,7 @@ pub async fn fetch_kinostate() -> Result<()> {
 
     // TODO: statefile versioning
     if fs::metadata(&json_path).is_ok() {
-        println!("kinostate.json exists");
     } else {
-        println!("kinostate.json does not exist");
-
         let json_content = reqwest::get(json_url).await?;
         let json_content = json_content.text().await?;
         fs::write(&json_path, json_content)?;
@@ -349,7 +346,6 @@ pub fn run_runtime(
     home: &Path,
     port: u16,
     network_router_port: u16,
-    net_pk: &str,
     name: &str,
     args: &[&str],
     verbose: bool,
@@ -367,8 +363,6 @@ pub fn run_runtime(
         network_router_port.as_str(),
         "--verbosity",
         verbosity.as_str(),
-        "--networking-pk",
-        net_pk,
         "--fake-node-name",
         name,
     ];
@@ -468,24 +462,13 @@ pub async fn execute(
     let send_to_cleanup_for_cleanup = send_to_cleanup.clone();
     let _cleanup_context = CleanupContext::new(send_to_cleanup_for_cleanup);
 
-
     if !fake_node_name.ends_with(".dev") {
         fake_node_name.push_str(".dev");
     }
-    
 
     fetch_kinostate().await?;
 
-    let (pubkey, net_pk) = chain::generate_networking_key();
-
-    let anvil_process = chain::start_chain_and_register(
-        network_router_port,
-        &fake_node_name,
-        node_port,
-        &pubkey,
-    )
-    .await;
-    println!("got anvil result: {:?}", anvil_process);
+    let anvil_process = chain::start_chain(network_router_port);
 
     if node_home.exists() {
         fs::remove_dir_all(&node_home)?;
@@ -502,7 +485,6 @@ pub async fn execute(
         &node_home,
         node_port,
         network_router_port,
-        &hex::encode(&net_pk),
         &fake_node_name,
         &args[..],
         true,

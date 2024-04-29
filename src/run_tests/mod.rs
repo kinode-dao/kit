@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, info, instrument};
 
-use crate::boot_fake_node::{compile_runtime, get_runtime_binary, run_runtime, fetch_kinostate, chain::generate_networking_key};
+use crate::boot_fake_node::{compile_runtime, get_runtime_binary, run_runtime, fetch_kinostate};
 use crate::build;
 use crate::inject_message;
 use crate::start_package;
@@ -355,17 +355,13 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
             args.extend_from_slice(&["--password", password]);
         };
 
-        fetch_kinostate().await?;
-
-        let (_pubkey, net_pk) = generate_networking_key();
-    
+        fetch_kinostate().await?;    
 
         let (runtime_process, master_fd) = run_runtime(
             &runtime_path,
             &node_home,
             node.port,
             test.network_router.port,
-            &hex::encode(net_pk),
             &node.fake_node_name,
             &args[..],
             false,
