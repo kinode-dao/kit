@@ -2,11 +2,6 @@ use color_eyre::eyre::{eyre, Result};
 use std::net::TcpListener;
 use std::process::{Child, Command};
 
-pub mod register;
-
-pub use register::RegisterHelpers::*;
-pub use register::*;
-
 use crate::KIT_CACHE;
 
 pub fn start_chain(port: u16) -> Result<Child> {
