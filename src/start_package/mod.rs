@@ -126,9 +126,7 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     file.read_to_end(&mut buffer)?;
     hasher.update(&buffer);
     let hash_result = hasher.finalize();
-    let hash_hex = format!("{:x}", hash_result);
-    println!("package zip hash: {}", hash_hex);
-
+    info!("package zip hash: {:x}", hash_result);
     // Create and send new package request
     let new_pkg_request = new_package(
         None,
