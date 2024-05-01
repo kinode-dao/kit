@@ -362,6 +362,9 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                         &boot_fake_node::get_platform_runtime_name()?
                     ).await?;
                     remote_values.truncate(MAX_REMOTE_VALUES);
+                    if remote_values.len() == 0 {
+                        possible_values = vec![];
+                    }
                     possible_values.append(&mut remote_values);
                     possible_values
                 }))

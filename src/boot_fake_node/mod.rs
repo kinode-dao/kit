@@ -156,7 +156,15 @@ pub async fn get_runtime_binary(version: &str) -> Result<PathBuf> {
         if version != "latest" {
             version.to_string()
         } else {
-            fetch_latest_release_tag_or_local(KINODE_OWNER, KINODE_REPO).await?
+            find_releases_with_asset_if_online(
+                Some(KINODE_OWNER),
+                Some(KINODE_REPO),
+                &get_platform_runtime_name()?,
+            )
+            .await?
+            .first()
+            .ok_or_else(|| eyre!("No releases found"))?
+            .clone()
         };
 
     let runtime_dir = PathBuf::from(format!("{}{}", LOCAL_PREFIX, version));
@@ -260,15 +268,6 @@ pub async fn find_releases_with_asset_if_online(
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn fetch_latest_release_tag(owner: &str, repo: &str) -> Result<String> {
-    fetch_releases(owner, repo)
-        .await?
-        .first()
-        .map(|release| release.tag_name.clone())
-        .ok_or_else(|| eyre!("No releases found"))
-}
-
-#[instrument(level = "trace", skip_all)]
 fn get_local_versions_with_prefix(prefix: &str) -> Result<Vec<String>> {
     let mut versions = Vec::new();
 
@@ -283,48 +282,19 @@ fn get_local_versions_with_prefix(prefix: &str) -> Result<Vec<String>> {
         }
     }
 
+    let mut sorted_versions: Vec<Version> = versions
+        .into_iter()
+        .filter_map(|s| Version::parse(&s).ok())
+        .collect();
+    sorted_versions.sort();
+
+    let versions = sorted_versions
+        .into_iter()
+        .rev()
+        .map(|v| v.to_string())
+        .collect();
+
     Ok(versions)
-}
-
-fn find_newest_version(versions: &Vec<String>) -> Option<String> {
-    let mut max_version: Option<Version> = None;
-
-    for version_str in versions {
-        if let Ok(version) = Version::parse(&version_str) {
-            match max_version {
-                Some(ref max) if version > *max => max_version = Some(version),
-                None => max_version = Some(version),
-                _ => {}
-            }
-        }
-    }
-
-    max_version.map(|v| v.to_string())
-}
-
-#[instrument(level = "trace", skip_all)]
-async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> Result<String> {
-    match fetch_latest_release_tag(owner, repo).await {
-        Ok(v) => return Ok(v),
-        Err(e) => {
-            match e.downcast_ref::<reqwest::Error>() {
-                None => return Err(e),
-                Some(ee) => {
-                    if ee.is_connect() {
-                        let local_versions = get_local_versions_with_prefix(
-                            &format!("{}v", LOCAL_PREFIX)
-                        )?;
-                        let newest_local = find_newest_version(&local_versions).ok_or_else(|| {
-                            eyre!("Could not connect to github nor find local copy; please connect to the internet and try again.")
-                        })?;
-                        Ok(format!("v{}", newest_local))
-                    } else {
-                        return Err(e);
-                    }
-                },
-            }
-        },
-    }
 }
 
 #[instrument(level = "trace", skip_all)]
