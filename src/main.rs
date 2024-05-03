@@ -60,7 +60,7 @@ fn init_tracing(log_path: PathBuf) -> tracing_appender::non_blocking::WorkerGuar
     let log_file_name = log_path
         .file_name()
         .and_then(|f| f.to_str())
-        .unwrap();   
+        .unwrap();
     if !log_parent_path.exists() {
         fs::create_dir_all(log_parent_path).unwrap();
     }

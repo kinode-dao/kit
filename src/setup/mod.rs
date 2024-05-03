@@ -21,6 +21,8 @@ pub const REQUIRED_PY_PACKAGE: &str = "componentize-py==0.11.0";
 
 #[derive(Clone)]
 pub enum Dependency {
+    Anvil,
+    Forge, 
     Nvm,
     Npm,
     Node,
@@ -29,13 +31,13 @@ pub enum Dependency {
     RustWasm32Wasi,
     RustNightlyWasm32Wasi,
     WasmTools,
-    Forge, 
-    Anvil,
 }
 
 impl std::fmt::Display for Dependency {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
+            Dependency::Anvil => write!(f, "anvil"),
+            Dependency::Forge => write!(f, "forge"),
             Dependency::Nvm =>  write!(f, "nvm {}", FETCH_NVM_VERSION),
             Dependency::Npm =>  write!(f, "npm {}.{}", REQUIRED_NPM_MAJOR, MINIMUM_NPM_MINOR),
             Dependency::Node => write!(f, "node {}.{}", REQUIRED_NODE_MAJOR, MINIMUM_NODE_MINOR),
@@ -44,8 +46,6 @@ impl std::fmt::Display for Dependency {
             Dependency::RustWasm32Wasi => write!(f, "rust wasm32-wasi target"),
             Dependency::RustNightlyWasm32Wasi => write!(f, "rust nightly wasm32-wasi target"),
             Dependency::WasmTools => write!(f, "wasm-tools"),
-            Dependency::Forge => write!(f, "forge"),
-            Dependency::Anvil => write!(f, "anvil"),
         }
     }
 }

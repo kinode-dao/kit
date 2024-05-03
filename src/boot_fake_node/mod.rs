@@ -17,7 +17,7 @@ use tracing::{info, warn, instrument};
 
 use crate::KIT_CACHE;
 use crate::build;
-pub use crate::chain;
+use crate::chain;
 use crate::run_tests::cleanup::{cleanup, cleanup_on_signal};
 use crate::run_tests::types::*;
 
@@ -406,7 +406,7 @@ pub async fn execute(
             if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(&runtime_path, release)?;
-                    runtime_path.join("target")
+                runtime_path.join("target")
                     .join(if release { "release" } else { "debug" })
                     .join("kinode")
             } else {

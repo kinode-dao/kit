@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, info, instrument};
 
-use crate::boot_fake_node::{compile_runtime, get_runtime_binary, run_runtime, fetch_kinostate};
+use crate::boot_fake_node::{compile_runtime, fetch_kinostate, get_runtime_binary, run_runtime};
 use crate::build;
 use crate::inject_message;
 use crate::start_package;
