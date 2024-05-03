@@ -14,3 +14,4 @@ pub mod update;
 
 pub const KIT_CACHE: &str = "/tmp/kinode-kit-cache";
 pub const KIT_LOG_PATH_DEFAULT: &str = "/tmp/kinode-kit-cache/logs/log.log";
+pub const KIT_KINOSTATE_PATH_DEFAULT: &str = "/tmp/kinode-kit-cache/kinostate.json";

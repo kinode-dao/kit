@@ -8,14 +8,14 @@ use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, info, instrument};
 
-use crate::boot_fake_node::{compile_runtime, fetch_kinostate, get_runtime_binary, run_runtime};
+use crate::boot_fake_node::{compile_runtime, get_runtime_binary, run_runtime};
 use crate::build;
+use crate::chain;
 use crate::inject_message;
 use crate::start_package;
 
 pub mod cleanup;
 use cleanup::{cleanup, cleanup_on_signal};
-pub mod network_router;
 pub mod types;
 use types::*;
 mod tester_types;
@@ -304,7 +304,6 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     let (send_to_cleanup, recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
     let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
     let recv_kill_in_cos = send_to_kill.subscribe();
-    let recv_kill_in_router = send_to_kill.subscribe();
     let node_cleanup_infos_for_cleanup = Arc::clone(&node_cleanup_infos);
     let node_handles_for_cleanup = Arc::clone(&node_handles);
     let send_to_kill_for_cleanup = send_to_kill.clone();
@@ -322,19 +321,6 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     task_handles.push(handle);
     let _cleanup_context = CleanupContext::new(send_to_cleanup.clone());
 
-    let network_router_port_for_router = test.network_router.port.clone();
-    let network_router_defects_for_router = test.network_router.defects.clone();
-    let handle = tokio::spawn(async move {
-        let _ = network_router::execute(
-            network_router_port_for_router,
-            network_router_defects_for_router,
-            recv_kill_in_router,
-        ).await;
-    });
-    task_handles.push(handle);
-
-    // TODO: can remove?
-    std::thread::sleep(std::time::Duration::from_secs(1));
 
     // Process each node
     for node in &test.nodes {
@@ -355,7 +341,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
             args.extend_from_slice(&["--password", password]);
         };
 
-        fetch_kinostate().await?;    
+        chain::fetch_kinostate().await?;    
 
         let (runtime_process, master_fd) = run_runtime(
             &runtime_path,
