@@ -45,7 +45,6 @@ pub async fn execute(port: u16) -> Result<()> {
         .arg("--port")
         .arg(port.to_string())
         .current_dir(KIT_CACHE)
-        .stdout(std::process::Stdio::piped())
         .arg("--load-state")
         .arg("./kinostate.json")
         .spawn()?;

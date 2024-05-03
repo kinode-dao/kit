@@ -16,6 +16,7 @@ use kit::{
     boot_fake_node,
     build,
     build_start_package,
+    chain,
     dev_ui,
     inject_message,
     new,
@@ -202,6 +203,10 @@ async fn execute(
                 &features,
             )
             .await
+        }
+        Some(("chain", chain_matches)) => {
+            let port = chain_matches.get_one::<u16>("PORT").unwrap();
+            chain::execute(*port).await
         }
         Some(("dev-ui", dev_ui_matches)) => {
             let package_dir = PathBuf::from(dev_ui_matches.get_one::<String>("DIR").unwrap());
@@ -515,6 +520,18 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .long("features")
                 .help("Pass these comma-delimited feature flags to Rust cargo builds")
                 .required(false)
+            )
+        )
+        .subcommand(Command::new("chain")
+            .about("Start a local chain for development")
+            .visible_alias("c")
+            .arg(Arg::new("PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("Port to run the chain on")
+                .default_value("8545")
+                .value_parser(value_parser!(u16))
             )
         )
         .subcommand(Command::new("dev-ui")
