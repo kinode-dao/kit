@@ -134,7 +134,7 @@ async fn execute(
             let version = boot_matches.get_one::<String>("VERSION").unwrap();
             let node_home = PathBuf::from(boot_matches.get_one::<String>("HOME").unwrap());
             let node_port = boot_matches.get_one::<u16>("NODE_PORT").unwrap();
-            let network_router_port = boot_matches.get_one::<u16>("NETWORK_ROUTER_PORT").unwrap();
+            let fakechain_port = boot_matches.get_one::<u16>("FAKECHAIN_PORT").unwrap();
             let rpc = boot_matches
                 .get_one::<String>("RPC_ENDPOINT")
                 .and_then(|s| Some(s.as_str()));
@@ -149,7 +149,7 @@ async fn execute(
                 version.clone(),
                 node_home,
                 *node_port,
-                *network_router_port,
+                *fakechain_port,
                 rpc,
                 fake_node_name.clone(),
                 password,
@@ -386,10 +386,11 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("Name for fake node")
                 .default_value("fake.dev")
             )
-            .arg(Arg::new("NETWORK_ROUTER_PORT")
+            .arg(Arg::new("FAKECHAIN_PORT")
                 .action(ArgAction::Set)
-                .long("network-router-port")
-                .help("The port to run the network router on (or to connect to)")
+                .short('c')
+                .long("fakechain-port")
+                .help("The port to run the fakechain on (or to connect to)")
                 .default_value("8545")
                 .value_parser(value_parser!(u16))
             )

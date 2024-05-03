@@ -346,7 +346,7 @@ pub fn run_runtime(
     path: &Path,
     home: &Path,
     port: u16,
-    network_router_port: u16,
+    fakechain_port: u16,
     name: &str,
     args: &[&str],
     verbose: bool,
@@ -354,12 +354,12 @@ pub fn run_runtime(
     verbosity: u8,
 ) -> Result<(Child, OwnedFd)> {
     let port = format!("{}", port);
-    let network_router_port = format!("{}", network_router_port);
+    let fakechain_port = format!("{}", fakechain_port);
     let verbosity = format!("{}", verbosity);
     let mut full_args = vec![
         home.to_str().unwrap(), "--port", port.as_str(),
         "--fake-node-name", name,
-        "--network-router-port", network_router_port.as_str(),
+        "--fakechain-port", fakechain_port.as_str(),
         "--verbosity", verbosity.as_str(),
     ];
 
@@ -386,7 +386,7 @@ pub async fn execute(
     version: String,
     node_home: PathBuf,
     node_port: u16,
-    network_router_port: u16,
+    fakechain_port: u16,
     rpc: Option<&str>,
     mut fake_node_name: String,
     password: &str,
@@ -448,7 +448,7 @@ pub async fn execute(
 
     fetch_kinostate().await?;
 
-    let anvil_process = chain::start_chain(network_router_port);
+    let anvil_process = chain::start_chain(fakechain_port);
 
     if node_home.exists() {
         fs::remove_dir_all(&node_home)?;
@@ -464,7 +464,7 @@ pub async fn execute(
         &runtime_path,
         &node_home,
         node_port,
-        network_router_port,
+        fakechain_port,
         &fake_node_name,
         &args[..],
         true,
