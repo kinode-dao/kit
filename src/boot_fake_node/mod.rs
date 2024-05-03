@@ -27,6 +27,8 @@ const KINODE_REPO: &str = "kinode";
 const LOCAL_PREFIX: &str = "/tmp/kinode-";
 pub const CACHE_EXPIRY_SECONDS: u64 = 300;
 
+const KINOSTATE_JSON: &str = include_str!("../chain/kinostate.json");
+
 #[derive(Deserialize, Debug)]
 struct Release {
     tag_name: String,
@@ -329,14 +331,10 @@ async fn fetch_latest_release_tag_or_local(owner: &str, repo: &str) -> Result<St
 
 pub async fn fetch_kinostate() -> Result<()> {
     let json_path = format!("{}/kinostate.json", KIT_CACHE);
-    let json_url = "https://gist.githubusercontent.com/bitful-pannul/be02f6085dbc4bc8a4cda0c40039fb3c/raw/9b51cc3116b6a3839c3c42e8aa6bcacb43f4753d/kinostate.json";
 
-    // TODO: statefile versioning
     if fs::metadata(&json_path).is_ok() {
     } else {
-        let json_content = reqwest::get(json_url).await?;
-        let json_content = json_content.text().await?;
-        fs::write(&json_path, json_content)?;
+        fs::write(&json_path, KINOSTATE_JSON)?;
     }
     Ok(())
 }
