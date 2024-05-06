@@ -433,6 +433,7 @@ pub async fn execute(
         master_fd,
         process_id: runtime_process.id() as i32,
         home: node_home.clone(),
+        anvil_process: anvil_process.ok(),
     });
     drop(node_cleanup_infos);
 
@@ -440,10 +441,6 @@ pub async fn execute(
     let _ = send_to_cleanup.send(true);
     for handle in task_handles {
         handle.await.unwrap();
-    }
-
-    if let Ok(mut child) = anvil_process {
-        child.kill().unwrap();
     }
 
     Ok(())

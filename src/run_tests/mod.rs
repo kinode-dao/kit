@@ -342,6 +342,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
         };
 
         chain::fetch_kinostate().await?;    
+        let anvil_process = chain::start_chain(8545); // todo arg?
 
         let (runtime_process, master_fd) = run_runtime(
             &runtime_path,
@@ -360,6 +361,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
             master_fd,
             process_id: runtime_process.id() as i32,
             home: node_home.clone(),
+            anvil_process: anvil_process.ok(),
         });
 
         if master_node_port.is_none() {

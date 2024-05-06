@@ -70,6 +70,7 @@ pub struct NodeCleanupInfo {
     pub master_fd: OwnedFd,
     pub process_id: i32,
     pub home: PathBuf,
+    pub anvil_process: Option<Child>,
 }
 
 pub struct CleanupContext {

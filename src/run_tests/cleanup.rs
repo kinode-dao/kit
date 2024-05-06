@@ -1,6 +1,5 @@
-use std::os::fd::AsRawFd;
-
 use fs_err as fs;
+use std::os::{fd::AsRawFd, unix::io::OwnedFd};
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{error, info};
 
@@ -9,6 +8,23 @@ use crate::run_tests::types::{BroadcastRecvBool, BroadcastSendBool, NodeCleanupI
 fn remove_repeated_newlines(input: &str) -> String {
     let re = regex::Regex::new(r"\n\n+").unwrap();
     re.replace_all(input, "\n").into_owned()
+}
+
+pub fn cleanup_process(master_fd: &OwnedFd, process_id: i32, detached: bool) {
+    if detached {
+        nix::unistd::write(master_fd.as_raw_fd(), b"\x03").unwrap();
+    } else {
+        let pid = nix::unistd::Pid::from_raw(process_id);
+        match nix::sys::wait::waitpid(pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
+            Ok(nix::sys::wait::WaitStatus::StillAlive) |
+            Ok(nix::sys::wait::WaitStatus::Stopped(_, _)) |
+            Ok(nix::sys::wait::WaitStatus::Continued(_)) => {
+                nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGINT)
+                    .expect("SIGINT failed");
+            }
+            _ => {}
+        }
+    }
 }
 
 /// trigger cleanup if receive signal to kill process
@@ -61,27 +77,15 @@ pub async fn cleanup(
         },
     };
 
-    for NodeCleanupInfo { master_fd, process_id, home } in node_cleanup_infos.iter_mut() {
+    for NodeCleanupInfo { master_fd, process_id, home, anvil_process } in node_cleanup_infos.iter_mut() {
         // Send Ctrl-C to the process
         info!("Cleaning up {:?}...\r", home);
-        if detached {
-            // 231222 Note: I (hf) tried to use the `else` method for
-            //  both detached and non-detached processes and found it
-            //  did not work properly for detached processes; specifically
-            //  for `run-tests` that exited early by, e.g., a user input
-            //  Ctrl+C.
-            nix::unistd::write(master_fd.as_raw_fd(), b"\x03").unwrap();
-        } else {
-            let pid = nix::unistd::Pid::from_raw(*process_id);
-            match nix::sys::wait::waitpid(pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
-                Ok(nix::sys::wait::WaitStatus::StillAlive) |
-                Ok(nix::sys::wait::WaitStatus::Stopped(_, _)) |
-                Ok(nix::sys::wait::WaitStatus::Continued(_)) => {
-                    nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGINT)
-                        .expect("SIGINT failed");
-                }
-                _ => {}
-            }
+
+        cleanup_process(master_fd, *process_id, detached);
+
+        if let Some(process) = anvil_process {
+            info!("Cleaning up anvil chain...\r");
+            cleanup_process(master_fd, process.id() as i32, detached);
         }
 
         if let Some(ref mut nh) = node_handles {
