@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
@@ -364,10 +365,23 @@ async fn compile_package_and_ui(
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn build_wit_dir(process_dir: &Path) -> Result<()> {
-    let package_dir = process_dir.parent().ok_or_else(|| eyre!("process_dir has no parent"))?;
+async fn build_wit_dir(process_dir: &Path, apis: &HashMap<String, Vec<u8>>) -> Result<()> {
     let wit_dir = process_dir.join("wit");
     download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
+    for (file_name, contents) in apis {
+        fs::write(wit_dir.join(file_name), contents)?;
+    }
+
+    let src_dir = process_dir.join("src");
+    for entry in src_dir.read_dir()? {
+        let entry = entry?;
+        let path = entry.path();
+        if Some("wit") == path.extension().and_then(|s| s.to_str()) {
+            if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+                fs::copy(&path, wit_dir.join(file_name))?;
+            }
+        }
+    }
     Ok(())
 }
 
@@ -375,19 +389,25 @@ async fn build_wit_dir(process_dir: &Path) -> Result<()> {
 async fn compile_package_item(
     entry: std::io::Result<std::fs::DirEntry>,
     features: String,
+    apis: HashMap<String, Vec<u8>>,
 ) -> Result<()> {
     let entry = entry?;
     let path = entry.path();
     if path.is_dir() {
-        build_wit_dir(&path).await?;
+        let is_rust_process = path.join(RUST_SRC_PATH).exists();
+        let is_py_process = path.join(PYTHON_SRC_PATH).exists();
+        let is_js_process = path.join(JAVASCRIPT_SRC_PATH).exists();
+        if is_rust_process || is_py_process || is_js_process {
+            build_wit_dir(&path, &apis).await?;
+        }
 
-        if path.join(RUST_SRC_PATH).exists() {
+        if is_rust_process {
             compile_rust_wasm_process(&path, &features).await?;
-        } else if path.join(PYTHON_SRC_PATH).exists() {
+        } else if is_py_process {
             let python = get_python_version(None, None)?
                 .ok_or_else(|| eyre!("kit requires Python 3.10 or newer"))?;
             compile_python_wasm_process(&path, &python).await?;
-        } else if path.join(JAVASCRIPT_SRC_PATH).exists() {
+        } else if is_js_process {
             let valid_node = get_newest_valid_node_version(None, None)?;
             compile_javascript_wasm_process(&path, valid_node).await?;
         }
@@ -426,6 +446,7 @@ async fn compile_package(
     let mut checked_rust = false;
     let mut checked_py = false;
     let mut checked_js = false;
+    let mut apis = HashMap::new();
     for entry in package_dir.read_dir()? {
         let entry = entry?;
         let path = entry.path();
@@ -449,17 +470,17 @@ async fn compile_package(
             if ext != "wit" {
                 continue;
             }
-            let Some(path_str) = path.file_name().and_then(|s| s.to_str()) else {
+            let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
                 continue;
             };
-            if path_str.starts_with(&format!(
+            if file_name.starts_with(&format!(
                 "{}:{}-api",
                 metadata.properties.package_name,
                 metadata.properties.publisher,
             )) {
-                // Copy it into wit/
-                let path_in_wit = package_dir.join("wit").join(path_str);
-                std::fs::copy(path, path_in_wit)?;
+                if let Ok(api_contents) = fs::read(&path) {
+                    apis.insert(file_name.to_string(), api_contents);
+                }
             }
         }
     }
@@ -467,7 +488,7 @@ async fn compile_package(
     let mut tasks = tokio::task::JoinSet::new();
     let features = features.to_string();
     for entry in package_dir.read_dir()? {
-        tasks.spawn(compile_package_item(entry, features.clone()));
+        tasks.spawn(compile_package_item(entry, features.clone(), apis.clone()));
     }
     while let Some(res) = tasks.join_next().await {
         res??;
