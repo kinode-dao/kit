@@ -430,6 +430,10 @@ pub async fn execute(
     features: &str,
 ) -> Result<()> {
     if !package_dir.join("pkg").exists() {
+        if Some(".DS_Store") == package_dir.file_name().and_then(|s| s.to_str()) {
+            info!("Skipping build of {:?}", package_dir);
+            return Ok(());
+        }
         return Err(eyre!(
             "Required `pkg/` dir not found within given input dir {:?} (or cwd, if none given). Please re-run targeting a package.",
             package_dir,
