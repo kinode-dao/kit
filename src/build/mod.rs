@@ -1,10 +1,12 @@
 use std::path::Path;
 use std::process::Command;
 
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::{eyre::{eyre, WrapErr}, Result};
 use fs_err as fs;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn, instrument};
+
+use kinode_process_lib::kernel_types::Erc721Metadata;
 
 use crate::KIT_CACHE;
 use crate::setup::{
@@ -93,6 +95,15 @@ pub async fn download_file(url: &str, path: &Path) -> Result<()> {
 }
 
 #[instrument(level = "trace", skip_all)]
+pub fn read_metadata(package_dir: &Path) -> Result<Erc721Metadata> {
+    let metadata: Erc721Metadata =
+        serde_json::from_reader(fs::File::open(package_dir.join("metadata.json"))
+            .wrap_err_with(|| "Missing required metadata.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=metadata.json#metadatajson")?
+        )?;
+    Ok(metadata)
+}
+
+#[instrument(level = "trace", skip_all)]
 async fn compile_javascript_wasm_process(
     process_dir: &Path,
     valid_node: Option<String>,
@@ -101,8 +112,6 @@ async fn compile_javascript_wasm_process(
         "Compiling Javascript Kinode process in {:?}...",
         process_dir
     );
-    let wit_dir = process_dir.join("wit");
-    download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
     let wasm_file_name = process_dir.file_name().and_then(|s| s.to_str()).unwrap();
 
@@ -145,8 +154,6 @@ async fn compile_javascript_wasm_process(
 #[instrument(level = "trace", skip_all)]
 async fn compile_python_wasm_process(process_dir: &Path, python: &str) -> Result<()> {
     info!("Compiling Python Kinode process in {:?}...", process_dir);
-    let wit_dir = process_dir.join("wit");
-    download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
     let wasm_file_name = process_dir.file_name().and_then(|s| s.to_str()).unwrap();
 
@@ -175,15 +182,12 @@ async fn compile_rust_wasm_process(
     info!("Compiling Rust Kinode process in {:?}...", process_dir);
 
     // Paths
+    let wit_dir = process_dir.join("wit");
     let bindings_dir = process_dir
         .join("target")
         .join("bindings")
         .join(process_dir.file_name().unwrap());
-    let wit_dir = process_dir.join("wit");
-
     fs::create_dir_all(&bindings_dir)?;
-
-    download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
     // Check and download wasi_snapshot_preview1.wasm if it does not exist
     let wasi_snapshot_file = process_dir.join("wasi_snapshot_preview1.wasm");
@@ -360,6 +364,14 @@ async fn compile_package_and_ui(
 }
 
 #[instrument(level = "trace", skip_all)]
+async fn build_wit_dir(process_dir: &Path) -> Result<()> {
+    let package_dir = process_dir.parent().ok_or_else(|| eyre!("process_dir has no parent"))?;
+    let wit_dir = process_dir.join("wit");
+    download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
+    Ok(())
+}
+
+#[instrument(level = "trace", skip_all)]
 async fn compile_package_item(
     entry: std::io::Result<std::fs::DirEntry>,
     features: String,
@@ -367,6 +379,8 @@ async fn compile_package_item(
     let entry = entry?;
     let path = entry.path();
     if path.is_dir() {
+        build_wit_dir(&path).await?;
+
         if path.join(RUST_SRC_PATH).exists() {
             compile_rust_wasm_process(&path, &features).await?;
         } else if path.join(PYTHON_SRC_PATH).exists() {
@@ -381,12 +395,34 @@ async fn compile_package_item(
     Ok(())
 }
 
+/// package dir looks like:
+/// ```
+/// metadata.json
+/// my_package:publisher.os-api-v0.wit  <- optional
+/// api/                                <- working dir
+/// pkg/
+///   api.zip
+///   manifest.json
+///   process_i.wasm
+///   projess_j.wasm
+/// process_i/
+///   src/
+///     lib.rs
+///     process_i.wit
+///   target/                           <- working dir
+///   wit/                              <- working dir
+/// process_j/
+///   src/
+///   target/                           <- working dir
+///   wit/                              <- working dir
+/// ```
 #[instrument(level = "trace", skip_all)]
 async fn compile_package(
     package_dir: &Path,
     skip_deps_check: bool,
     features: &str,
 ) -> Result<()> {
+    let metadata = read_metadata(package_dir)?;
     let mut checked_rust = false;
     let mut checked_py = false;
     let mut checked_js = false;
@@ -405,6 +441,25 @@ async fn compile_package(
                 let deps = check_js_deps()?;
                 get_deps(deps)?;
                 checked_js = true;
+            }
+        } else if path.is_file() {
+            let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+                continue;
+            };
+            if ext != "wit" {
+                continue;
+            }
+            let Some(path_str) = path.file_name().and_then(|s| s.to_str()) else {
+                continue;
+            };
+            if path_str.starts_with(&format!(
+                "{}:{}-api",
+                metadata.properties.package_name,
+                metadata.properties.publisher,
+            )) {
+                // Copy it into wit/
+                let path_in_wit = package_dir.join("wit").join(path_str);
+                std::fs::copy(path, path_in_wit)?;
             }
         }
     }
