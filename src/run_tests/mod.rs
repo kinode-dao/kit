@@ -322,8 +322,8 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     let _cleanup_context = CleanupContext::new(send_to_cleanup.clone());
 
     // boot fakechain 
-    chain::fetch_kinostate().await?;    
-    let anvil_process = chain::start_chain(test.fakechain_router).await;
+    let state_hash = chain::fetch_kinostate().await?;    
+    let anvil_process = chain::start_chain(test.fakechain_router, &state_hash).await;
 
     let mut is_first_node = true; 
 
