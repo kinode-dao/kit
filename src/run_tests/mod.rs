@@ -386,6 +386,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
         }
         let mut node_handles = node_handles.lock().await;
         node_handles.push(runtime_process);
+        std::thread::sleep(std::time::Duration::from_millis(1000));
     }
 
     let mut ports = Vec::new();

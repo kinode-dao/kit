@@ -79,6 +79,11 @@ pub async fn cleanup(
         info!("Cleaning up {:?}...\r", home);
 
         if detached {
+            // 231222 Note: I (hf) tried to use the `else` method for
+            //  both detached and non-detached processes and found it
+            //  did not work properly for detached processes; specifically
+            //  for `run-tests` that exited early by, e.g., a user input
+            //  Ctrl+C.
             if let Err(e) = nix::unistd::write(master_fd.as_raw_fd(), b"\x03") {
                 println!("failed to send SIGINT to node: {:?}", e);
             }
