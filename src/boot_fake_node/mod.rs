@@ -398,17 +398,20 @@ pub async fn execute(
     let send_to_cleanup_for_cleanup = send_to_cleanup.clone();
     let _cleanup_context = CleanupContext::new(send_to_cleanup_for_cleanup);
 
+    std::thread::sleep(std::time::Duration::from_secs(1));
     if !fake_node_name.ends_with(".dev") {
         fake_node_name.push_str(".dev");
     }
 
     chain::fetch_kinostate().await?;
 
-    let anvil_process = chain::start_chain(fakechain_port);
+    let anvil_process = chain::start_chain(fakechain_port).await;
 
     if node_home.exists() {
         fs::remove_dir_all(&node_home)?;
     }
+
+    std::thread::sleep(Duration::from_secs(1));
 
     if let Some(ref rpc) = rpc {
         args.extend_from_slice(&["--rpc", rpc]);
@@ -433,7 +436,7 @@ pub async fn execute(
         master_fd,
         process_id: runtime_process.id() as i32,
         home: node_home.clone(),
-        anvil_process: anvil_process.ok(),
+        anvil_process: anvil_process.as_ref().ok().map(|p| p.id() as i32),
     });
     drop(node_cleanup_infos);
 

@@ -1,6 +1,6 @@
 use fs_err as fs;
-use std::os::{fd::AsRawFd, unix::io::OwnedFd};
 use tokio::signal::unix::{signal, SignalKind};
+use std::os::fd::AsRawFd;
 use tracing::{error, info};
 
 use crate::run_tests::types::{BroadcastRecvBool, BroadcastSendBool, NodeCleanupInfo, NodeCleanupInfos, NodeHandles, RecvBool, SendBool};
@@ -10,20 +10,17 @@ fn remove_repeated_newlines(input: &str) -> String {
     re.replace_all(input, "\n").into_owned()
 }
 
-pub fn cleanup_process(master_fd: &OwnedFd, process_id: i32, detached: bool) {
-    if detached {
-        nix::unistd::write(master_fd.as_raw_fd(), b"\x03").unwrap();
-    } else {
-        let pid = nix::unistd::Pid::from_raw(process_id);
-        match nix::sys::wait::waitpid(pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
-            Ok(nix::sys::wait::WaitStatus::StillAlive) |
-            Ok(nix::sys::wait::WaitStatus::Stopped(_, _)) |
-            Ok(nix::sys::wait::WaitStatus::Continued(_)) => {
-                nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGINT)
-                    .expect("SIGINT failed");
-            }
-            _ => {}
+/// Send SIGINT to the process
+pub fn clean_process_by_pid(process_id: i32) {
+    let pid = nix::unistd::Pid::from_raw(process_id);
+    match nix::sys::wait::waitpid(pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
+        Ok(nix::sys::wait::WaitStatus::StillAlive) |
+        Ok(nix::sys::wait::WaitStatus::Stopped(_, _)) |
+        Ok(nix::sys::wait::WaitStatus::Continued(_)) => {
+            nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGINT)
+                .expect("SIGINT failed");
         }
+        _ => {}
     }
 }
 
@@ -81,11 +78,20 @@ pub async fn cleanup(
         // Send Ctrl-C to the process
         info!("Cleaning up {:?}...\r", home);
 
-        cleanup_process(master_fd, *process_id, detached);
+        if detached {
+            if let Err(e) = nix::unistd::write(master_fd.as_raw_fd(), b"\x03") {
+                println!("failed to send SIGINT to node: {:?}", e);
+            }
+        } else {
+            clean_process_by_pid(*process_id);
+        }
 
-        if let Some(process) = anvil_process {
+
+        if let Some(anvil) = anvil_process {
             info!("Cleaning up anvil chain...\r");
-            cleanup_process(master_fd, process.id() as i32, detached);
+            println!("Cleaning up anvil chain...\r");
+            clean_process_by_pid(*anvil);
+            println!("cleaned up anvil chain.");
         }
 
         if let Some(ref mut nh) = node_handles {

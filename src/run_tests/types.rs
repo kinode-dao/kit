@@ -25,7 +25,7 @@ pub struct Test {
     pub setup_package_paths: Vec<PathBuf>,
     pub test_packages: Vec<TestPackage>,
     pub timeout_secs: u64,
-    pub network_router: NetworkRouter,
+    pub fakechain_router: u16,
     pub nodes: Vec<Node>,
 }
 
@@ -33,18 +33,6 @@ pub struct Test {
 pub struct TestPackage {
     pub path: PathBuf,
     pub grant_capabilities: Vec<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct NetworkRouter {
-    pub port: u16,
-    pub defects: NetworkRouterDefects,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum NetworkRouterDefects {
-    None,
-    // TODO: add Latency, Dropping, ..., All
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -70,7 +58,7 @@ pub struct NodeCleanupInfo {
     pub master_fd: OwnedFd,
     pub process_id: i32,
     pub home: PathBuf,
-    pub anvil_process: Option<Child>,
+    pub anvil_process: Option<i32>,
 }
 
 pub struct CleanupContext {

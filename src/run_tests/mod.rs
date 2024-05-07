@@ -321,8 +321,14 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     task_handles.push(handle);
     let _cleanup_context = CleanupContext::new(send_to_cleanup.clone());
 
+    // boot fakechain 
+    chain::fetch_kinostate().await?;    
+    let anvil_process = chain::start_chain(test.fakechain_router).await;
+
+    let mut is_first_node = true; 
 
     // Process each node
+    println!("test nodes: {:?}", test.nodes);
     for node in &test.nodes {
         fs::create_dir_all(&node.home)?;
         let node_home = fs::canonicalize(&node.home)?;
@@ -341,33 +347,43 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
             args.extend_from_slice(&["--password", password]);
         };
 
-        chain::fetch_kinostate().await?;    
-        let anvil_process = chain::start_chain(8545); // todo arg?
+        let mut name = node.fake_node_name.clone();
+        if !name.ends_with(".dev") {
+            name.push_str(".dev");
+        }
+
 
         let (runtime_process, master_fd) = run_runtime(
             &runtime_path,
             &node_home,
             node.port,
-            test.network_router.port,
-            &node.fake_node_name,
+            test.fakechain_router,
+            &name,
             &args[..],
             false,
             detached,
             node.runtime_verbosity.unwrap_or_else(|| 0u8),
         )?;
 
+
+        let anvil_cleanup = if is_first_node {
+            is_first_node = false;
+            anvil_process.as_ref().ok().map(|process| process.id() as i32)
+        } else {
+            None
+        };
+
         let mut node_cleanup_infos = node_cleanup_infos.lock().await;
         node_cleanup_infos.push(NodeCleanupInfo {
             master_fd,
             process_id: runtime_process.id() as i32,
             home: node_home.clone(),
-            anvil_process: anvil_process.ok(),
+            anvil_process: anvil_cleanup,
         });
 
         if master_node_port.is_none() {
             master_node_port = Some(node.port.clone());
         }
-
         let mut node_handles = node_handles.lock().await;
         node_handles.push(runtime_process);
     }
@@ -396,6 +412,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     ).await;
 
     let _ = send_to_cleanup.send(tests_result.is_err());
+    println!("task handles: {:?}", task_handles);
     for handle in task_handles {
         handle.await.unwrap();
     }
