@@ -328,7 +328,6 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     let mut is_first_node = true; 
 
     // Process each node
-    println!("test nodes: {:?}", test.nodes);
     for node in &test.nodes {
         fs::create_dir_all(&node.home)?;
         let node_home = fs::canonicalize(&node.home)?;
@@ -368,7 +367,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
 
         let anvil_cleanup = if is_first_node {
             is_first_node = false;
-            anvil_process.as_ref().ok().map(|process| process.id() as i32)
+            anvil_process.as_ref().ok().map(|process| process.id().unwrap() as i32)
         } else {
             None
         };
@@ -386,24 +385,20 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
         }
         let mut node_handles = node_handles.lock().await;
         node_handles.push(runtime_process);
-        std::thread::sleep(std::time::Duration::from_millis(1000));
-    }
 
-    let mut ports = Vec::new();
-
-    for node in &test.nodes {
-        let node_home = fs::canonicalize(&node.home)?;
-        info!("Setting up node {:?}...", node_home);
         let recv_kill_in_wait = send_to_kill.subscribe();
-        wait_until_booted(node.port, 5, recv_kill_in_wait).await?;
-        ports.push(node.port);
+        info!("Waiting for node {:?} on port {} to be ready...", node_home, node.port);
+        wait_until_booted(node.port, 10, recv_kill_in_wait).await?;
         info!("Done setting up node {:?} on port {}.", node_home, node.port);
     }
 
-    for port in &ports {
-        load_setups(&test.setup_package_paths, port.clone()).await?;
+    for node in &test.nodes {
+        load_setups(&test.setup_package_paths, node.port.clone()).await?;
     }
+
     load_tests(&test.test_packages, master_node_port.unwrap().clone()).await?;
+
+    let ports = test.nodes.iter().map(|n| n.port).collect();
 
     let tests_result = run_tests(
         &test.test_packages,
@@ -413,7 +408,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     ).await;
 
     let _ = send_to_cleanup.send(tests_result.is_err());
-    println!("task handles: {:?}", task_handles);
+
     for handle in task_handles {
         handle.await.unwrap();
     }

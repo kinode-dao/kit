@@ -93,10 +93,9 @@ pub async fn cleanup(
 
 
         if let Some(anvil) = anvil_process {
-            info!("Cleaning up anvil chain...\r");
-            println!("Cleaning up anvil chain...\r");
+            info!("Cleaning up anvil fakechain...\r");
             clean_process_by_pid(*anvil);
-            println!("cleaned up anvil chain.");
+            info!("Cleaned up anvil fakechain.");
         }
 
         if let Some(ref mut nh) = node_handles {
