@@ -4,7 +4,7 @@ use std::str::FromStr;
 use kinode_process_lib::{await_message, call_init, println, Address, ProcessId, Request, Response};
 
 wit_bindgen::generate!({
-    path: "wit",
+    path: "target/wit",
     world: "process",
 });
 

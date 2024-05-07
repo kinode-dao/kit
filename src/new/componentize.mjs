@@ -9,7 +9,7 @@ if (!processName) {
 }
 
 const jsSource = await readFile('src/lib.js', 'utf8');
-const witPath = 'wit/kinode.wit';
+const witPath = 'target/wit/kinode.wit';
 
 const { component } = await componentize(jsSource, { witPath: witPath, worldName: 'process', debug: false });
 

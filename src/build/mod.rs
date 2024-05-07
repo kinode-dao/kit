@@ -166,7 +166,7 @@ async fn compile_python_wasm_process(process_dir: &Path, python: &str) -> Result
     run_command(Command::new("bash")
         .args(&[
             "-c",
-            &format!("source ../{PY_VENV_NAME}/bin/activate && pip install {REQUIRED_PY_PACKAGE} && componentize-py -d ../wit/ -w process componentize lib -o ../../pkg/{wasm_file_name}.wasm"),
+            &format!("source ../{PY_VENV_NAME}/bin/activate && pip install {REQUIRED_PY_PACKAGE} && componentize-py -d ../target/wit/ -w process componentize lib -o ../../pkg/{wasm_file_name}.wasm"),
         ])
         .current_dir(process_dir.join("src"))
     )?;
@@ -183,7 +183,7 @@ async fn compile_rust_wasm_process(
     info!("Compiling Rust Kinode process in {:?}...", process_dir);
 
     // Paths
-    let wit_dir = process_dir.join("wit");
+    let wit_dir = process_dir.join("target").join("wit");
     let bindings_dir = process_dir
         .join("target")
         .join("bindings")
@@ -366,7 +366,7 @@ async fn compile_package_and_ui(
 
 #[instrument(level = "trace", skip_all)]
 async fn build_wit_dir(process_dir: &Path, apis: &HashMap<String, Vec<u8>>) -> Result<()> {
-    let wit_dir = process_dir.join("wit");
+    let wit_dir = process_dir.join("target").join("wit");
     download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
     for (file_name, contents) in apis {
         fs::write(wit_dir.join(file_name), contents)?;
@@ -418,24 +418,27 @@ async fn compile_package_item(
 /// package dir looks like:
 /// ```
 /// metadata.json
-/// my_package:publisher.os-api-v0.wit  <- optional
-/// api/                                <- working dir
+/// api/    <- optional
+///   my_package:publisher.os-v0-api.wit
 /// pkg/
 ///   api.zip
 ///   manifest.json
 ///   process_i.wasm
 ///   projess_j.wasm
 /// process_i/
+///   process_i.wit
 ///   src/
 ///     lib.rs
-///     process_i.wit
-///   target/                           <- working dir
-///   wit/                              <- working dir
+///   target/         <- working
+///     api/
+///     wit/
 /// process_j/
 ///   src/
-///   target/                           <- working dir
-///   wit/                              <- working dir
+///   target/         <- working
+///     api/
+///     wit/
 /// ```
+
 #[instrument(level = "trace", skip_all)]
 async fn compile_package(
     package_dir: &Path,

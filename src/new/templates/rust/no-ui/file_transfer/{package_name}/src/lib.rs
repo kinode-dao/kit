@@ -6,7 +6,7 @@ use kinode_process_lib::{
 use serde::{Deserialize, Serialize};
 
 wit_bindgen::generate!({
-    path: "wit",
+    path: "target/wit",
     world: "process",
 });
 
