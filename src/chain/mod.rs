@@ -33,22 +33,23 @@ pub async fn start_chain(port: u16) -> Result<Child> {
             let stdout = child.stdout.take().ok_or_else(|| eyre!("Failed to capture stdout"))?;
             let mut reader = BufReader::new(stdout).lines();
 
-            tokio::spawn(async move {
+            'outer: loop {
+                println!("foo");
                 while let Some(line) = reader.next_line().await? {
                     if line.contains("Listening") {
                         println!("Spawned anvil fakechain at port: {}", port);
-                        break;
+                        break 'outer;
                     }
                 }
-                Ok::<_, std::io::Error>(())
-            });
+                std::thread::sleep(std::time::Duration::from_secs(1));
+            }
 
             Ok(child)
         }
         Err(e) => Err(eyre!("Port {} is already in use: {}", port, e)),
     };
 
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    //std::thread::sleep(std::time::Duration::from_secs(1));
     child
 }
 
@@ -62,7 +63,7 @@ pub async fn execute(port: u16) -> Result<()> {
         .current_dir(KIT_CACHE)
         .arg("--load-state")
         .arg("./kinostate.json")
-        .spawn()?;    
+        .spawn()?;
     let child_id = child.id().unwrap() as i32;
 
     let (send_to_cleanup, mut recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
