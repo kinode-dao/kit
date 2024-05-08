@@ -30,7 +30,7 @@ pub async fn write_kinostate() -> Result<String> {
 pub async fn start_chain(port: u16, state_hash: &str, piped: bool) -> Result<Child> {
     let state_path = format!("./kinostate-{}.json", state_hash);
 
-    if wait_for_anvil(port, 0).await.is_ok() {
+    if wait_for_anvil(port, 0, false).await.is_ok() {
         return Err(eyre!("Port {} is already in use by another anvil process", port));
     }
 
@@ -43,7 +43,7 @@ pub async fn start_chain(port: u16, state_hash: &str, piped: bool) -> Result<Chi
         .stdout(if piped { Stdio::piped() } else { Stdio::inherit() })
         .spawn()?;
 
-    if let Err(e) = wait_for_anvil(port, 15).await {
+    if let Err(e) = wait_for_anvil(port, 15, true).await {
         let _ = child.kill();
         return Err(eyre!("Failed to start Anvil: {}, cleaning up", e));
     }
@@ -81,11 +81,16 @@ pub async fn execute(port: u16) -> Result<()> {
     Ok(())
 }
 
-async fn wait_for_anvil(port: u16, max_attempts: u16) -> Result<()> {
+async fn wait_for_anvil(port: u16, max_attempts: u16, is_spawn: bool) -> Result<()> {
     let client = Client::new();
     let url = format!("http://localhost:{}", port);
 
-    info!("Waiting for Anvil to be ready on port {}...", port);
+    if is_spawn {
+        info!("Waiting for Anvil to be ready on port {}...", port);
+    } else {
+        info!("Checking for Anvil  on port {}...", port);
+    }
+
     for _ in 0..max_attempts {
         let request_body = serde_json::json!({
             "jsonrpc": "2.0",
