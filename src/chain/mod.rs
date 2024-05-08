@@ -1,32 +1,42 @@
 use color_eyre::eyre::{eyre, Result};
 use fs_err as fs;
-use tokio::net::TcpListener;
+use sha2::{Digest, Sha256};
 use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::net::TcpListener;
 use tokio::process::{Child, Command};
+use tracing::info;
 
-use crate::run_tests::cleanup::{cleanup_on_signal, clean_process_by_pid};
-use crate::{KIT_CACHE, KIT_KINOSTATE_PATH_DEFAULT};
+use crate::KIT_CACHE;
+use crate::run_tests::cleanup::{clean_process_by_pid, cleanup_on_signal};
 
 pub const KINOSTATE_JSON: &str = include_str!("./kinostate.json");
 
-pub async fn fetch_kinostate() -> Result<()> {
-    let json_path = KIT_KINOSTATE_PATH_DEFAULT;
+pub async fn write_kinostate() -> Result<String> {
+    let state_hash = {
+        let mut hasher = Sha256::new();
+        hasher.update(KINOSTATE_JSON.as_bytes());
+        format!("{:x}", hasher.finalize())
+    };
 
-    if fs::metadata(json_path).is_ok() {
-    } else {
+    let json_path = format!("{}/kinostate-{}.json", KIT_CACHE, state_hash);
+    let json_path = std::path::PathBuf::from(json_path);
+
+    if !json_path.exists() {
         fs::write(&json_path, KINOSTATE_JSON)?;
     }
-    Ok(())
+    Ok(state_hash)
 }
 
-pub async fn start_chain(port: u16) -> Result<Child> {
+pub async fn start_chain(port: u16, state_hash: &str) -> Result<Child> {
+    let state_path = format!("{}/kinostate-{}.json", KIT_CACHE, state_hash);
+
     let child = match TcpListener::bind(("127.0.0.1", port)).await {
         Ok(_) => {
             let mut child = Command::new("anvil")
                 .arg("--port")
                 .arg(port.to_string())
                 .arg("--load-state")
-                .arg(KIT_KINOSTATE_PATH_DEFAULT)
+                .arg(state_path)
                 .stdout(std::process::Stdio::piped())
                 .spawn()?;
 
@@ -36,7 +46,7 @@ pub async fn start_chain(port: u16) -> Result<Child> {
             tokio::spawn(async move {
                 while let Some(line) = reader.next_line().await? {
                     if line.contains("Listening") {
-                        println!("Spawned anvil fakechain at port: {}", port);
+                        info!("Spawned anvil fakechain at port: {}", port);
                         break;
                     }
                 }
@@ -54,15 +64,16 @@ pub async fn start_chain(port: u16) -> Result<Child> {
 
 /// kit chain, alias to anvil
 pub async fn execute(port: u16) -> Result<()> {
-    fetch_kinostate().await?;
+    let state_hash = write_kinostate().await?;
+    let state_path = format!("./kinostate-{}.json", state_hash);
 
     let mut child = Command::new("anvil")
         .arg("--port")
         .arg(port.to_string())
         .current_dir(KIT_CACHE)
         .arg("--load-state")
-        .arg("./kinostate.json")
-        .spawn()?;    
+        .arg(state_path)
+        .spawn()?;
     let child_id = child.id().unwrap() as i32;
 
     let (send_to_cleanup, mut recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();

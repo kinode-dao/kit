@@ -1,6 +1,7 @@
+use std::os::fd::AsRawFd;
+
 use fs_err as fs;
 use tokio::signal::unix::{signal, SignalKind};
-use std::os::fd::AsRawFd;
 use tracing::{error, info};
 
 use crate::run_tests::types::{BroadcastRecvBool, BroadcastSendBool, NodeCleanupInfo, NodeCleanupInfos, NodeHandles, RecvBool, SendBool};
@@ -85,7 +86,7 @@ pub async fn cleanup(
             //  for `run-tests` that exited early by, e.g., a user input
             //  Ctrl+C.
             if let Err(e) = nix::unistd::write(master_fd.as_raw_fd(), b"\x03") {
-                println!("failed to send SIGINT to node: {:?}", e);
+                error!("failed to send SIGINT to node: {:?}", e);
             }
         } else {
             clean_process_by_pid(*process_id);
