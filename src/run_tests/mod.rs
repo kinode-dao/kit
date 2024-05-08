@@ -90,10 +90,12 @@ impl Config {
 
 #[instrument(level = "trace", skip_all)]
 async fn wait_until_booted(
+    node: &PathBuf,
     port: u16,
     max_waits: u16,
     mut recv_kill_in_wait: BroadcastRecvBool,
 ) -> Result<()> {
+    info!("Waiting for node {:?} on port {} to be ready...", node, port);
     for _ in 0..max_waits {
         let request = inject_message::make_message(
             "vfs:distro:sys",
@@ -112,7 +114,10 @@ async fn wait_until_booted(
             request,
         ).await {
             Ok(response) => match inject_message::parse_response(response).await {
-                Ok(_) => return Ok(()),
+                Ok(_) => { 
+                    info!("Done waiting for node {:?} on port {}.", node, port);
+                    return Ok(())
+                },
                 _ => (),
             }
             _ => (),
@@ -322,7 +327,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     let _cleanup_context = CleanupContext::new(send_to_cleanup.clone());
 
     // boot fakechain 
-    let state_hash = chain::fetch_kinostate().await?;    
+    let state_hash = chain::write_kinostate().await?;    
     let anvil_process = chain::start_chain(test.fakechain_router, &state_hash).await;
 
     let mut is_first_node = true; 
@@ -387,9 +392,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
         node_handles.push(runtime_process);
 
         let recv_kill_in_wait = send_to_kill.subscribe();
-        info!("Waiting for node {:?} on port {} to be ready...", node_home, node.port);
-        wait_until_booted(node.port, 10, recv_kill_in_wait).await?;
-        info!("Done setting up node {:?} on port {}.", node_home, node.port);
+        wait_until_booted(&node.home, node.port, 10, recv_kill_in_wait).await?;
     }
 
     for node in &test.nodes {
@@ -408,7 +411,6 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     ).await;
 
     let _ = send_to_cleanup.send(tests_result.is_err());
-
     for handle in task_handles {
         handle.await.unwrap();
     }

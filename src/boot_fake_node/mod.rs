@@ -402,7 +402,7 @@ pub async fn execute(
         fake_node_name.push_str(".dev");
     }
 
-    let state_hash = chain::fetch_kinostate().await?;
+    let state_hash = chain::write_kinostate().await?;
     let anvil_process = chain::start_chain(fakechain_port, &state_hash).await;
 
     if node_home.exists() {
