@@ -14,6 +14,7 @@ use crate::setup::{
     check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version, get_python_version,
     REQUIRED_PY_PACKAGE,
 };
+use crate::start_package::zip_directory;
 
 const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
@@ -418,23 +419,23 @@ async fn compile_package_item(
 /// package dir looks like:
 /// ```
 /// metadata.json
-/// api/    <- optional
+/// api/                                  <- optional
 ///   my_package:publisher.os-v0-api.wit
 /// pkg/
-///   api.zip
+///   api.zip                             <- built
 ///   manifest.json
-///   process_i.wasm
-///   projess_j.wasm
+///   process_i.wasm                      <- built
+///   projess_j.wasm                      <- built
 /// process_i/
-///   process_i.wit
 ///   src/
 ///     lib.rs
-///   target/         <- working
+///     process_i.wit                     <- optional
+///   target/                             <- built
 ///     api/
 ///     wit/
 /// process_j/
 ///   src/
-///   target/         <- working
+///   target/                             <- built
 ///     api/
 ///     wit/
 /// ```
@@ -465,24 +466,34 @@ async fn compile_package(
                 let deps = check_js_deps()?;
                 get_deps(deps)?;
                 checked_js = true;
-            }
-        } else if path.is_file() {
-            let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
-                continue;
-            };
-            if ext != "wit" {
-                continue;
-            }
-            let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
-                continue;
-            };
-            if file_name.starts_with(&format!(
-                "{}:{}-api",
-                metadata.properties.package_name,
-                metadata.properties.publisher,
-            )) {
-                if let Ok(api_contents) = fs::read(&path) {
-                    apis.insert(file_name.to_string(), api_contents);
+            } else if Some("api") == path.file_name().and_then(|s| s.to_str()) {
+                // zip & place in pkg/: publish API inside Kinode
+                let zip_path = package_dir.join("pkg").join("api.zip");
+                let zip_path = zip_path.to_str().unwrap();
+                zip_directory(&path, zip_path)?;
+
+                // read api files: to be used in build
+                for entry in path.read_dir()? {
+                    let entry = entry?;
+                    let path = entry.path();
+                    let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+                        continue;
+                    };
+                    if ext != "wit" {
+                        continue;
+                    }
+                    let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
+                        continue;
+                    };
+                    if file_name.starts_with(&format!(
+                        "{}:{}-api",
+                        metadata.properties.package_name,
+                        metadata.properties.publisher,
+                    )) {
+                        if let Ok(api_contents) = fs::read(&path) {
+                            apis.insert(file_name.to_string(), api_contents);
+                        }
+                    }
                 }
             }
         }

@@ -1,16 +1,11 @@
-use std::io::{Read, Write};
-use std::path::Path;
+use std::path::PathBuf;
 
-use color_eyre::{Result, eyre::{eyre, WrapErr}};
+use color_eyre::{Result, eyre::eyre};
 use fs_err as fs;
 use serde_json::json;
 use tracing::{info, instrument};
-use walkdir::WalkDir;
-use zip::write::FileOptions;
 
-use kinode_process_lib::kernel_types::Erc721Metadata;
-
-use crate::{build::read_metadata, inject_message, KIT_LOG_PATH_DEFAULT};
+use crate::{boot_fake_node::extract_zip, inject_message, KIT_CACHE, KIT_LOG_PATH_DEFAULT};
 
 #[instrument(level = "trace", skip_all)]
 fn list_apis(node: Option<&str>) -> Result<serde_json::Value> {
@@ -49,39 +44,6 @@ fn get_api(
     )
 }
 
-//#[instrument(level = "trace", skip_all)]
-//fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
-//    let file = fs::File::create(zip_filename)?;
-//    let walkdir = WalkDir::new(directory);
-//    let it = walkdir.into_iter();
-//
-//    let mut zip = zip::ZipWriter::new(file);
-//
-//    let options = FileOptions::default()
-//        .compression_method(zip::CompressionMethod::Stored)
-//        .unix_permissions(0o755);
-//
-//    for entry in it {
-//        let entry = entry?;
-//        let path = entry.path();
-//        let name = path.strip_prefix(Path::new(directory))?;
-//
-//        if path.is_file() {
-//            zip.start_file(name.to_string_lossy(), options)?;
-//            let mut f = fs::File::open(path)?;
-//            let mut buffer = Vec::new();
-//            f.read_to_end(&mut buffer)?;
-//            zip.write_all(&*buffer)?;
-//        } else if name.as_os_str().len() != 0 {
-//            // Only if it is not the root directory
-//            zip.add_directory(name.to_string_lossy(), options)?;
-//        }
-//    }
-//
-//    zip.finish()?;
-//    Ok(())
-//}
-
 #[instrument(level = "trace", skip_all)]
 pub async fn execute(
     node: Option<&str>,
@@ -103,7 +65,7 @@ pub async fn execute(
     };
     let response = inject_message::send_request(url, request).await?;
 
-    let inject_message::Response { ref body, .. } =
+    let inject_message::Response { ref body, ref lazy_load_blob, .. } =
         inject_message::parse_response(response)
             .await
             .map_err(|e| {
@@ -115,7 +77,28 @@ pub async fn execute(
                 }
             })?;
     let body = serde_json::from_str::<serde_json::Value>(body)?;
-    info!("{}", serde_json::to_string_pretty(&body)?);
+    if let Some(blob) = lazy_load_blob {
+        let api_name = format!("{}-api", package_id.unwrap());
+        let zip_dir = PathBuf::from(KIT_CACHE).join(api_name);
+        let zip_path = zip_dir.join(format!("{}-api.zip", package_id.unwrap()));
+        if zip_dir.exists() {
+            fs::remove_dir_all(&zip_dir)?;
+        }
+        fs::create_dir_all(&zip_dir)?;
+        fs::write(&zip_path, blob)?;
+        extract_zip(&zip_path)?;
+        for entry in zip_dir.read_dir()? {
+            let entry = entry?;
+            let path = entry.path();
+            if Some("wit") == path.extension().and_then(|s| s.to_str()) {
+                let file_path = path.to_str().unwrap_or_default();
+                let wit_contents = fs::read_to_string(&path)?;
+                info!("{}\n\n{}", file_path, wit_contents);
+            }
+        }
+    } else {
+        info!("{}", serde_json::to_string_pretty(&body)?);
+    }
 
     Ok(())
 }

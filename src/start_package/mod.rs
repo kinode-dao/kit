@@ -63,7 +63,7 @@ pub fn interact_with_package(
 }
 
 #[instrument(level = "trace", skip_all)]
-fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
+pub fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
     let file = fs::File::create(zip_filename)?;
     let walkdir = WalkDir::new(directory);
     let it = walkdir.into_iter();
