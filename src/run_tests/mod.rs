@@ -327,8 +327,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     let _cleanup_context = CleanupContext::new(send_to_cleanup.clone());
 
     // boot fakechain 
-    let state_hash = chain::write_kinostate().await?;    
-    let anvil_process = chain::start_chain(test.fakechain_router, &state_hash, true).await;
+    let anvil_process = chain::start_chain(test.fakechain_router, true).await;
 
     // Process each node
     for node in &test.nodes {
@@ -367,11 +366,11 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
             node.runtime_verbosity.unwrap_or_else(|| 0u8),
         )?;
 
+        let mut anvil_cleanup: Option<i32> = None;
 
-        let anvil_cleanup = if master_node_port.is_none() {
-            anvil_process.as_ref().ok().map(|process| process.id() as i32)
-        } else {
-            None
+        if master_node_port.is_none() {
+            anvil_cleanup = anvil_process.as_ref().ok().map(|process: &std::process::Child| process.id() as i32);
+            master_node_port = Some(node.port);
         };
 
         let mut node_cleanup_infos = node_cleanup_infos.lock().await;
@@ -382,9 +381,6 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
             anvil_process: anvil_cleanup,
         });
 
-        if master_node_port.is_none() {
-            master_node_port = Some(node.port.clone());
-        }
         let mut node_handles = node_handles.lock().await;
         node_handles.push(runtime_process);
 

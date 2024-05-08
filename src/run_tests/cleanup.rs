@@ -18,8 +18,9 @@ pub fn clean_process_by_pid(process_id: i32) {
         Ok(nix::sys::wait::WaitStatus::StillAlive) |
         Ok(nix::sys::wait::WaitStatus::Stopped(_, _)) |
         Ok(nix::sys::wait::WaitStatus::Continued(_)) => {
-            nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGINT)
-                .expect("SIGINT failed");
+            if let Err(e) = nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGINT) {
+                error!("failed to send SIGINT to process: {:?}", e);
+            }
         }
         _ => {}
     }

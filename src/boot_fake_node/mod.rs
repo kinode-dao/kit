@@ -403,8 +403,7 @@ pub async fn execute(
     }
 
     // boot fakechain
-    let state_hash = chain::write_kinostate().await?;
-    let anvil_process = chain::start_chain(fakechain_port, &state_hash, true).await;
+    let anvil_process = chain::start_chain(fakechain_port, true).await;
 
     if node_home.exists() {
         fs::remove_dir_all(&node_home)?;

@@ -1,8 +1,9 @@
+use std::process::{Child, Command, Stdio};
+
 use color_eyre::eyre::{eyre, Result};
 use fs_err as fs;
 use reqwest::Client;
 use sha2::{Digest, Sha256};
-use std::process::{Child, Command, Stdio};
 use tokio::time::{sleep, Duration};
 use tracing::info;
 
@@ -27,10 +28,12 @@ pub async fn write_kinostate() -> Result<String> {
     Ok(state_hash)
 }
 
-pub async fn start_chain(port: u16, state_hash: &str, piped: bool) -> Result<Child> {
+pub async fn start_chain(port: u16, piped: bool) -> Result<Child> {
+    let state_hash = write_kinostate().await?;
     let state_path = format!("./kinostate-{}.json", state_hash);
 
-    if wait_for_anvil(port, 1, false).await.is_ok() {
+    info!("Checking for Anvil  on port {}...", port);
+    if wait_for_anvil(port, 1).await.is_ok() {
         return Err(eyre!("Port {} is already in use by another anvil process", port));
     }
 
@@ -43,7 +46,8 @@ pub async fn start_chain(port: u16, state_hash: &str, piped: bool) -> Result<Chi
         .stdout(if piped { Stdio::piped() } else { Stdio::inherit() })
         .spawn()?;
 
-    if let Err(e) = wait_for_anvil(port, 15, true).await {
+    info!("Waiting for Anvil to be ready on port {}...", port);
+    if let Err(e) = wait_for_anvil(port, 15).await {
         let _ = child.kill();
         return Err(eyre!("Failed to start Anvil: {}, cleaning up", e));
     }
@@ -51,45 +55,9 @@ pub async fn start_chain(port: u16, state_hash: &str, piped: bool) -> Result<Chi
     Ok(child)
 }
 
-/// kit chain, alias to anvil
-pub async fn execute(port: u16) -> Result<()> {
-    let state_hash = write_kinostate().await?;
-
-    let mut child = start_chain(port, &state_hash, false).await?;
-    let child_id = child.id() as i32;
-
-    let (send_to_cleanup, mut recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
-    let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
-    let recv_kill_in_cos = send_to_kill.subscribe();
-
-    let handle_signals = tokio::spawn(cleanup_on_signal(send_to_cleanup.clone(), recv_kill_in_cos));
-
-    let cleanup_anvil = tokio::spawn(async move {
-        let status = child.wait();
-        clean_process_by_pid(child_id);
-        status
-    });
-
-    tokio::select! {
-        _ = handle_signals => {}
-        _ = cleanup_anvil => {}
-        _ = recv_in_cleanup.recv() => {}
-    }
-
-    let _ = send_to_kill.send(true);
-
-    Ok(())
-}
-
-async fn wait_for_anvil(port: u16, max_attempts: u16, is_spawn: bool) -> Result<()> {
+async fn wait_for_anvil(port: u16, max_attempts: u16) -> Result<()> {
     let client = Client::new();
     let url = format!("http://localhost:{}", port);
-
-    if is_spawn {
-        info!("Waiting for Anvil to be ready on port {}...", port);
-    } else {
-        info!("Checking for Anvil  on port {}...", port);
-    }
 
     for _ in 0..max_attempts {
         let request_body = serde_json::json!({
@@ -122,4 +90,30 @@ async fn wait_for_anvil(port: u16, max_attempts: u16, is_spawn: bool) -> Result<
         port,
         max_attempts
     ))
+}
+
+/// kit chain, alias to anvil
+pub async fn execute(port: u16) -> Result<()> {
+    let mut child = start_chain(port, false).await?;
+    let child_id = child.id() as i32;
+
+    let (send_to_cleanup, mut recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
+    let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
+    let recv_kill_in_cos = send_to_kill.subscribe();
+
+    let handle_signals = tokio::spawn(cleanup_on_signal(send_to_cleanup.clone(), recv_kill_in_cos));
+
+    let cleanup_anvil = tokio::spawn(async move {
+        recv_in_cleanup.recv().await;
+        clean_process_by_pid(child_id);
+    });
+
+    let _ = child.wait();
+
+    let _ = handle_signals.await;
+    let _ = cleanup_anvil.await;
+
+    let _ = send_to_kill.send(true);
+
+    Ok(())
 }
