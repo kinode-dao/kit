@@ -330,8 +330,6 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     let state_hash = chain::write_kinostate().await?;    
     let anvil_process = chain::start_chain(test.fakechain_router, &state_hash, true).await;
 
-    let mut is_first_node = true; 
-
     // Process each node
     for node in &test.nodes {
         fs::create_dir_all(&node.home)?;
@@ -370,8 +368,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
         )?;
 
 
-        let anvil_cleanup = if is_first_node {
-            is_first_node = false;
+        let anvil_cleanup = if master_node_port.is_some() {
             anvil_process.as_ref().ok().map(|process| process.id() as i32)
         } else {
             None
