@@ -30,7 +30,7 @@ pub async fn write_kinostate() -> Result<String> {
 pub async fn start_chain(port: u16, state_hash: &str, piped: bool) -> Result<Child> {
     let state_path = format!("./kinostate-{}.json", state_hash);
 
-    if wait_for_anvil(port, 0, false).await.is_ok() {
+    if wait_for_anvil(port, 1, false).await.is_ok() {
         return Err(eyre!("Port {} is already in use by another anvil process", port));
     }
 
