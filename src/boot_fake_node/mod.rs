@@ -402,8 +402,9 @@ pub async fn execute(
         fake_node_name.push_str(".dev");
     }
 
+    // boot fakechain
     let state_hash = chain::write_kinostate().await?;
-    let anvil_process = chain::start_chain(fakechain_port, &state_hash).await;
+    let anvil_process = chain::start_chain(fakechain_port, &state_hash, true).await;
 
     if node_home.exists() {
         fs::remove_dir_all(&node_home)?;
@@ -433,7 +434,7 @@ pub async fn execute(
         master_fd,
         process_id: runtime_process.id() as i32,
         home: node_home.clone(),
-        anvil_process: anvil_process.as_ref().ok().map(|p| p.id().unwrap() as i32),
+        anvil_process: anvil_process.as_ref().ok().map(|p| p.id() as i32),
     });
     drop(node_cleanup_infos);
 

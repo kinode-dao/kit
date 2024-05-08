@@ -1,9 +1,9 @@
 use color_eyre::eyre::{eyre, Result};
 use fs_err as fs;
+use reqwest::Client;
 use sha2::{Digest, Sha256};
-use tokio::io::{AsyncBufReadExt, BufReader};
-use tokio::net::TcpListener;
-use tokio::process::{Child, Command};
+use std::process::{Child, Command, Stdio};
+use tokio::time::{sleep, Duration};
 use tracing::info;
 
 use crate::KIT_CACHE;
@@ -27,54 +27,36 @@ pub async fn write_kinostate() -> Result<String> {
     Ok(state_hash)
 }
 
-pub async fn start_chain(port: u16, state_hash: &str) -> Result<Child> {
-    let state_path = format!("{}/kinostate-{}.json", KIT_CACHE, state_hash);
+pub async fn start_chain(port: u16, state_hash: &str, piped: bool) -> Result<Child> {
+    let state_path = format!("./kinostate-{}.json", state_hash);
 
-    let child = match TcpListener::bind(("127.0.0.1", port)).await {
-        Ok(_) => {
-            let mut child = Command::new("anvil")
-                .arg("--port")
-                .arg(port.to_string())
-                .arg("--load-state")
-                .arg(state_path)
-                .stdout(std::process::Stdio::piped())
-                .spawn()?;
+    if wait_for_anvil(port, 0).await.is_ok() {
+        return Err(eyre!("Port {} is already in use by another anvil process", port));
+    }
 
-            let stdout = child.stdout.take().ok_or_else(|| eyre!("Failed to capture stdout"))?;
-            let mut reader = BufReader::new(stdout).lines();
+    let mut child = Command::new("anvil")
+        .arg("--port")
+        .arg(port.to_string())
+        .arg("--load-state")
+        .arg(&state_path)
+        .current_dir(KIT_CACHE)
+        .stdout(if piped { Stdio::piped() } else { Stdio::inherit() })
+        .spawn()?;
 
-            tokio::spawn(async move {
-                while let Some(line) = reader.next_line().await? {
-                    if line.contains("Listening") {
-                        info!("Spawned anvil fakechain at port: {}", port);
-                        break;
-                    }
-                }
-                Ok::<_, std::io::Error>(())
-            });
+    if let Err(e) = wait_for_anvil(port, 15).await {
+        let _ = child.kill();
+        return Err(eyre!("Failed to start Anvil: {}, cleaning up", e));
+    }
 
-            Ok(child)
-        }
-        Err(e) => Err(eyre!("Port {} is already in use: {}", port, e)),
-    };
-
-    std::thread::sleep(std::time::Duration::from_secs(1));
-    child
+    Ok(child)
 }
 
 /// kit chain, alias to anvil
 pub async fn execute(port: u16) -> Result<()> {
     let state_hash = write_kinostate().await?;
-    let state_path = format!("./kinostate-{}.json", state_hash);
 
-    let mut child = Command::new("anvil")
-        .arg("--port")
-        .arg(port.to_string())
-        .current_dir(KIT_CACHE)
-        .arg("--load-state")
-        .arg(state_path)
-        .spawn()?;
-    let child_id = child.id().unwrap() as i32;
+    let mut child = start_chain(port, &state_hash, false).await?;
+    let child_id = child.id() as i32;
 
     let (send_to_cleanup, mut recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
     let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
@@ -83,7 +65,7 @@ pub async fn execute(port: u16) -> Result<()> {
     let handle_signals = tokio::spawn(cleanup_on_signal(send_to_cleanup.clone(), recv_kill_in_cos));
 
     let cleanup_anvil = tokio::spawn(async move {
-        let status = child.wait().await;
+        let status = child.wait();
         clean_process_by_pid(child_id);
         status
     });
@@ -97,4 +79,42 @@ pub async fn execute(port: u16) -> Result<()> {
     let _ = send_to_kill.send(true);
 
     Ok(())
+}
+
+async fn wait_for_anvil(port: u16, max_attempts: u16) -> Result<()> {
+    let client = Client::new();
+    let url = format!("http://localhost:{}", port);
+
+    info!("Waiting for Anvil to be ready on port {}...", port);
+    for _ in 0..max_attempts {
+        let request_body = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "eth_blockNumber",
+            "params": [],
+            "id": 1
+        });
+
+        let response = client.post(&url).json(&request_body).send().await;
+
+        match response {
+            Ok(resp) if resp.status().is_success() => {
+                let result: serde_json::Value = resp.json().await?;
+                if let Some(block_number) = result["result"].as_str() {
+                    if block_number.starts_with("0x") {
+                        info!("Anvil is ready on port {}.", port);
+                        return Ok(());
+                    }
+                }
+            }
+            _ => (),
+        }
+
+        sleep(Duration::from_millis(250)).await;
+    }
+
+    Err(eyre!(
+        "Failed to connect to Anvil on port {} after {} attempts",
+        port,
+        max_attempts
+    ))
 }
