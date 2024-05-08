@@ -15,7 +15,7 @@ pub async fn execute(
     skip_deps_check: bool,
     features: &str,
 ) -> Result<()> {
-    build::execute(package_dir, no_ui, ui_only, skip_deps_check, features).await?;
+    build::execute(package_dir, no_ui, ui_only, skip_deps_check, features, Some(url.into())).await?;
     start_package::execute(package_dir, url).await?;
     Ok(())
 }

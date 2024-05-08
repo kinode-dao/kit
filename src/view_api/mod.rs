@@ -45,21 +45,28 @@ fn get_api(
 }
 
 #[instrument(level = "trace", skip_all)]
+fn split_package_id(package_id: &str) -> Result<(String, String)> {
+    let mut pids = package_id.splitn(2, ':');
+    let (Some(package_name), Some(publisher_node), None) = (
+        pids.next(),
+        pids.next(),
+        pids.next(),
+    ) else {
+        return Err(eyre!("package_id must be None or Some(<package>:<publisher>)"));
+    };
+    Ok((package_name.to_string(), publisher_node.to_string()))
+}
+
+#[instrument(level = "trace", skip_all)]
 pub async fn execute(
     node: Option<&str>,
     package_id: Option<&str>,
     url: &str,
-) -> Result<()> {
+    verbose: bool,
+) -> Result<Option<PathBuf>> {
     let request = if let Some(package_id) = package_id {
-        let mut pids = package_id.splitn(2, ':');
-        let (Some(package_name), Some(publisher_node), None) = (
-            pids.next(),
-            pids.next(),
-            pids.next(),
-        ) else {
-            return Err(eyre!("package_id must be None or Some(<package>:<publisher>)"));
-        };
-        get_api(node, package_name, publisher_node)?
+        let (package_name, publisher_node) = split_package_id(package_id)?;
+        get_api(node, &package_name, &publisher_node)?
     } else {
         list_apis(node)?
     };
@@ -77,7 +84,7 @@ pub async fn execute(
                 }
             })?;
     let body = serde_json::from_str::<serde_json::Value>(body)?;
-    if let Some(blob) = lazy_load_blob {
+    let zip_dir = if let Some(blob) = lazy_load_blob {
         let api_name = format!("{}-api", package_id.unwrap());
         let zip_dir = PathBuf::from(KIT_CACHE).join(api_name);
         let zip_path = zip_dir.join(format!("{}-api.zip", package_id.unwrap()));
@@ -93,12 +100,18 @@ pub async fn execute(
             if Some("wit") == path.extension().and_then(|s| s.to_str()) {
                 let file_path = path.to_str().unwrap_or_default();
                 let wit_contents = fs::read_to_string(&path)?;
-                info!("{}\n\n{}", file_path, wit_contents);
+                if verbose {
+                    info!("{}\n\n{}", file_path, wit_contents);
+                }
             }
         }
+        Some(zip_dir)
     } else {
-        info!("{}", serde_json::to_string_pretty(&body)?);
-    }
+        if verbose {
+            info!("{}", serde_json::to_string_pretty(&body)?);
+        }
+        None
+    };
 
-    Ok(())
+    Ok(zip_dir)
 }

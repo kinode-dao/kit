@@ -15,6 +15,7 @@ use crate::setup::{
     REQUIRED_PY_PACKAGE,
 };
 use crate::start_package::zip_directory;
+use crate::view_api;
 
 const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
@@ -359,9 +360,10 @@ async fn compile_package_and_ui(
     valid_node: Option<String>,
     skip_deps_check: bool,
     features: &str,
+    url: Option<String>,
 ) -> Result<()> {
     compile_and_copy_ui(package_dir, valid_node).await?;
-    compile_package(package_dir, skip_deps_check, features).await?;
+    compile_package(package_dir, skip_deps_check, features, url).await?;
     Ok(())
 }
 
@@ -416,6 +418,28 @@ async fn compile_package_item(
     Ok(())
 }
 
+async fn fetch_dependencies(
+    dependencies: &Vec<String>,
+    apis: &mut HashMap<String, Vec<u8>>,
+    url: String,
+) -> Result<()> {
+    for dependency in dependencies {
+        let Some(zip_dir) = view_api::execute(None, Some(dependency), &url, false).await? else {
+            return Err(eyre!("Got unexpected result from fetching API for {dependency}"));
+        };
+        for entry in zip_dir.read_dir()? {
+            let entry = entry?;
+            let path = entry.path();
+            if Some("wit") == path.extension().and_then(|s| s.to_str()) {
+                let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or_default();
+                let wit_contents = fs::read(&path)?;
+                apis.insert(file_name.into(), wit_contents);
+            }
+        }
+    }
+    Ok(())
+}
+
 /// package dir looks like:
 /// ```
 /// metadata.json
@@ -445,6 +469,7 @@ async fn compile_package(
     package_dir: &Path,
     skip_deps_check: bool,
     features: &str,
+    url: Option<String>,
 ) -> Result<()> {
     let metadata = read_metadata(package_dir)?;
     let mut checked_rust = false;
@@ -495,6 +520,19 @@ async fn compile_package(
                         }
                     }
                 }
+
+                // fetch dependency apis: to be used in build
+                if !metadata.properties.dependencies.is_empty() {
+                    let Some(ref url) = url else {
+                        // TODO: can we use kit-cached deps?
+                        return Err(eyre!("Need a node to be able to fetch dependencies"));
+                    };
+                    fetch_dependencies(
+                        &metadata.properties.dependencies,
+                        &mut apis,
+                        url.clone(),
+                    ).await?;
+                }
             }
         }
     }
@@ -518,6 +556,7 @@ pub async fn execute(
     ui_only: bool,
     skip_deps_check: bool,
     features: &str,
+    url: Option<String>,
 ) -> Result<()> {
     if !package_dir.join("pkg").exists() {
         return Err(eyre!(
@@ -531,11 +570,11 @@ pub async fn execute(
         if ui_only {
             return Err(eyre!("kit build: can't build UI: no ui directory exists"));
         } else {
-            compile_package(package_dir, skip_deps_check, features).await
+            compile_package(package_dir, skip_deps_check, features, url).await
         }
     } else {
         if no_ui {
-            return compile_package(package_dir, skip_deps_check, features).await;
+            return compile_package(package_dir, skip_deps_check, features, url).await;
         }
 
         let deps = check_js_deps()?;
@@ -550,6 +589,7 @@ pub async fn execute(
                 valid_node,
                 skip_deps_check,
                 features,
+                url,
             ).await
         }
     }

@@ -170,8 +170,22 @@ async fn execute(
                 Some(f) => f.clone(),
                 None => "".into(),
             };
+            let url: Option<String> = match build_matches.get_one::<String>("URL") {
+                Some(url) => Some(url.clone()),
+                None => {
+                    build_matches.get_one::<u16>("NODE_PORT")
+                        .map(|p| format!("http://localhost:{}", p))
+                }
+            };
 
-            build::execute(&package_dir, *no_ui, *ui_only, *skip_deps_check, &features).await
+            build::execute(
+                &package_dir,
+                *no_ui,
+                *ui_only,
+                *skip_deps_check,
+                &features,
+                url,
+            ).await
         }
         Some(("build-start-package", build_start_matches)) => {
             let package_dir = PathBuf::from(build_start_matches.get_one::<String>("DIR").unwrap());
@@ -330,7 +344,8 @@ async fn execute(
                 }
             };
 
-            view_api::execute(None, package_id, &url).await
+            view_api::execute(None, package_id, &url, true).await?;
+            Ok(())
         }
         _ => {
             warn!("Invalid subcommand. Usage:\n{}", usage);
@@ -481,6 +496,21 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .long("features")
                 .help("Pass these comma-delimited feature flags to Rust cargo builds")
+                .required(false)
+            )
+            .arg(Arg::new("NODE_PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("Node port: for use on localhost (overridden by URL)")
+                .value_parser(value_parser!(u16))
+                .required(false)
+            )
+            .arg(Arg::new("URL")
+                .action(ArgAction::Set)
+                .short('u')
+                .long("url")
+                .help("Node URL (overrides NODE_PORT)")
                 .required(false)
             )
         )
