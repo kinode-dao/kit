@@ -368,7 +368,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
         )?;
 
 
-        let anvil_cleanup = if master_node_port.is_some() {
+        let anvil_cleanup = if master_node_port.is_none() {
             anvil_process.as_ref().ok().map(|process| process.id() as i32)
         } else {
             None

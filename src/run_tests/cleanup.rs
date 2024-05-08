@@ -92,7 +92,6 @@ pub async fn cleanup(
             clean_process_by_pid(*process_id);
         }
 
-
         if let Some(anvil) = anvil_process {
             info!("Cleaning up anvil fakechain...\r");
             clean_process_by_pid(*anvil);
