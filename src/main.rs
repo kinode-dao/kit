@@ -16,6 +16,7 @@ use kit::{
     boot_fake_node,
     build,
     build_start_package,
+    chain,
     dev_ui,
     inject_message,
     new,
@@ -134,7 +135,7 @@ async fn execute(
             let version = boot_matches.get_one::<String>("VERSION").unwrap();
             let node_home = PathBuf::from(boot_matches.get_one::<String>("HOME").unwrap());
             let node_port = boot_matches.get_one::<u16>("NODE_PORT").unwrap();
-            let network_router_port = boot_matches.get_one::<u16>("NETWORK_ROUTER_PORT").unwrap();
+            let fakechain_port = boot_matches.get_one::<u16>("FAKECHAIN_PORT").unwrap();
             let rpc = boot_matches
                 .get_one::<String>("RPC_ENDPOINT")
                 .and_then(|s| Some(s.as_str()));
@@ -149,9 +150,9 @@ async fn execute(
                 version.clone(),
                 node_home,
                 *node_port,
-                *network_router_port,
+                *fakechain_port,
                 rpc,
-                fake_node_name,
+                fake_node_name.clone(),
                 password,
                 *is_persist,
                 *release,
@@ -202,6 +203,10 @@ async fn execute(
                 &features,
             )
             .await
+        }
+        Some(("chain", chain_matches)) => {
+            let port = chain_matches.get_one::<u16>("PORT").unwrap();
+            chain::execute(*port).await
         }
         Some(("dev-ui", dev_ui_matches)) => {
             let package_dir = PathBuf::from(dev_ui_matches.get_one::<String>("DIR").unwrap());
@@ -275,9 +280,7 @@ async fn execute(
             };
             remove_package::execute(&package_dir, &url, package_name, publisher).await
         }
-        Some(("reset-cache", _reset_cache_matches)) => {
-            reset_cache::execute()
-        }
+        Some(("reset-cache", _reset_cache_matches)) => reset_cache::execute(),
         Some(("run-tests", run_tests_matches)) => {
             let config_path = match run_tests_matches.get_one::<String>("PATH") {
                 Some(path) => PathBuf::from(path),
@@ -389,13 +392,14 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('f')
                 .long("fake-node-name")
                 .help("Name for fake node")
-                .default_value("fake.os")
+                .default_value("fake.dev")
             )
-            .arg(Arg::new("NETWORK_ROUTER_PORT")
+            .arg(Arg::new("FAKECHAIN_PORT")
                 .action(ArgAction::Set)
-                .long("network-router-port")
-                .help("The port to run the network router on (or to connect to)")
-                .default_value("9001")
+                .short('c')
+                .long("fakechain-port")
+                .help("The port to run the fakechain on (or to connect to)")
+                .default_value("8545")
                 .value_parser(value_parser!(u16))
             )
             .arg(Arg::new("RPC_ENDPOINT")
@@ -516,6 +520,18 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .long("features")
                 .help("Pass these comma-delimited feature flags to Rust cargo builds")
                 .required(false)
+            )
+        )
+        .subcommand(Command::new("chain")
+            .about("Start a local chain for development")
+            .visible_alias("c")
+            .arg(Arg::new("PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("Port to run the chain on")
+                .default_value("8545")
+                .value_parser(value_parser!(u16))
             )
         )
         .subcommand(Command::new("dev-ui")

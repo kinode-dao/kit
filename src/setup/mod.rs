@@ -21,6 +21,8 @@ pub const REQUIRED_PY_PACKAGE: &str = "componentize-py==0.11.0";
 
 #[derive(Clone)]
 pub enum Dependency {
+    Anvil,
+    Forge, 
     Nvm,
     Npm,
     Node,
@@ -34,6 +36,8 @@ pub enum Dependency {
 impl std::fmt::Display for Dependency {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
+            Dependency::Anvil => write!(f, "anvil"),
+            Dependency::Forge => write!(f, "forge"),
             Dependency::Nvm =>  write!(f, "nvm {}", FETCH_NVM_VERSION),
             Dependency::Npm =>  write!(f, "npm {}.{}", REQUIRED_NPM_MAJOR, MINIMUM_NPM_MINOR),
             Dependency::Node => write!(f, "node {}.{}", REQUIRED_NODE_MAJOR, MINIMUM_NODE_MINOR),
@@ -414,6 +418,26 @@ pub fn check_js_deps() -> Result<Vec<Dependency>> {
     Ok(missing_deps)
 }
 
+// Check for Foundry deps, returning a Vec of not found: can be automatically fetched?
+#[instrument(level = "trace", skip_all)]
+pub fn check_foundry_deps() -> Result<Vec<Dependency>> {
+    let mut missing_deps = Vec::new();
+    if !is_command_installed("forge")? {
+        missing_deps.push(Dependency::Forge);
+    }
+    if !is_command_installed("anvil")? {
+        missing_deps.push(Dependency::Anvil);
+    }
+    Ok(missing_deps)
+}
+
+// install forge+anvil+others, could be separated into binary extractions from github releases.
+pub fn install_foundry() -> Result<()> {
+    let install_cmd = "curl -L https://foundry.paradigm.xyz | bash";
+    run_command(Command::new("bash").args(&["-c", install_cmd]))?;
+
+    Ok(())
+}
 /// Check for Rust deps, returning a Vec of not found: can be automatically fetched
 #[instrument(level = "trace", skip_all)]
 pub fn check_rust_deps() -> Result<Vec<Dependency>> {
@@ -478,6 +502,9 @@ pub fn get_deps(deps: Vec<Dependency>) -> Result<()> {
                         call_rustup("target add wasm32-wasi --toolchain nightly")?
                     },
                     Dependency::WasmTools => call_cargo("install wasm-tools")?,
+                    Dependency::Forge | Dependency::Anvil => {
+                        install_foundry()?
+                    },
                 }
             }
         },

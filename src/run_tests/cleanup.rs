@@ -11,6 +11,21 @@ fn remove_repeated_newlines(input: &str) -> String {
     re.replace_all(input, "\n").into_owned()
 }
 
+/// Send SIGINT to the process
+pub fn clean_process_by_pid(process_id: i32) {
+    let pid = nix::unistd::Pid::from_raw(process_id);
+    match nix::sys::wait::waitpid(pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
+        Ok(nix::sys::wait::WaitStatus::StillAlive) |
+        Ok(nix::sys::wait::WaitStatus::Stopped(_, _)) |
+        Ok(nix::sys::wait::WaitStatus::Continued(_)) => {
+            if let Err(e) = nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGINT) {
+                error!("failed to send SIGINT to process: {:?}", e);
+            }
+        }
+        _ => {}
+    }
+}
+
 /// trigger cleanup if receive signal to kill process
 pub async fn cleanup_on_signal(
     send_to_cleanup: SendBool,
@@ -61,27 +76,27 @@ pub async fn cleanup(
         },
     };
 
-    for NodeCleanupInfo { master_fd, process_id, home } in node_cleanup_infos.iter_mut() {
+    for NodeCleanupInfo { master_fd, process_id, home, anvil_process } in node_cleanup_infos.iter_mut() {
         // Send Ctrl-C to the process
         info!("Cleaning up {:?}...\r", home);
+
         if detached {
             // 231222 Note: I (hf) tried to use the `else` method for
             //  both detached and non-detached processes and found it
             //  did not work properly for detached processes; specifically
             //  for `run-tests` that exited early by, e.g., a user input
             //  Ctrl+C.
-            nix::unistd::write(master_fd.as_raw_fd(), b"\x03").unwrap();
-        } else {
-            let pid = nix::unistd::Pid::from_raw(*process_id);
-            match nix::sys::wait::waitpid(pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
-                Ok(nix::sys::wait::WaitStatus::StillAlive) |
-                Ok(nix::sys::wait::WaitStatus::Stopped(_, _)) |
-                Ok(nix::sys::wait::WaitStatus::Continued(_)) => {
-                    nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGINT)
-                        .expect("SIGINT failed");
-                }
-                _ => {}
+            if let Err(e) = nix::unistd::write(master_fd.as_raw_fd(), b"\x03") {
+                error!("failed to send SIGINT to node: {:?}", e);
             }
+        } else {
+            clean_process_by_pid(*process_id);
+        }
+
+        if let Some(anvil) = anvil_process {
+            info!("Cleaning up anvil fakechain...\r");
+            clean_process_by_pid(*anvil);
+            info!("Cleaned up anvil fakechain.");
         }
 
         if let Some(ref mut nh) = node_handles {
