@@ -70,8 +70,9 @@ fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
     let mut zip = zip::ZipWriter::new(file);
 
     let options = FileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored)
-        .unix_permissions(0o755);
+        .compression_method(zip::CompressionMethod::Deflated)
+        .unix_permissions(0o755)
+        .last_modified_time(zip::DateTime::from_date_and_time(1980, 1, 1, 0, 0, 0).unwrap());
 
     for entry in it {
         let entry = entry?;
