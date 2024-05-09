@@ -1,26 +1,19 @@
-use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::str::FromStr;
 
+use serde::{Deserialize, Serialize};
+
+use crate::kinode::process::{package_name}_{publisher_dotted_cab}_api_v0::{ChatMessage, ChatRequest, ChatResponse, SendRequest};
 use kinode_process_lib::{await_message, call_init, println, Address, ProcessId, Request, Response};
 
 wit_bindgen::generate!({
     path: "target/wit",
-    world: "process",
+    world: "{package_name}",
+    generate_unused_types: true,
+    additional_derives: [serde::Deserialize, serde::Serialize],
 });
 
-#[derive(Debug, Serialize, Deserialize)]
-enum ChatRequest {
-    Send { target: String, message: String },
-    History,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-enum ChatResponse {
-    Ack,
-    History { messages: MessageArchive },
-}
-
-type MessageArchive = Vec<(String, String)>;
+type MessageArchive = HashMap<String, Vec<ChatMessage>>;
 
 fn handle_message(our: &Address, message_archive: &mut MessageArchive) -> anyhow::Result<()> {
     let message = await_message()?;
@@ -32,13 +25,20 @@ fn handle_message(our: &Address, message_archive: &mut MessageArchive) -> anyhow
     let body = message.body();
     let source = message.source();
     match serde_json::from_slice(body)? {
-        ChatRequest::Send {
+        ChatRequest::Send(SendRequest {
             ref target,
             ref message,
-        } => {
+        }) => {
             if target == &our.node {
                 println!("{}: {}", source.node, message);
-                message_archive.push((source.node.clone(), message.clone()));
+                let message = ChatMessage {
+                    author: source.node.clone(),
+                    content: message.into(),
+                };
+                message_archive
+                    .entry(source.node.clone())
+                    .and_modify(|e| e.push(message.clone()))
+                    .or_insert(vec![message]);
             } else {
                 let _ = Request::new()
                     .target(Address {
@@ -50,20 +50,28 @@ fn handle_message(our: &Address, message_archive: &mut MessageArchive) -> anyhow
                     .body(body)
                     .send_and_await_response(5)?
                     .unwrap();
+                let message = ChatMessage {
+                    author: our.node.clone(),
+                    content: message.into(),
+                };
+                message_archive
+                    .entry(target.clone())
+                    .and_modify(|e| e.push(message.clone()))
+                    .or_insert(vec![message]);
             }
             Response::new()
-                .body(serde_json::to_vec(&ChatResponse::Ack).unwrap())
+                .body(serde_json::to_vec(&ChatResponse::Send).unwrap())
                 .send()
                 .unwrap();
         }
-        ChatRequest::History => {
+        ChatRequest::History(ref node) => {
             Response::new()
-                .body(
-                    serde_json::to_vec(&ChatResponse::History {
-                        messages: message_archive.clone(),
-                    })
-                    .unwrap(),
-                )
+                .body(serde_json::to_vec(&ChatResponse::History(
+                    message_archive
+                        .get(node)
+                        .map(|msgs| msgs.clone())
+                        .unwrap_or_default()
+                )).unwrap())
                 .send()
                 .unwrap();
         }
@@ -75,7 +83,7 @@ call_init!(init);
 fn init(our: Address) {
     println!("begin");
 
-    let mut message_archive: MessageArchive = Vec::new();
+    let mut message_archive = HashMap::new();
 
     loop {
         match handle_message(&our, &mut message_archive) {

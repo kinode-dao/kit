@@ -1,0 +1,22 @@
+interface {package_name}-{publisher_dotted_hep}-api-v0 {
+    variant chat-request {
+        send(send-request),
+        /// history of chat with given node
+        history(string),
+    }
+
+    variant chat-response {
+        send,
+        history(list<chat-message>),
+    }
+
+    record send-request {
+        target: string,
+        message: string,
+    }
+
+    record chat-message {
+        author: string,
+        content: string,
+    }
+}

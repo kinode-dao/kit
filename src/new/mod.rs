@@ -66,9 +66,36 @@ impl From<&String> for Template {
 }
 
 fn replace_vars(input: &str, package_name: &str, publisher: &str) -> String {
+    let (publisher_dotted_cab, publisher_dotted_hep) = {
+        let publisher_dotted = publisher.split('.');
+        if publisher_dotted.clone().count() == 1 {
+            (publisher.to_string(), publisher.to_string())
+        } else {
+            let publisher_dotted_cab = publisher_dotted
+                .clone()
+                .fold(String::new(), |mut pd, item| {
+                    if !pd.is_empty() {
+                        pd.push_str("_dot_");
+                    }
+                    pd.push_str(item);
+                    pd
+                });
+            let publisher_dotted_hep = publisher_dotted
+                .fold(String::new(), |mut pd, item| {
+                    if !pd.is_empty() {
+                        pd.push_str("-dot-");
+                    }
+                    pd.push_str(item);
+                    pd
+                });
+            (publisher_dotted_cab, publisher_dotted_hep)
+        }
+    };
     input
         .replace("{package_name}", package_name)
         .replace("{publisher}", publisher)
+        .replace("{publisher_dotted_cab}", &publisher_dotted_cab)
+        .replace("{publisher_dotted_hep}", &publisher_dotted_hep)
         .replace("Cargo.toml_", "Cargo.toml")
         .to_string()
 }
