@@ -114,7 +114,7 @@ async fn wait_until_booted(
             request,
         ).await {
             Ok(response) => match inject_message::parse_response(response).await {
-                Ok(_) => { 
+                Ok(_) => {
                     info!("Done waiting for node {:?} on port {}.", node, port);
                     return Ok(())
                 },
@@ -326,7 +326,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     task_handles.push(handle);
     let _cleanup_context = CleanupContext::new(send_to_cleanup.clone());
 
-    // boot fakechain 
+    // boot fakechain
     let anvil_process = chain::start_chain(test.fakechain_router, true).await;
 
     // Process each node
@@ -348,6 +348,11 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
             args.extend_from_slice(&["--password", password]);
         };
 
+        // TODO: change this to be less restrictive; currently leads to weirdness
+        //  like an input of `fake.os` -> `fake.os.dev`.
+        //  The reason we need it for now is that non-`.dev` nodes are not currently
+        //  addressable.
+        //  Once they are addressable, change this to, perhaps, `!name.contains(".")
         let mut name = node.fake_node_name.clone();
         if !name.ends_with(".dev") {
             name.push_str(".dev");

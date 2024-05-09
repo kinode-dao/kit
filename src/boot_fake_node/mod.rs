@@ -398,6 +398,11 @@ pub async fn execute(
     let send_to_cleanup_for_cleanup = send_to_cleanup.clone();
     let _cleanup_context = CleanupContext::new(send_to_cleanup_for_cleanup);
 
+    // TODO: change this to be less restrictive; currently leads to weirdness
+    //  like an input of `fake.os` -> `fake.os.dev`.
+    //  The reason we need it for now is that non-`.dev` nodes are not currently
+    //  addressable.
+    //  Once they are addressable, change this to, perhaps, `!name.contains(".")
     if !fake_node_name.ends_with(".dev") {
         fake_node_name.push_str(".dev");
     }
