@@ -1,0 +1,11 @@
+interface {package_name}-{publisher_dotted_hep}-api-v0 {
+    variant fibonacci-request {
+        number(u32),
+        numbers(tuple<u32, u32>),
+    }
+
+    variant fibonacci-response {
+        number(u64),
+        numbers(tuple<u64, u32>),
+    }
+}
