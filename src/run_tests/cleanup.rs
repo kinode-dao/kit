@@ -2,7 +2,7 @@ use std::os::fd::AsRawFd;
 
 use fs_err as fs;
 use tokio::signal::unix::{signal, SignalKind};
-use tracing::{error, info};
+use tracing::{error, info, instrument};
 
 use crate::run_tests::types::{BroadcastRecvBool, BroadcastSendBool, NodeCleanupInfo, NodeCleanupInfos, NodeHandles, RecvBool, SendBool};
 
@@ -12,6 +12,7 @@ fn remove_repeated_newlines(input: &str) -> String {
 }
 
 /// Send SIGINT to the process
+#[instrument(level = "trace", skip_all)]
 pub fn clean_process_by_pid(process_id: i32) {
     let pid = nix::unistd::Pid::from_raw(process_id);
     match nix::sys::wait::waitpid(pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
@@ -27,6 +28,7 @@ pub fn clean_process_by_pid(process_id: i32) {
 }
 
 /// trigger cleanup if receive signal to kill process
+#[instrument(level = "trace", skip_all)]
 pub async fn cleanup_on_signal(
     send_to_cleanup: SendBool,
     mut recv_kill_in_cos: BroadcastRecvBool,
@@ -55,6 +57,7 @@ pub async fn cleanup_on_signal(
     let _ = send_to_cleanup.send(true);
 }
 
+#[instrument(level = "trace", skip_all)]
 pub async fn cleanup(
     mut recv_in_cleanup: RecvBool,
     send_to_kill: BroadcastSendBool,

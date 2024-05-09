@@ -5,14 +5,15 @@ use fs_err as fs;
 use reqwest::Client;
 use sha2::{Digest, Sha256};
 use tokio::time::{sleep, Duration};
-use tracing::info;
+use tracing::{info, instrument};
 
 use crate::KIT_CACHE;
 use crate::run_tests::cleanup::{clean_process_by_pid, cleanup_on_signal};
 
 pub const KINOSTATE_JSON: &str = include_str!("./kinostate.json");
 
-pub async fn write_kinostate() -> Result<String> {
+#[instrument(level = "trace", skip_all)]
+async fn write_kinostate() -> Result<String> {
     let state_hash = {
         let mut hasher = Sha256::new();
         hasher.update(KINOSTATE_JSON.as_bytes());
@@ -28,6 +29,7 @@ pub async fn write_kinostate() -> Result<String> {
     Ok(state_hash)
 }
 
+#[instrument(level = "trace", skip_all)]
 pub async fn start_chain(port: u16, piped: bool) -> Result<Child> {
     let state_hash = write_kinostate().await?;
     let state_path = format!("./kinostate-{}.json", state_hash);
@@ -55,6 +57,7 @@ pub async fn start_chain(port: u16, piped: bool) -> Result<Child> {
     Ok(child)
 }
 
+#[instrument(level = "trace", skip_all)]
 async fn wait_for_anvil(port: u16, max_attempts: u16) -> Result<()> {
     let client = Client::new();
     let url = format!("http://localhost:{}", port);
@@ -93,6 +96,7 @@ async fn wait_for_anvil(port: u16, max_attempts: u16) -> Result<()> {
 }
 
 /// kit chain, alias to anvil
+#[instrument(level = "trace", skip_all)]
 pub async fn execute(port: u16) -> Result<()> {
     let mut child = start_chain(port, false).await?;
     let child_id = child.id() as i32;
