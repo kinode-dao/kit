@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use kinode_process_lib::{
-    await_next_request_body, call_init, println, Address, Message, Request,
+    await_next_message_body, call_init, println, Address, Message, Request,
 };
 
 wit_bindgen::generate!({
@@ -32,7 +32,7 @@ pub struct FileInfo {
 
 call_init!(init);
 fn init(our: Address) {
-    let Ok(body) = await_next_request_body() else {
+    let Ok(body) = await_next_message_body() else {
         println!("failed to get args!");
         return;
     };
