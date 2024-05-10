@@ -177,6 +177,7 @@ async fn execute(
                         .map(|p| format!("http://localhost:{}", p))
                 }
             };
+            let default_world = build_matches.get_one::<String>("WORLD");
 
             build::execute(
                 &package_dir,
@@ -185,6 +186,7 @@ async fn execute(
                 *skip_deps_check,
                 &features,
                 url,
+                default_world.cloned(),
             ).await
         }
         Some(("build-start-package", build_start_matches)) => {
@@ -207,6 +209,7 @@ async fn execute(
                 Some(f) => f.clone(),
                 None => "".into(),
             };
+            let default_world = build_start_matches.get_one::<String>("WORLD");
 
             build_start_package::execute(
                 &package_dir,
@@ -215,6 +218,7 @@ async fn execute(
                 &url,
                 *skip_deps_check,
                 &features,
+                default_world.cloned(),
             )
             .await
         }
@@ -513,6 +517,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("Node URL (overrides NODE_PORT)")
                 .required(false)
             )
+            .arg(Arg::new("WORLD")
+                .action(ArgAction::Set)
+                .short('w')
+                .long("world")
+                .help("Fallback WIT world name")
+                .required(false)
+            )
         )
         .subcommand(Command::new("build-start-package")
             .about("Build and start a Kinode package")
@@ -535,6 +546,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('u')
                 .long("url")
                 .help("Node URL (overrides NODE_PORT)")
+                .required(false)
+            )
+            .arg(Arg::new("WORLD")
+                .action(ArgAction::Set)
+                .short('w')
+                .long("world")
+                .help("Fallback WIT world name")
                 .required(false)
             )
             .arg(Arg::new("NO_UI")

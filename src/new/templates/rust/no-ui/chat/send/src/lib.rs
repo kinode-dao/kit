@@ -1,4 +1,4 @@
-use crate::kinode::process::{package_name}_{publisher_dotted_cab}_api_v0::{ChatRequest, ChatResponse, SendRequest};
+use crate::kinode::process::{package_name}_{publisher_dotted_snake}_api_v0::{ChatRequest, ChatResponse, SendRequest};
 use kinode_process_lib::{
     await_next_message_body, call_init, println, Address, Message, Request,
 };

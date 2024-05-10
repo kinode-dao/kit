@@ -1,4 +1,4 @@
-use crate::kinode::process::{package_name}_{publisher_dotted_cab}_api_v0::{FibonacciRequest, FibonacciResponse};
+use crate::kinode::process::{package_name}_{publisher_dotted_snake}_api_v0::{FibonacciRequest, FibonacciResponse};
 use kinode_process_lib::{await_message, call_init, println, Address, Response};
 
 wit_bindgen::generate!({

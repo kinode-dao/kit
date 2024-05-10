@@ -24,6 +24,7 @@ const RUST_SRC_PATH: &str = "src/lib.rs";
 const KINODE_WIT_URL: &str =
     "https://raw.githubusercontent.com/kinode-dao/kinode-wit/aa2c8b11c9171b949d1991c32f58591c0e881f85/kinode.wit";
 const WASI_VERSION: &str = "19.0.1"; // TODO: un-hardcode
+const DEFAULT_WORLD: &str = "process";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
@@ -106,10 +107,55 @@ pub fn read_metadata(package_dir: &Path) -> Result<Erc721Metadata> {
     Ok(metadata)
 }
 
+/// Regex to dynamically capture the world name after 'world'
+#[instrument(level = "trace", skip_all)]
+fn extract_world(data: &str) -> Option<String> {
+    let re = regex::Regex::new(r"world\s+(\w+)\s*\{").unwrap();
+    re.captures(data).and_then(|caps| caps.get(1).map(|match_| match_.as_str().to_string()))
+}
+
+#[instrument(level = "trace", skip_all)]
+fn extract_worlds_from_files(directory: &Path) -> Vec<String> {
+    let mut worlds = vec![];
+
+    // Safe to return early if directory reading fails
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(_) => return worlds,
+    };
+
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        if !path.is_file()
+        || Some("kinode.wit") == path.file_name().and_then(|s| s.to_str())
+        || Some("wit") != path.extension().and_then(|s| s.to_str()) {
+            continue;
+        }
+        let contents = fs::read_to_string(&path).unwrap_or_default();
+        if let Some(world) = extract_world(&contents) {
+            worlds.push(world);
+        }
+    }
+
+    worlds
+}
+
+#[instrument(level = "trace", skip_all)]
+fn get_world_or_default(directory: &Path, default_world: Option<String>) -> String {
+    let worlds = extract_worlds_from_files(directory);
+    if worlds.len() == 1 {
+        return worlds[0].clone();
+    }
+    let default_world = default_world.unwrap_or_else(|| DEFAULT_WORLD.to_string());
+    warn!("Found {} worlds in {directory:?}; defaulting to {default_world}", worlds.len());
+    default_world
+}
+
 #[instrument(level = "trace", skip_all)]
 async fn compile_javascript_wasm_process(
     process_dir: &Path,
     valid_node: Option<String>,
+    default_world: Option<String>,
 ) -> Result<()> {
     info!(
         "Compiling Javascript Kinode process in {:?}...",
@@ -117,9 +163,10 @@ async fn compile_javascript_wasm_process(
     );
 
     let wasm_file_name = process_dir.file_name().and_then(|s| s.to_str()).unwrap();
+    let world_name = get_world_or_default(&process_dir.join("target").join("wit"), default_world);
 
     let install = "npm install".to_string();
-    let componentize = format!("node componentize.mjs {wasm_file_name}");
+    let componentize = format!("node componentize.mjs {wasm_file_name} {world_name}");
     let (install, componentize) = valid_node
         .map(|valid_node| {
             (
@@ -155,10 +202,23 @@ async fn compile_javascript_wasm_process(
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn compile_python_wasm_process(process_dir: &Path, python: &str) -> Result<()> {
+async fn compile_python_wasm_process(
+    process_dir: &Path,
+    python: &str,
+    default_world: Option<String>,
+) -> Result<()> {
     info!("Compiling Python Kinode process in {:?}...", process_dir);
 
     let wasm_file_name = process_dir.file_name().and_then(|s| s.to_str()).unwrap();
+    let world_name = get_world_or_default(&process_dir.join("target").join("wit"), default_world);
+
+    let source = format!("source ../{PY_VENV_NAME}/bin/activate");
+    let install = format!("pip install {REQUIRED_PY_PACKAGE}");
+    let componentize = format!(
+        "componentize-py -d ../target/wit/ -w {} componentize lib -o ../../pkg/{}.wasm",
+        world_name,
+        wasm_file_name,
+    );
 
     run_command(
         Command::new(python)
@@ -166,10 +226,7 @@ async fn compile_python_wasm_process(process_dir: &Path, python: &str) -> Result
             .current_dir(process_dir),
     )?;
     run_command(Command::new("bash")
-        .args(&[
-            "-c",
-            &format!("source ../{PY_VENV_NAME}/bin/activate && pip install {REQUIRED_PY_PACKAGE} && componentize-py -d ../target/wit/ -w process componentize lib -o ../../pkg/{wasm_file_name}.wasm"),
-        ])
+        .args(&["-c", &format!("{source} && {install} && {componentize}")])
         .current_dir(process_dir.join("src"))
     )?;
 
@@ -361,9 +418,10 @@ async fn compile_package_and_ui(
     skip_deps_check: bool,
     features: &str,
     url: Option<String>,
+    default_world: Option<String>,
 ) -> Result<()> {
     compile_and_copy_ui(package_dir, valid_node).await?;
-    compile_package(package_dir, skip_deps_check, features, url).await?;
+    compile_package(package_dir, skip_deps_check, features, url, default_world).await?;
     Ok(())
 }
 
@@ -393,6 +451,7 @@ async fn compile_package_item(
     entry: std::io::Result<std::fs::DirEntry>,
     features: String,
     apis: HashMap<String, Vec<u8>>,
+    default_world: Option<String>,
 ) -> Result<()> {
     let entry = entry?;
     let path = entry.path();
@@ -409,10 +468,10 @@ async fn compile_package_item(
         } else if is_py_process {
             let python = get_python_version(None, None)?
                 .ok_or_else(|| eyre!("kit requires Python 3.10 or newer"))?;
-            compile_python_wasm_process(&path, &python).await?;
+            compile_python_wasm_process(&path, &python, default_world).await?;
         } else if is_js_process {
             let valid_node = get_newest_valid_node_version(None, None)?;
-            compile_javascript_wasm_process(&path, valid_node).await?;
+            compile_javascript_wasm_process(&path, valid_node, default_world).await?;
         }
     }
     Ok(())
@@ -470,6 +529,7 @@ async fn compile_package(
     skip_deps_check: bool,
     features: &str,
     url: Option<String>,
+    default_world: Option<String>,
 ) -> Result<()> {
     let metadata = read_metadata(package_dir)?;
     let mut checked_rust = false;
@@ -540,7 +600,12 @@ async fn compile_package(
     let mut tasks = tokio::task::JoinSet::new();
     let features = features.to_string();
     for entry in package_dir.read_dir()? {
-        tasks.spawn(compile_package_item(entry, features.clone(), apis.clone()));
+        tasks.spawn(compile_package_item(
+            entry,
+            features.clone(),
+            apis.clone(),
+            default_world.clone(),
+        ));
     }
     while let Some(res) = tasks.join_next().await {
         res??;
@@ -557,6 +622,7 @@ pub async fn execute(
     skip_deps_check: bool,
     features: &str,
     url: Option<String>,
+    default_world: Option<String>,
 ) -> Result<()> {
     if !package_dir.join("pkg").exists() {
         return Err(eyre!(
@@ -570,11 +636,17 @@ pub async fn execute(
         if ui_only {
             return Err(eyre!("kit build: can't build UI: no ui directory exists"));
         } else {
-            compile_package(package_dir, skip_deps_check, features, url).await
+            compile_package(package_dir, skip_deps_check, features, url, default_world).await
         }
     } else {
         if no_ui {
-            return compile_package(package_dir, skip_deps_check, features, url).await;
+            return compile_package(
+                package_dir,
+                skip_deps_check,
+                features,
+                url,
+                default_world,
+            ).await;
         }
 
         let deps = check_js_deps()?;
@@ -590,6 +662,7 @@ pub async fn execute(
                 skip_deps_check,
                 features,
                 url,
+                default_world,
             ).await
         }
     }

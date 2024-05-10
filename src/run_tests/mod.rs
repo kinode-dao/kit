@@ -288,10 +288,10 @@ async fn run_tests(
 #[instrument(level = "trace", skip_all)]
 async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<()> {
     for setup_package_path in &test.setup_package_paths {
-        build::execute(&setup_package_path, false, false, false, "", None).await?;  // TODO
+        build::execute(&setup_package_path, false, false, false, "", None, None).await?;  // TODO
     }
     for TestPackage { ref path, .. } in &test.test_packages {
-        build::execute(path, false, false, false, "", None).await?;  // TODO
+        build::execute(path, false, false, false, "", None, None).await?;  // TODO
     }
 
     // Initialize variables for master node and nodes list

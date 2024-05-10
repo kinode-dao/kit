@@ -1,4 +1,4 @@
 world {package_name} {
-    import {package_name}-{publisher_dotted_hep}-api-v0;
+    import {package_name}-{publisher_dotted_kebab}-api-v0;
     include process;
 }
