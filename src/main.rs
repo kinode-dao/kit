@@ -535,7 +535,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
             )
         )
         .subcommand(Command::new("dev-ui")
-            .about("Start the web UI development server with hot reloading (same as `cd ui && npm i && npm run dev`")
+            .about("Start the web UI development server with hot reloading (same as `cd ui && npm i && npm run dev`)")
             .visible_alias("d")
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
