@@ -206,14 +206,21 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> Result<
         .bytes()
         .await {
         Ok(v) => {
+            let v = v.to_vec();
+            if let Ok(s) = String::from_utf8(v.clone()) {
+                if s.contains("API rate limit exceeded") {
+                    warn!("GitHub throttled: can't fetch {owner}/{repo}/{endpoint}");
+                    return Ok(vec![]);
+                }
+            }
             fs::create_dir_all(
                 cache_path.parent().ok_or_else(|| eyre!("path doesn't have parent"))?
             )?;
             fs::write(&cache_path, &v)?;
-            return Ok(v.to_vec());
+            return Ok(v);
         },
         Err(_) => {
-            warn!("github throttled!");
+            warn!("GitHub throttled: can't fetch {owner}/{repo}/{endpoint}");
             return Ok(vec![]);
         },
     };
@@ -222,6 +229,9 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> Result<
 #[instrument(level = "trace", skip_all)]
 async fn fetch_releases(owner: &str, repo: &str) -> Result<Vec<Release>> {
     let bytes = get_from_github(owner, repo, "releases").await?;
+    if bytes.is_empty() {
+        return Ok(vec![]);
+    }
     Ok(serde_json::from_slice(&bytes)?)
 }
 

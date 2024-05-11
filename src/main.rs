@@ -48,9 +48,12 @@ async fn get_latest_commit_sha_from_branch(
     owner: &str,
     repo: &str,
     branch: &str,
-) -> Result<Commit> {
+) -> Result<Option<Commit>> {
     let bytes = boot_fake_node::get_from_github(owner, repo, &format!("commits/{branch}")).await?;
-    Ok(serde_json::from_slice(&bytes)?)
+    if bytes.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(serde_json::from_slice(&bytes)?))
 }
 
 fn init_tracing(log_path: PathBuf) -> tracing_appender::non_blocking::WorkerGuard {
@@ -861,14 +864,14 @@ async fn main() -> Result<()> {
 
     if let Some((subcommand, _)) = matches {
         if subcommand != "update" && GIT_BRANCH_NAME == "master" {
-            let latest = get_latest_commit_sha_from_branch(
+            if let Some(latest) = get_latest_commit_sha_from_branch(
                 boot_fake_node::KINODE_OWNER,
                 KIT_REPO,
                 KIT_MASTER_BRANCH,
-            )
-            .await?;
-            if GIT_COMMIT_HASH != latest.sha {
-                warn!("kit is out of date! Run:\n```\nkit update\n```\nto update to the latest version.");
+            ).await? {
+                if GIT_COMMIT_HASH != latest.sha {
+                    warn!("kit is out of date! Run:\n```\nkit update\n```\nto update to the latest version.");
+                }
             }
         }
     }
