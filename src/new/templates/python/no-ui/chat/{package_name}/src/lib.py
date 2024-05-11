@@ -28,7 +28,7 @@ def add_to_archive(conversation, author, content, message_archive):
         "author": author,
         "content": content,
     }
-    if conversation in message_archive[conversation]:
+    if conversation in message_archive:
         message_archive[conversation].append(message)
     else:
         message_archive[conversation] = [message]
@@ -37,7 +37,7 @@ def add_to_archive(conversation, author, content, message_archive):
 def handle_message(our_node, message_archive):
     result = receive()
     if isinstance(result, Err):
-        raise Exception(f"{result}")
+        raise Exception(f"got error: {result}")
     source, message = result
 
     match message:
@@ -71,7 +71,7 @@ def handle_message(our_node, message_archive):
                         message_archive,
                     )
                 send_response(
-                    Response(False, json.dumps({"Ack": None}).encode("utf-8"), None, []),
+                    Response(False, json.dumps({"Send": None}).encode("utf-8"), None, []),
                     None,
                 )
             elif "History" in body:
