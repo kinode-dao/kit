@@ -1,34 +1,14 @@
-use serde::{Deserialize, Serialize};
-
+use crate::kinode::process::{package_name}_{publisher_dotted_snake}_api_v0::{TransferRequest, TransferResponse};
 use kinode_process_lib::{
     await_next_message_body, call_init, println, Address, Message, Request,
 };
 
 wit_bindgen::generate!({
     path: "target/wit",
-    world: "process",
+    world: "{package_name}",
+    generate_unused_types: true,
+    additional_derives: [serde::Deserialize, serde::Serialize],
 });
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum TransferRequest {
-    ListFiles,
-    Download { name: String, target: Address },
-    Progress { name: String, progress: u64 },
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum TransferResponse {
-    ListFiles(Vec<FileInfo>),
-    Download { name: String, worker: Address },
-    Done,
-    Started,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct FileInfo {
-    pub name: String,
-    pub size: u64,
-}
 
 call_init!(init);
 fn init(our: Address) {
