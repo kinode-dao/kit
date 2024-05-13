@@ -1,4 +1,4 @@
-use std::{io, thread, time};
+use std::io;
 use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::{FromRawFd, OwnedFd};
@@ -17,8 +17,8 @@ use tracing::{info, warn, instrument};
 
 use crate::KIT_CACHE;
 use crate::build;
+use crate::chain;
 use crate::run_tests::cleanup::{cleanup, cleanup_on_signal};
-use crate::run_tests::network_router;
 use crate::run_tests::types::*;
 
 const KINODE_RELEASE_BASE_URL: &str = "https://github.com/kinode-dao/kinode/releases/download";
@@ -312,18 +312,20 @@ pub fn run_runtime(
     path: &Path,
     home: &Path,
     port: u16,
-    network_router_port: u16,
+    fakechain_port: u16,
+    name: &str,
     args: &[&str],
     verbose: bool,
     detached: bool,
     verbosity: u8,
 ) -> Result<(Child, OwnedFd)> {
     let port = format!("{}", port);
-    let network_router_port = format!("{}", network_router_port);
+    let fakechain_port = format!("{}", fakechain_port);
     let verbosity = format!("{}", verbosity);
     let mut full_args = vec![
         home.to_str().unwrap(), "--port", port.as_str(),
-        "--network-router-port", network_router_port.as_str(),
+        "--fake-node-name", name,
+        "--fakechain-port", fakechain_port.as_str(),
         "--verbosity", verbosity.as_str(),
     ];
 
@@ -350,9 +352,9 @@ pub async fn execute(
     version: String,
     node_home: PathBuf,
     node_port: u16,
-    network_router_port: u16,
+    fakechain_port: u16,
     rpc: Option<&str>,
-    fake_node_name: &str,
+    mut fake_node_name: String,
     password: &str,
     is_persist: bool,
     release: bool,
@@ -389,7 +391,6 @@ pub async fn execute(
     let (send_to_cleanup, recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
     let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
     let recv_kill_in_cos = send_to_kill.subscribe();
-    let recv_kill_in_router = send_to_kill.subscribe();
 
     let node_cleanup_infos_for_cleanup = Arc::clone(&node_cleanup_infos);
     let handle = tokio::spawn(cleanup(
@@ -407,34 +408,35 @@ pub async fn execute(
     let send_to_cleanup_for_cleanup = send_to_cleanup.clone();
     let _cleanup_context = CleanupContext::new(send_to_cleanup_for_cleanup);
 
-    let network_router_port_for_router = network_router_port.clone();
-    let handle = tokio::spawn(async move {
-        let _ = network_router::execute(
-            network_router_port_for_router,
-            NetworkRouterDefects::None,
-            recv_kill_in_router,
-        ).await;
-    });
-    task_handles.push(handle);
+    // TODO: change this to be less restrictive; currently leads to weirdness
+    //  like an input of `fake.os` -> `fake.os.dev`.
+    //  The reason we need it for now is that non-`.dev` nodes are not currently
+    //  addressable.
+    //  Once they are addressable, change this to, perhaps, `!name.contains(".")
+    if !fake_node_name.ends_with(".dev") {
+        fake_node_name.push_str(".dev");
+    }
+
+    // boot fakechain
+    let anvil_process = chain::start_chain(fakechain_port, true).await;
 
     if node_home.exists() {
         fs::remove_dir_all(&node_home)?;
     }
 
-    // TODO: can remove?
-    thread::sleep(time::Duration::from_secs(1));
 
     if let Some(ref rpc) = rpc {
         args.extend_from_slice(&["--rpc", rpc]);
     };
-    args.extend_from_slice(&["--fake-node-name", fake_node_name]);
+
     args.extend_from_slice(&["--password", password]);
 
     let (mut runtime_process, master_fd) = run_runtime(
         &runtime_path,
         &node_home,
         node_port,
-        network_router_port,
+        fakechain_port,
+        &fake_node_name,
         &args[..],
         true,
         detached,
@@ -446,6 +448,7 @@ pub async fn execute(
         master_fd,
         process_id: runtime_process.id() as i32,
         home: node_home.clone(),
+        anvil_process: anvil_process.as_ref().ok().map(|p| p.id() as i32),
     });
     drop(node_cleanup_infos);
 

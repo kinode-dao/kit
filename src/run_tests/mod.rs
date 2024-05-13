@@ -10,12 +10,12 @@ use tracing::{debug, info, instrument};
 
 use crate::boot_fake_node::{compile_runtime, get_runtime_binary, run_runtime};
 use crate::build;
+use crate::chain;
 use crate::inject_message;
 use crate::start_package;
 
 pub mod cleanup;
 use cleanup::{cleanup, cleanup_on_signal};
-pub mod network_router;
 pub mod types;
 use types::*;
 mod tester_types;
@@ -90,10 +90,12 @@ impl Config {
 
 #[instrument(level = "trace", skip_all)]
 async fn wait_until_booted(
+    node: &PathBuf,
     port: u16,
     max_waits: u16,
     mut recv_kill_in_wait: BroadcastRecvBool,
 ) -> Result<()> {
+    info!("Waiting for node {:?} on port {} to be ready...", node, port);
     for _ in 0..max_waits {
         let request = inject_message::make_message(
             "vfs:distro:sys",
@@ -112,7 +114,10 @@ async fn wait_until_booted(
             request,
         ).await {
             Ok(response) => match inject_message::parse_response(response).await {
-                Ok(_) => return Ok(()),
+                Ok(_) => {
+                    info!("Done waiting for node {:?} on port {}.", node, port);
+                    return Ok(())
+                },
                 _ => (),
             }
             _ => (),
@@ -304,7 +309,6 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     let (send_to_cleanup, recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
     let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
     let recv_kill_in_cos = send_to_kill.subscribe();
-    let recv_kill_in_router = send_to_kill.subscribe();
     let node_cleanup_infos_for_cleanup = Arc::clone(&node_cleanup_infos);
     let node_handles_for_cleanup = Arc::clone(&node_handles);
     let send_to_kill_for_cleanup = send_to_kill.clone();
@@ -322,19 +326,8 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     task_handles.push(handle);
     let _cleanup_context = CleanupContext::new(send_to_cleanup.clone());
 
-    let network_router_port_for_router = test.network_router.port.clone();
-    let network_router_defects_for_router = test.network_router.defects.clone();
-    let handle = tokio::spawn(async move {
-        let _ = network_router::execute(
-            network_router_port_for_router,
-            network_router_defects_for_router,
-            recv_kill_in_router,
-        ).await;
-    });
-    task_handles.push(handle);
-
-    // TODO: can remove?
-    std::thread::sleep(std::time::Duration::from_secs(1));
+    // boot fakechain
+    let anvil_process = chain::start_chain(test.fakechain_router, true).await;
 
     // Process each node
     for node in &test.nodes {
@@ -347,7 +340,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
             }
         }
 
-        let mut args = vec!["--fake-node-name", &node.fake_node_name];
+        let mut args = vec![];
         if let Some(ref rpc) = node.rpc {
             args.extend_from_slice(&["--rpc", rpc]);
         };
@@ -355,47 +348,58 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
             args.extend_from_slice(&["--password", password]);
         };
 
+        // TODO: change this to be less restrictive; currently leads to weirdness
+        //  like an input of `fake.os` -> `fake.os.dev`.
+        //  The reason we need it for now is that non-`.dev` nodes are not currently
+        //  addressable.
+        //  Once they are addressable, change this to, perhaps, `!name.contains(".")
+        let mut name = node.fake_node_name.clone();
+        if !name.ends_with(".dev") {
+            name.push_str(".dev");
+        }
+
+
         let (runtime_process, master_fd) = run_runtime(
             &runtime_path,
             &node_home,
             node.port,
-            test.network_router.port,
+            test.fakechain_router,
+            &name,
             &args[..],
             false,
             detached,
             node.runtime_verbosity.unwrap_or_else(|| 0u8),
         )?;
 
+        let mut anvil_cleanup: Option<i32> = None;
+
+        if master_node_port.is_none() {
+            anvil_cleanup = anvil_process.as_ref().ok().map(|process: &std::process::Child| process.id() as i32);
+            master_node_port = Some(node.port);
+        };
+
         let mut node_cleanup_infos = node_cleanup_infos.lock().await;
         node_cleanup_infos.push(NodeCleanupInfo {
             master_fd,
             process_id: runtime_process.id() as i32,
             home: node_home.clone(),
+            anvil_process: anvil_cleanup,
         });
-
-        if master_node_port.is_none() {
-            master_node_port = Some(node.port.clone());
-        }
 
         let mut node_handles = node_handles.lock().await;
         node_handles.push(runtime_process);
-    }
 
-    let mut ports = Vec::new();
+        let recv_kill_in_wait = send_to_kill.subscribe();
+        wait_until_booted(&node.home, node.port, 10, recv_kill_in_wait).await?;
+    }
 
     for node in &test.nodes {
-        let node_home = fs::canonicalize(&node.home)?;
-        info!("Setting up node {:?}...", node_home);
-        let recv_kill_in_wait = send_to_kill.subscribe();
-        wait_until_booted(node.port, 5, recv_kill_in_wait).await?;
-        ports.push(node.port);
-        info!("Done setting up node {:?} on port {}.", node_home, node.port);
+        load_setups(&test.setup_package_paths, node.port.clone()).await?;
     }
 
-    for port in &ports {
-        load_setups(&test.setup_package_paths, port.clone()).await?;
-    }
     load_tests(&test.test_packages, master_node_port.unwrap().clone()).await?;
+
+    let ports = test.nodes.iter().map(|n| n.port).collect();
 
     let tests_result = run_tests(
         &test.test_packages,

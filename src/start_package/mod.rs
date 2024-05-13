@@ -1,3 +1,4 @@
+use sha2::{Sha256, Digest};
 use std::io::{Read, Write};
 use std::path::Path;
 
@@ -71,8 +72,9 @@ pub fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
     let mut zip = zip::ZipWriter::new(file);
 
     let options = FileOptions::default()
-        .compression_method(zip::CompressionMethod::Stored)
-        .unix_permissions(0o755);
+        .compression_method(zip::CompressionMethod::Deflated)
+        .unix_permissions(0o755)
+        .last_modified_time(zip::DateTime::from_date_and_time(1980, 1, 1, 0, 0, 0).unwrap());
 
     for entry in it {
         let entry = entry?;
@@ -117,6 +119,14 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     let zip_filename = target_dir.join(&pkg_publisher).with_extension("zip");
     zip_directory(&pkg_dir, &zip_filename.to_str().unwrap())?;
 
+
+    let mut file = fs::File::open(&zip_filename)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)?;
+    hasher.update(&buffer);
+    let hash_result = hasher.finalize();
+    info!("package zip hash: {:x}", hash_result);
     // Create and send new package request
     let new_pkg_request = new_package(
         None,
