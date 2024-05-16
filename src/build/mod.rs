@@ -5,14 +5,14 @@ use std::process::Command;
 use color_eyre::{eyre::{eyre, WrapErr}, Result};
 use fs_err as fs;
 use serde::{Deserialize, Serialize};
-use tracing::{info, warn, instrument};
+use tracing::{info, instrument, warn};
 
 use kinode_process_lib::kernel_types::Erc721Metadata;
 
 use crate::KIT_CACHE;
 use crate::setup::{
-    check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version, get_python_version,
-    REQUIRED_PY_PACKAGE,
+    check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version,
+    get_python_version, REQUIRED_PY_PACKAGE,
 };
 use crate::start_package::zip_directory;
 use crate::view_api;
@@ -21,10 +21,13 @@ const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
 const PYTHON_SRC_PATH: &str = "src/lib.py";
 const RUST_SRC_PATH: &str = "src/lib.rs";
-const KINODE_WIT_URL: &str =
+const KINODE_WIT_0_7_0_URL: &str =
     "https://raw.githubusercontent.com/kinode-dao/kinode-wit/aa2c8b11c9171b949d1991c32f58591c0e881f85/kinode.wit";
+const KINODE_WIT_0_8_0_URL: &str =
+    "https://raw.githubusercontent.com/kinode-dao/kinode-wit/v0.8/kinode.wit";
 const WASI_VERSION: &str = "19.0.1"; // TODO: un-hardcode
-const DEFAULT_WORLD: &str = "process";
+const DEFAULT_WORLD_0_7_0: &str = "process";
+const DEFAULT_WORLD_0_8_0: &str = "process-v0";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
@@ -141,12 +144,11 @@ fn extract_worlds_from_files(directory: &Path) -> Vec<String> {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn get_world_or_default(directory: &Path, default_world: Option<String>) -> String {
+fn get_world_or_default(directory: &Path, default_world: String) -> String {
     let worlds = extract_worlds_from_files(directory);
     if worlds.len() == 1 {
         return worlds[0].clone();
     }
-    let default_world = default_world.unwrap_or_else(|| DEFAULT_WORLD.to_string());
     warn!("Found {} worlds in {directory:?}; defaulting to {default_world}", worlds.len());
     default_world
 }
@@ -155,7 +157,7 @@ fn get_world_or_default(directory: &Path, default_world: Option<String>) -> Stri
 async fn compile_javascript_wasm_process(
     process_dir: &Path,
     valid_node: Option<String>,
-    default_world: Option<String>,
+    world: String,
 ) -> Result<()> {
     info!(
         "Compiling Javascript Kinode process in {:?}...",
@@ -163,7 +165,7 @@ async fn compile_javascript_wasm_process(
     );
 
     let wasm_file_name = process_dir.file_name().and_then(|s| s.to_str()).unwrap();
-    let world_name = get_world_or_default(&process_dir.join("target").join("wit"), default_world);
+    let world_name = get_world_or_default(&process_dir.join("target").join("wit"), world);
 
     let install = "npm install".to_string();
     let componentize = format!("node componentize.mjs {wasm_file_name} {world_name}");
@@ -205,12 +207,12 @@ async fn compile_javascript_wasm_process(
 async fn compile_python_wasm_process(
     process_dir: &Path,
     python: &str,
-    default_world: Option<String>,
+    world: String,
 ) -> Result<()> {
     info!("Compiling Python Kinode process in {:?}...", process_dir);
 
     let wasm_file_name = process_dir.file_name().and_then(|s| s.to_str()).unwrap();
-    let world_name = get_world_or_default(&process_dir.join("target").join("wit"), default_world);
+    let world_name = get_world_or_default(&process_dir.join("target").join("wit"), world);
 
     let source = format!("source ../{PY_VENV_NAME}/bin/activate");
     let install = format!("pip install {REQUIRED_PY_PACKAGE}");
@@ -238,6 +240,7 @@ async fn compile_python_wasm_process(
 async fn compile_rust_wasm_process(
     process_dir: &Path,
     features: &str,
+    world: String,
 ) -> Result<()> {
     info!("Compiling Rust Kinode process in {:?}...", process_dir);
 
@@ -282,15 +285,15 @@ async fn compile_rust_wasm_process(
 
     // Build the module using Cargo
     let mut args = vec![
-         "+nightly",
-         "build",
-         "--release",
-         "--no-default-features",
-         "--target",
-         "wasm32-wasi",
-         "--target-dir",
-         "target",
-         "--color=always"
+        "+nightly",
+        "build",
+        "--release",
+        "--no-default-features",
+        "--target",
+        "wasm32-wasi",
+        "--target-dir",
+        "target",
+        "--color=always"
     ];
     if !features.is_empty() {
         args.push("--features");
@@ -344,7 +347,7 @@ async fn compile_rust_wasm_process(
                 "embed",
                 wit_dir.strip_prefix(process_dir).unwrap().to_str().unwrap(),
                 "--world",
-                "process",
+                &world,
                 adapted_wasm_file.to_str().unwrap(),
                 "-o",
                 wasm_path.to_str().unwrap(),
@@ -426,9 +429,17 @@ async fn compile_package_and_ui(
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn build_wit_dir(process_dir: &Path, apis: &HashMap<String, Vec<u8>>) -> Result<()> {
+async fn build_wit_dir(
+    process_dir: &Path,
+    apis: &HashMap<String, Vec<u8>>,
+    wit_version: Option<u32>,
+) -> Result<()> {
     let wit_dir = process_dir.join("target").join("wit");
-    download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
+    let wit_url = match wit_version {
+        None => KINODE_WIT_0_7_0_URL,
+        Some(0) | _ => KINODE_WIT_0_8_0_URL,
+    };
+    download_file(wit_url, &wit_dir.join("kinode.wit")).await?;
     for (file_name, contents) in apis {
         fs::write(wit_dir.join(file_name), contents)?;
     }
@@ -451,7 +462,8 @@ async fn compile_package_item(
     entry: std::io::Result<std::fs::DirEntry>,
     features: String,
     apis: HashMap<String, Vec<u8>>,
-    default_world: Option<String>,
+    world: String,
+    wit_version: Option<u32>,
 ) -> Result<()> {
     let entry = entry?;
     let path = entry.path();
@@ -460,18 +472,18 @@ async fn compile_package_item(
         let is_py_process = path.join(PYTHON_SRC_PATH).exists();
         let is_js_process = path.join(JAVASCRIPT_SRC_PATH).exists();
         if is_rust_process || is_py_process || is_js_process {
-            build_wit_dir(&path, &apis).await?;
+            build_wit_dir(&path, &apis, wit_version).await?;
         }
 
         if is_rust_process {
-            compile_rust_wasm_process(&path, &features).await?;
+            compile_rust_wasm_process(&path, &features, world).await?;
         } else if is_py_process {
             let python = get_python_version(None, None)?
                 .ok_or_else(|| eyre!("kit requires Python 3.10 or newer"))?;
-            compile_python_wasm_process(&path, &python, default_world).await?;
+            compile_python_wasm_process(&path, &python, world).await?;
         } else if is_js_process {
             let valid_node = get_newest_valid_node_version(None, None)?;
-            compile_javascript_wasm_process(&path, valid_node, default_world).await?;
+            compile_javascript_wasm_process(&path, valid_node, world).await?;
         }
     }
     Ok(())
@@ -589,15 +601,16 @@ async fn compile_package(
                         // TODO: can we use kit-cached deps?
                         return Err(eyre!("Need a node to be able to fetch dependencies"));
                     };
-                    fetch_dependencies(
-                        dependencies,
-                        &mut apis,
-                        url.clone(),
-                    ).await?;
+                    fetch_dependencies(dependencies, &mut apis, url.clone()).await?;
                 }
             }
         }
     }
+
+    let wit_world = default_world.unwrap_or_else(|| match metadata.properties.wit_version {
+        None => DEFAULT_WORLD_0_7_0.to_string(),
+        Some(0) | _ => DEFAULT_WORLD_0_8_0.to_string(),
+    });
 
     let mut tasks = tokio::task::JoinSet::new();
     let features = features.to_string();
@@ -606,7 +619,8 @@ async fn compile_package(
             entry,
             features.clone(),
             apis.clone(),
-            default_world.clone(),
+            wit_world.clone(),
+            metadata.properties.wit_version,
         ));
     }
     while let Some(res) = tasks.join_next().await {
