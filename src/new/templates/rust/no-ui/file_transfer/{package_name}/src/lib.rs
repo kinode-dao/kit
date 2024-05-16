@@ -1,43 +1,16 @@
+use crate::kinode::process::{package_name}::{Address as WitAddress, Request as TransferRequest, Response as TransferResponse, WorkerRequest, DownloadRequest, ProgressRequest, FileInfo, InitializeRequest, ChunkRequest};
 use kinode_process_lib::{
     await_message, call_init, our_capabilities, println, spawn,
     vfs::{create_drive, metadata, open_dir, Directory, FileType},
     Address, OnExit, Request, Response,
 };
-use serde::{Deserialize, Serialize};
 
 wit_bindgen::generate!({
-    path: "wit",
-    world: "process",
+    path: "target/wit",
+    world: "{package_name}-{publisher_dotted_kebab}-v0",
+    generate_unused_types: true,
+    additional_derives: [serde::Deserialize, serde::Serialize],
 });
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum TransferRequest {
-    ListFiles,
-    Download { name: String, target: Address },
-    Progress { name: String, progress: u64 },
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum TransferResponse {
-    ListFiles(Vec<FileInfo>),
-    Download { name: String, worker: Address },
-    Done,
-    Started,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct FileInfo {
-    pub name: String,
-    pub size: u64,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum WorkerRequest {
-    Initialize {
-        name: String,
-        target_worker: Option<Address>,
-    },
-}
 
 fn ls_files(files_dir: &Directory) -> anyhow::Result<Vec<FileInfo>> {
     let entries = files_dir.read()?;
@@ -64,9 +37,7 @@ fn handle_transfer_request(
     body: &[u8],
     files_dir: &Directory,
 ) -> anyhow::Result<()> {
-    let transfer_request = serde_json::from_slice::<TransferRequest>(body)?;
-
-    match transfer_request {
+    match serde_json::from_slice(body)? {
         TransferRequest::ListFiles => {
             let files = ls_files(files_dir)?;
 
@@ -74,7 +45,7 @@ fn handle_transfer_request(
                 .body(serde_json::to_vec(&TransferResponse::ListFiles(files))?)
                 .send()?;
         }
-        TransferRequest::Download { name, target } => {
+        TransferRequest::Download(DownloadRequest { name, ref target }) => {
             // spin up a worker, initialize based on whether it's a downloader or a sender.
             let our_worker = spawn(
                 None,
@@ -89,37 +60,40 @@ fn handle_transfer_request(
                 node: our.node.clone(),
                 process: our_worker,
             };
+            let our_worker_wit_address = serde_json::from_str(&serde_json::to_string(&our_worker_address)?)?;
 
             if source.node == our.node {
                 // we want to download a file
                 let _resp = Request::new()
-                    .body(serde_json::to_vec(&WorkerRequest::Initialize {
+                    .body(serde_json::to_vec(&WorkerRequest::Initialize(InitializeRequest {
                         name: name.clone(),
                         target_worker: None,
-                    })?)
+                    }))?)
                     .target(&our_worker_address)
                     .send_and_await_response(5)??;
 
                 // send our initialized worker address to the other node
+                let target = serde_json::from_str(&serde_json::to_string(target)?)?;
                 Request::new()
-                    .body(serde_json::to_vec(&TransferRequest::Download {
+                    .body(serde_json::to_vec(&TransferRequest::Download(DownloadRequest {
                         name: name.clone(),
-                        target: our_worker_address,
-                    })?)
+                        target: our_worker_wit_address,
+                    }))?)
                     .target(&target)
+                    //.target(&target.into())
                     .send()?;
             } else {
                 // they want to download a file
                 Request::new()
-                    .body(serde_json::to_vec(&WorkerRequest::Initialize {
+                    .body(serde_json::to_vec(&WorkerRequest::Initialize(InitializeRequest {
                         name: name.clone(),
-                        target_worker: Some(target),
-                    })?)
+                        target_worker: Some(target.clone()),
+                    }))?)
                     .target(&our_worker_address)
                     .send()?;
             }
         }
-        TransferRequest::Progress { name, progress } => {
+        TransferRequest::Progress(ProgressRequest { name, progress }) => {
             println!("{} progress: {}%", name, progress);
         }
     }

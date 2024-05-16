@@ -1,27 +1,17 @@
+use crate::kinode::process::{package_name}::{Request as FibonacciRequest, Response as FibonacciResponse};
 use kinode_process_lib::{await_message, call_init, println, Address, Response};
-use serde::{Deserialize, Serialize};
 
 wit_bindgen::generate!({
-    path: "wit",
-    world: "process",
+    path: "target/wit",
+    world: "{package_name}-{publisher_dotted_kebab}-v0",
+    generate_unused_types: true,
+    additional_derives: [serde::Deserialize, serde::Serialize],
 });
 
-#[derive(Debug, Serialize, Deserialize)]
-enum FibonacciRequest {
-    Number(u32),
-    Numbers((u32, u32)),
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-enum FibonacciResponse {
-    Number(u128),
-    Numbers((u128, u32)),
-}
-
 /// calculate the nth Fibonacci number
-/// since we are using u128, the maximum number
-/// we can calculate is the 186th Fibonacci number
-fn fibonacci(n: u32) -> u128 {
+/// since we are using u64, the maximum number
+/// we can calculate is the 93rd Fibonacci number
+fn fibonacci(n: u32) -> u64 {
     if n == 0 {
         return 0;
     }

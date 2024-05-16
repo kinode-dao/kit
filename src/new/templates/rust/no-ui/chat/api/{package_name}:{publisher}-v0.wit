@@ -1,0 +1,27 @@
+interface {package_name} {
+    variant request {
+        send(send-request),
+        /// history of chat with given node
+        history(string),
+    }
+
+    variant response {
+        send,
+        history(list<chat-message>),
+    }
+
+    record send-request {
+        target: string,
+        message: string,
+    }
+
+    record chat-message {
+        author: string,
+        content: string,
+    }
+}
+
+world {package_name}-{publisher_dotted_kebab}-v0 {
+    import {package_name};
+    include process;
+}

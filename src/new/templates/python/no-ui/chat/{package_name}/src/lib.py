@@ -1,7 +1,7 @@
 import json
 
-import process
-from process.imports.standard import (
+import {package_name}_{publisher_dotted_snake}_v0
+from {package_name}_{publisher_dotted_snake}_v0.imports.standard import (
     Address,
     MessageRequest,
     MessageResponse,
@@ -13,7 +13,7 @@ from process.imports.standard import (
     send_and_await_response,
     send_response,
 )
-from process.types import Err
+from {package_name}_{publisher_dotted_snake}_v0.types import Err
 
 def parse_address(address_string):
     node, _, rest = address_string.partition("@")
@@ -23,10 +23,21 @@ def parse_address(address_string):
 
     return node, process, package, publisher
 
+def add_to_archive(conversation, author, content, message_archive):
+    message = {
+        "author": author,
+        "content": content,
+    }
+    if conversation in message_archive:
+        message_archive[conversation].append(message)
+    else:
+        message_archive[conversation] = [message]
+    return message_archive
+
 def handle_message(our_node, message_archive):
     result = receive()
     if isinstance(result, Err):
-        raise Exception(f"{result}")
+        raise Exception(f"got error: {result}")
     source, message = result
 
     match message:
@@ -37,8 +48,13 @@ def handle_message(our_node, message_archive):
             if "Send" in body:
                 target, message_text = body["Send"]["target"], body["Send"]["message"]
                 if target == our_node:
-                    print_to_terminal(0, f"{package_name}|{source.node}: {message_text}")
-                    message_archive[source.node] = message_text
+                    print_to_terminal(0, f"{source.node}: {message_text}")
+                    message_archive = add_to_archive(
+                        source.node,
+                        source.node,
+                        message_text,
+                        message_archive,
+                    )
                 else:
                     send_and_await_response(
                         Address(
@@ -48,15 +64,22 @@ def handle_message(our_node, message_archive):
                         Request(False, 5, message.value.body, None, []),
                         None,
                     )
+                    message_archive = add_to_archive(
+                        target,
+                        our_node,
+                        message_text,
+                        message_archive,
+                    )
                 send_response(
-                    Response(False, json.dumps({"Ack": None}).encode("utf-8"), None, []),
+                    Response(False, json.dumps({"Send": None}).encode("utf-8"), None, []),
                     None,
                 )
             elif "History" in body:
+                node = body["History"]
                 send_response(
                     Response(
                         False,
-                        json.dumps({"History": {"messages": message_archive}}).encode("utf-8"),
+                        json.dumps({"History": message_archive.get(node, [])}).encode("utf-8"),
                         None,
                         [],
                     ),
@@ -67,7 +90,7 @@ def handle_message(our_node, message_archive):
 
     return message_archive
 
-class Process(process.Process):
+class {package_name_upper_camel}{publisher_dotted_upper_camel}V0({package_name}_{publisher_dotted_snake}_v0.{package_name_upper_camel}{publisher_dotted_upper_camel}V0):
     def init(self, our):
         print_to_terminal(0, "{package_name}: begin (python)")
 

@@ -1,16 +1,21 @@
+use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::{eyre::{eyre, WrapErr}, Result};
 use fs_err as fs;
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn, instrument};
+
+use kinode_process_lib::kernel_types::Erc721Metadata;
 
 use crate::KIT_CACHE;
 use crate::setup::{
     check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version, get_python_version,
     REQUIRED_PY_PACKAGE,
 };
+use crate::start_package::zip_directory;
+use crate::view_api;
 
 const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
@@ -19,6 +24,7 @@ const RUST_SRC_PATH: &str = "src/lib.rs";
 const KINODE_WIT_URL: &str =
     "https://raw.githubusercontent.com/kinode-dao/kinode-wit/aa2c8b11c9171b949d1991c32f58591c0e881f85/kinode.wit";
 const WASI_VERSION: &str = "19.0.1"; // TODO: un-hardcode
+const DEFAULT_WORLD: &str = "process";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
@@ -93,21 +99,74 @@ pub async fn download_file(url: &str, path: &Path) -> Result<()> {
 }
 
 #[instrument(level = "trace", skip_all)]
+pub fn read_metadata(package_dir: &Path) -> Result<Erc721Metadata> {
+    let metadata: Erc721Metadata =
+        serde_json::from_reader(fs::File::open(package_dir.join("metadata.json"))
+            .wrap_err_with(|| "Missing required metadata.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=metadata.json#metadatajson")?
+        )?;
+    Ok(metadata)
+}
+
+/// Regex to dynamically capture the world name after 'world'
+#[instrument(level = "trace", skip_all)]
+fn extract_world(data: &str) -> Option<String> {
+    let re = regex::Regex::new(r"world\s+([^\s\{]+)").unwrap();
+    re.captures(data).and_then(|caps| caps.get(1).map(|match_| match_.as_str().to_string()))
+}
+
+#[instrument(level = "trace", skip_all)]
+fn extract_worlds_from_files(directory: &Path) -> Vec<String> {
+    let mut worlds = vec![];
+
+    // Safe to return early if directory reading fails
+    let entries = match fs::read_dir(directory) {
+        Ok(entries) => entries,
+        Err(_) => return worlds,
+    };
+
+    for entry in entries.filter_map(Result::ok) {
+        let path = entry.path();
+        if !path.is_file()
+        || Some("kinode.wit") == path.file_name().and_then(|s| s.to_str())
+        || Some("wit") != path.extension().and_then(|s| s.to_str()) {
+            continue;
+        }
+        let contents = fs::read_to_string(&path).unwrap_or_default();
+        if let Some(world) = extract_world(&contents) {
+            worlds.push(world);
+        }
+    }
+
+    worlds
+}
+
+#[instrument(level = "trace", skip_all)]
+fn get_world_or_default(directory: &Path, default_world: Option<String>) -> String {
+    let worlds = extract_worlds_from_files(directory);
+    if worlds.len() == 1 {
+        return worlds[0].clone();
+    }
+    let default_world = default_world.unwrap_or_else(|| DEFAULT_WORLD.to_string());
+    warn!("Found {} worlds in {directory:?}; defaulting to {default_world}", worlds.len());
+    default_world
+}
+
+#[instrument(level = "trace", skip_all)]
 async fn compile_javascript_wasm_process(
     process_dir: &Path,
     valid_node: Option<String>,
+    default_world: Option<String>,
 ) -> Result<()> {
     info!(
         "Compiling Javascript Kinode process in {:?}...",
         process_dir
     );
-    let wit_dir = process_dir.join("wit");
-    download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
     let wasm_file_name = process_dir.file_name().and_then(|s| s.to_str()).unwrap();
+    let world_name = get_world_or_default(&process_dir.join("target").join("wit"), default_world);
 
     let install = "npm install".to_string();
-    let componentize = format!("node componentize.mjs {wasm_file_name}");
+    let componentize = format!("node componentize.mjs {wasm_file_name} {world_name}");
     let (install, componentize) = valid_node
         .map(|valid_node| {
             (
@@ -143,12 +202,23 @@ async fn compile_javascript_wasm_process(
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn compile_python_wasm_process(process_dir: &Path, python: &str) -> Result<()> {
+async fn compile_python_wasm_process(
+    process_dir: &Path,
+    python: &str,
+    default_world: Option<String>,
+) -> Result<()> {
     info!("Compiling Python Kinode process in {:?}...", process_dir);
-    let wit_dir = process_dir.join("wit");
-    download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
     let wasm_file_name = process_dir.file_name().and_then(|s| s.to_str()).unwrap();
+    let world_name = get_world_or_default(&process_dir.join("target").join("wit"), default_world);
+
+    let source = format!("source ../{PY_VENV_NAME}/bin/activate");
+    let install = format!("pip install {REQUIRED_PY_PACKAGE}");
+    let componentize = format!(
+        "componentize-py -d ../target/wit/ -w {} componentize lib -o ../../pkg/{}.wasm",
+        world_name,
+        wasm_file_name,
+    );
 
     run_command(
         Command::new(python)
@@ -156,10 +226,7 @@ async fn compile_python_wasm_process(process_dir: &Path, python: &str) -> Result
             .current_dir(process_dir),
     )?;
     run_command(Command::new("bash")
-        .args(&[
-            "-c",
-            &format!("source ../{PY_VENV_NAME}/bin/activate && pip install {REQUIRED_PY_PACKAGE} && componentize-py -d ../wit/ -w process componentize lib -o ../../pkg/{wasm_file_name}.wasm"),
-        ])
+        .args(&["-c", &format!("{source} && {install} && {componentize}")])
         .current_dir(process_dir.join("src"))
     )?;
 
@@ -175,15 +242,12 @@ async fn compile_rust_wasm_process(
     info!("Compiling Rust Kinode process in {:?}...", process_dir);
 
     // Paths
+    let wit_dir = process_dir.join("target").join("wit");
     let bindings_dir = process_dir
         .join("target")
         .join("bindings")
         .join(process_dir.file_name().unwrap());
-    let wit_dir = process_dir.join("wit");
-
     fs::create_dir_all(&bindings_dir)?;
-
-    download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
 
     // Check and download wasi_snapshot_preview1.wasm if it does not exist
     let wasi_snapshot_file = process_dir.join("wasi_snapshot_preview1.wasm");
@@ -353,9 +417,32 @@ async fn compile_package_and_ui(
     valid_node: Option<String>,
     skip_deps_check: bool,
     features: &str,
+    url: Option<String>,
+    default_world: Option<String>,
 ) -> Result<()> {
     compile_and_copy_ui(package_dir, valid_node).await?;
-    compile_package(package_dir, skip_deps_check, features).await?;
+    compile_package(package_dir, skip_deps_check, features, url, default_world).await?;
+    Ok(())
+}
+
+#[instrument(level = "trace", skip_all)]
+async fn build_wit_dir(process_dir: &Path, apis: &HashMap<String, Vec<u8>>) -> Result<()> {
+    let wit_dir = process_dir.join("target").join("wit");
+    download_file(KINODE_WIT_URL, &wit_dir.join("kinode.wit")).await?;
+    for (file_name, contents) in apis {
+        fs::write(wit_dir.join(file_name), contents)?;
+    }
+
+    //let src_dir = process_dir.join("src");
+    //for entry in src_dir.read_dir()? {
+    //    let entry = entry?;
+    //    let path = entry.path();
+    //    if Some("wit") == path.extension().and_then(|s| s.to_str()) {
+    //        if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+    //            fs::copy(&path, wit_dir.join(file_name))?;
+    //        }
+    //    }
+    //}
     Ok(())
 }
 
@@ -363,33 +450,91 @@ async fn compile_package_and_ui(
 async fn compile_package_item(
     entry: std::io::Result<std::fs::DirEntry>,
     features: String,
+    apis: HashMap<String, Vec<u8>>,
+    default_world: Option<String>,
 ) -> Result<()> {
     let entry = entry?;
     let path = entry.path();
     if path.is_dir() {
-        if path.join(RUST_SRC_PATH).exists() {
+        let is_rust_process = path.join(RUST_SRC_PATH).exists();
+        let is_py_process = path.join(PYTHON_SRC_PATH).exists();
+        let is_js_process = path.join(JAVASCRIPT_SRC_PATH).exists();
+        if is_rust_process || is_py_process || is_js_process {
+            build_wit_dir(&path, &apis).await?;
+        }
+
+        if is_rust_process {
             compile_rust_wasm_process(&path, &features).await?;
-        } else if path.join(PYTHON_SRC_PATH).exists() {
+        } else if is_py_process {
             let python = get_python_version(None, None)?
                 .ok_or_else(|| eyre!("kit requires Python 3.10 or newer"))?;
-            compile_python_wasm_process(&path, &python).await?;
-        } else if path.join(JAVASCRIPT_SRC_PATH).exists() {
+            compile_python_wasm_process(&path, &python, default_world).await?;
+        } else if is_js_process {
             let valid_node = get_newest_valid_node_version(None, None)?;
-            compile_javascript_wasm_process(&path, valid_node).await?;
+            compile_javascript_wasm_process(&path, valid_node, default_world).await?;
         }
     }
     Ok(())
 }
+
+async fn fetch_dependencies(
+    dependencies: &Vec<String>,
+    apis: &mut HashMap<String, Vec<u8>>,
+    url: String,
+) -> Result<()> {
+    for dependency in dependencies {
+        let Some(zip_dir) = view_api::execute(None, Some(dependency), &url, false).await? else {
+            return Err(eyre!("Got unexpected result from fetching API for {dependency}"));
+        };
+        for entry in zip_dir.read_dir()? {
+            let entry = entry?;
+            let path = entry.path();
+            if Some("wit") == path.extension().and_then(|s| s.to_str()) {
+                let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or_default();
+                let wit_contents = fs::read(&path)?;
+                apis.insert(file_name.into(), wit_contents);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// package dir looks like:
+/// ```
+/// metadata.json
+/// api/                                  <- optional
+///   my_package:publisher.os-v0.wit
+/// pkg/
+///   api.zip                             <- built
+///   manifest.json
+///   process_i.wasm                      <- built
+///   projess_j.wasm                      <- built
+/// process_i/
+///   src/
+///     lib.rs
+///   target/                             <- built
+///     api/
+///     wit/
+/// process_j/
+///   src/
+///   target/                             <- built
+///     api/
+///     wit/
+/// ```
 
 #[instrument(level = "trace", skip_all)]
 async fn compile_package(
     package_dir: &Path,
     skip_deps_check: bool,
     features: &str,
+    url: Option<String>,
+    default_world: Option<String>,
 ) -> Result<()> {
+    let metadata = read_metadata(package_dir)?;
     let mut checked_rust = false;
     let mut checked_py = false;
     let mut checked_js = false;
+    let mut apis = HashMap::new();
     for entry in package_dir.read_dir()? {
         let entry = entry?;
         let path = entry.path();
@@ -405,6 +550,48 @@ async fn compile_package(
                 let deps = check_js_deps()?;
                 get_deps(deps)?;
                 checked_js = true;
+            } else if Some("api") == path.file_name().and_then(|s| s.to_str()) {
+                // zip & place in pkg/: publish API inside Kinode
+                let zip_path = package_dir.join("pkg").join("api.zip");
+                let zip_path = zip_path.to_str().unwrap();
+                zip_directory(&path, zip_path)?;
+
+                // read api files: to be used in build
+                for entry in path.read_dir()? {
+                    let entry = entry?;
+                    let path = entry.path();
+                    let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+                        continue;
+                    };
+                    if ext != "wit" {
+                        continue;
+                    }
+                    let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
+                        continue;
+                    };
+                    if file_name.starts_with(&format!(
+                        "{}:{}",
+                        metadata.properties.package_name,
+                        metadata.properties.publisher,
+                    )) {
+                        if let Ok(api_contents) = fs::read(&path) {
+                            apis.insert(file_name.to_string(), api_contents);
+                        }
+                    }
+                }
+
+                // fetch dependency apis: to be used in build
+                if !metadata.properties.dependencies.is_empty() {
+                    let Some(ref url) = url else {
+                        // TODO: can we use kit-cached deps?
+                        return Err(eyre!("Need a node to be able to fetch dependencies"));
+                    };
+                    fetch_dependencies(
+                        &metadata.properties.dependencies,
+                        &mut apis,
+                        url.clone(),
+                    ).await?;
+                }
             }
         }
     }
@@ -412,7 +599,12 @@ async fn compile_package(
     let mut tasks = tokio::task::JoinSet::new();
     let features = features.to_string();
     for entry in package_dir.read_dir()? {
-        tasks.spawn(compile_package_item(entry, features.clone()));
+        tasks.spawn(compile_package_item(
+            entry,
+            features.clone(),
+            apis.clone(),
+            default_world.clone(),
+        ));
     }
     while let Some(res) = tasks.join_next().await {
         res??;
@@ -428,6 +620,8 @@ pub async fn execute(
     ui_only: bool,
     skip_deps_check: bool,
     features: &str,
+    url: Option<String>,
+    default_world: Option<String>,
 ) -> Result<()> {
     if !package_dir.join("pkg").exists() {
         if Some(".DS_Store") == package_dir.file_name().and_then(|s| s.to_str()) {
@@ -445,11 +639,17 @@ pub async fn execute(
         if ui_only {
             return Err(eyre!("kit build: can't build UI: no ui directory exists"));
         } else {
-            compile_package(package_dir, skip_deps_check, features).await
+            compile_package(package_dir, skip_deps_check, features, url, default_world).await
         }
     } else {
         if no_ui {
-            return compile_package(package_dir, skip_deps_check, features).await;
+            return compile_package(
+                package_dir,
+                skip_deps_check,
+                features,
+                url,
+                default_world,
+            ).await;
         }
 
         let deps = check_js_deps()?;
@@ -464,6 +664,8 @@ pub async fn execute(
                 valid_node,
                 skip_deps_check,
                 features,
+                url,
+                default_world,
             ).await
         }
     }

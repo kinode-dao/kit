@@ -11,18 +11,20 @@ use zip::write::FileOptions;
 
 use kinode_process_lib::kernel_types::Erc721Metadata;
 
-use crate::{inject_message, KIT_LOG_PATH_DEFAULT};
+use crate::{build::read_metadata, inject_message, KIT_LOG_PATH_DEFAULT};
 
 #[instrument(level = "trace", skip_all)]
 fn new_package(
     node: Option<&str>,
     package_name: &str,
     publisher_node: &str,
+    metadata: &Erc721Metadata,
     bytes_path: &str,
 ) -> Result<serde_json::Value> {
     let message = json!({
         "NewPackage": {
             "package": {"package_name": package_name, "publisher_node": publisher_node},
+            "metadata": metadata,
             "mirror": true
         }
     });
@@ -62,7 +64,7 @@ pub fn interact_with_package(
 }
 
 #[instrument(level = "trace", skip_all)]
-fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
+pub fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
     let file = fs::File::create(zip_filename)?;
     let walkdir = WalkDir::new(directory);
     let it = walkdir.into_iter();
@@ -104,10 +106,7 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
         ));
     }
     let pkg_dir = package_dir.join("pkg").canonicalize()?;
-    let metadata: Erc721Metadata =
-        serde_json::from_reader(fs::File::open(package_dir.join("metadata.json"))
-            .wrap_err_with(|| "Missing required metadata.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=metadata.json#metadatajson")?
-        )?;
+    let metadata = read_metadata(package_dir)?;
     let package_name = metadata.properties.package_name.as_str();
     let publisher = metadata.properties.publisher.as_str();
     let pkg_publisher = format!("{}:{}", package_name, publisher);
@@ -133,6 +132,7 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
         None,
         package_name,
         publisher,
+        &metadata,
         zip_filename.to_str().unwrap(),
     )?;
     let response = inject_message::send_request(url, new_pkg_request).await?;

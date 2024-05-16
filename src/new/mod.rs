@@ -65,10 +65,56 @@ impl From<&String> for Template {
     }
 }
 
+fn snake_to_upper_camel_case(input: &str) -> String {
+    let parts: Vec<&str> = input.split('_').collect();
+    let mut camel_case = String::new();
+
+    for part in parts {
+        if let Some(first_char) = part.chars().next() {
+            camel_case.push_str(&first_char.to_uppercase().to_string());
+            camel_case.push_str(&part[first_char.len_utf8()..]);
+        }
+    }
+    camel_case
+}
+
+fn replace_dots(input: &str) -> (String, String) {
+    let dotted = input.split('.');
+    if dotted.clone().count() == 1 {
+        (input.to_string(), input.to_string())
+    } else {
+        let dotted_snake = dotted
+            .clone()
+            .fold(String::new(), |mut d, item| {
+                if !d.is_empty() {
+                    d.push_str("_dot_");
+                }
+                d.push_str(item);
+                d
+            });
+        let dotted_kebab = dotted
+            .fold(String::new(), |mut d, item| {
+                if !d.is_empty() {
+                    d.push_str("-dot-");
+                }
+                d.push_str(item);
+                d
+            });
+        (dotted_snake, dotted_kebab)
+    }
+}
+
 fn replace_vars(input: &str, package_name: &str, publisher: &str) -> String {
+    let (publisher_dotted_snake, publisher_dotted_kebab) = replace_dots(publisher);
+    let package_name_upper_camel = snake_to_upper_camel_case(package_name);
+    let publisher_dotted_upper_camel = snake_to_upper_camel_case(&publisher_dotted_snake);
     input
         .replace("{package_name}", package_name)
+        .replace("{package_name_upper_camel}", &package_name_upper_camel)
         .replace("{publisher}", publisher)
+        .replace("{publisher_dotted_snake}", &publisher_dotted_snake)
+        .replace("{publisher_dotted_kebab}", &publisher_dotted_kebab)
+        .replace("{publisher_dotted_upper_camel}", &publisher_dotted_upper_camel)
         .replace("Cargo.toml_", "Cargo.toml")
         .to_string()
 }

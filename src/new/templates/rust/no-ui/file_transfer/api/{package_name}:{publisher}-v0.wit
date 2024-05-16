@@ -1,0 +1,53 @@
+interface {package_name} {
+    use standard.{address};
+
+    variant request {
+        list-files,
+        download(download-request),
+        progress(progress-request),
+    }
+
+    variant response {
+        list-files(list<file-info>),
+        download,
+        done,
+        started,
+    }
+
+    variant worker-request {
+        initialize(initialize-request),
+        chunk(chunk-request),
+        size(u64),
+    }
+
+    record download-request {
+        name: string,
+        target: address,
+    }
+
+    record progress-request {
+        name: string,
+        progress: u64,
+    }
+
+    record file-info {
+        name: string,
+        size: u64,
+    }
+
+    record initialize-request {
+        name: string,
+        target-worker: option<address>,
+    }
+
+    record chunk-request {
+        name: string,
+        offset: u64,
+        length: u64,
+    }
+}
+
+world {package_name}-{publisher_dotted_kebab}-v0 {
+    import {package_name};
+    include process;
+}
