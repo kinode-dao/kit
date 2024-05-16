@@ -582,6 +582,9 @@ async fn compile_package(
 
                 // fetch dependency apis: to be used in build
                 if let Some(ref dependencies) = metadata.properties.dependencies {
+                    if dependencies.is_empty() {
+                        continue;
+                    }
                     let Some(ref url) = url else {
                         // TODO: can we use kit-cached deps?
                         return Err(eyre!("Need a node to be able to fetch dependencies"));
