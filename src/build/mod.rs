@@ -110,7 +110,7 @@ pub fn read_metadata(package_dir: &Path) -> Result<Erc721Metadata> {
 /// Regex to dynamically capture the world name after 'world'
 #[instrument(level = "trace", skip_all)]
 fn extract_world(data: &str) -> Option<String> {
-    let re = regex::Regex::new(r"world\s+(\w+)\s*\{").unwrap();
+    let re = regex::Regex::new(r"world\s+([^\s\{]+)").unwrap();
     re.captures(data).and_then(|caps| caps.get(1).map(|match_| match_.as_str().to_string()))
 }
 
@@ -433,16 +433,16 @@ async fn build_wit_dir(process_dir: &Path, apis: &HashMap<String, Vec<u8>>) -> R
         fs::write(wit_dir.join(file_name), contents)?;
     }
 
-    let src_dir = process_dir.join("src");
-    for entry in src_dir.read_dir()? {
-        let entry = entry?;
-        let path = entry.path();
-        if Some("wit") == path.extension().and_then(|s| s.to_str()) {
-            if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
-                fs::copy(&path, wit_dir.join(file_name))?;
-            }
-        }
-    }
+    //let src_dir = process_dir.join("src");
+    //for entry in src_dir.read_dir()? {
+    //    let entry = entry?;
+    //    let path = entry.path();
+    //    if Some("wit") == path.extension().and_then(|s| s.to_str()) {
+    //        if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+    //            fs::copy(&path, wit_dir.join(file_name))?;
+    //        }
+    //    }
+    //}
     Ok(())
 }
 
@@ -503,7 +503,7 @@ async fn fetch_dependencies(
 /// ```
 /// metadata.json
 /// api/                                  <- optional
-///   my_package:publisher.os-v0-api.wit
+///   my_package:publisher.os-v0.wit
 /// pkg/
 ///   api.zip                             <- built
 ///   manifest.json
@@ -512,7 +512,6 @@ async fn fetch_dependencies(
 /// process_i/
 ///   src/
 ///     lib.rs
-///     process_i.wit                     <- optional
 ///   target/                             <- built
 ///     api/
 ///     wit/
@@ -571,7 +570,7 @@ async fn compile_package(
                         continue;
                     };
                     if file_name.starts_with(&format!(
-                        "{}:{}-api",
+                        "{}:{}",
                         metadata.properties.package_name,
                         metadata.properties.publisher,
                     )) {

@@ -1,11 +1,11 @@
-interface {package_name}-{publisher_dotted_kebab}-api-v0 {
-    variant chat-request {
+interface {package_name} {
+    variant request {
         send(send-request),
         /// history of chat with given node
         history(string),
     }
 
-    variant chat-response {
+    variant response {
         send,
         history(list<chat-message>),
     }
@@ -19,4 +19,9 @@ interface {package_name}-{publisher_dotted_kebab}-api-v0 {
         author: string,
         content: string,
     }
+}
+
+world {package_name}-{publisher_dotted_kebab}-v0 {
+    import {package_name};
+    include process;
 }

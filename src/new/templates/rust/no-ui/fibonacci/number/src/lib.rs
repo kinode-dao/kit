@@ -1,11 +1,11 @@
-use crate::kinode::process::{package_name}_{publisher_dotted_snake}_api_v0::{FibonacciRequest, FibonacciResponse};
+use crate::kinode::process::{package_name}::{Request as FibonacciRequest, Response as FibonacciResponse};
 use kinode_process_lib::{
     await_next_message_body, call_init, println, Address, Message, Request,
 };
 
 wit_bindgen::generate!({
     path: "target/wit",
-    world: "{package_name}",
+    world: "{package_name}-{publisher_dotted_kebab}-v0",
     generate_unused_types: true,
     additional_derives: [serde::Deserialize, serde::Serialize],
 });

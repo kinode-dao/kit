@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use crate::kinode::process::{package_name}_{publisher_dotted_snake}_api_v0::{TransferRequest, WorkerRequest, ProgressRequest, InitializeRequest, ChunkRequest};
+use crate::kinode::process::{package_name}::{Request as TransferRequest, WorkerRequest, ProgressRequest, InitializeRequest, ChunkRequest};
 use kinode_process_lib::{
     await_message, call_init, get_blob, println,
     vfs::{open_dir, open_file, Directory, File, SeekFrom},
@@ -9,7 +9,7 @@ use kinode_process_lib::{
 
 wit_bindgen::generate!({
     path: "target/wit",
-    world: "{package_name}",
+    world: "{package_name}-{publisher_dotted_kebab}-v0",
     generate_unused_types: true,
     additional_derives: [serde::Deserialize, serde::Serialize],
 });

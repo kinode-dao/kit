@@ -1,0 +1,16 @@
+interface {package_name} {
+    variant request {
+        number(u32),
+        numbers(tuple<u32, u32>),
+    }
+
+    variant response {
+        number(u64),
+        numbers(tuple<u64, u32>),
+    }
+}
+
+world {package_name}-{publisher_dotted_kebab}-v0 {
+    import {package_name};
+    include process;
+}

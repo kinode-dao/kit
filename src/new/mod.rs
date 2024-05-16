@@ -107,12 +107,14 @@ fn replace_dots(input: &str) -> (String, String) {
 fn replace_vars(input: &str, package_name: &str, publisher: &str) -> String {
     let (publisher_dotted_snake, publisher_dotted_kebab) = replace_dots(publisher);
     let package_name_upper_camel = snake_to_upper_camel_case(package_name);
+    let publisher_dotted_upper_camel = snake_to_upper_camel_case(&publisher_dotted_snake);
     input
         .replace("{package_name}", package_name)
         .replace("{package_name_upper_camel}", &package_name_upper_camel)
         .replace("{publisher}", publisher)
         .replace("{publisher_dotted_snake}", &publisher_dotted_snake)
         .replace("{publisher_dotted_kebab}", &publisher_dotted_kebab)
+        .replace("{publisher_dotted_upper_camel}", &publisher_dotted_upper_camel)
         .replace("Cargo.toml_", "Cargo.toml")
         .to_string()
 }

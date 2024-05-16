@@ -1,13 +1,13 @@
-interface {package_name}-{publisher_dotted_kebab}-api-v0 {
+interface {package_name} {
     use standard.{address};
 
-    variant transfer-request {
+    variant request {
         list-files,
         download(download-request),
         progress(progress-request),
     }
 
-    variant transfer-response {
+    variant response {
         list-files(list<file-info>),
         download,
         done,
@@ -45,4 +45,9 @@ interface {package_name}-{publisher_dotted_kebab}-api-v0 {
         offset: u64,
         length: u64,
     }
+}
+
+world {package_name}-{publisher_dotted_kebab}-v0 {
+    import {package_name};
+    include process;
 }

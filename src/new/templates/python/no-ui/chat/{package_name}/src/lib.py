@@ -1,7 +1,7 @@
 import json
 
-import {package_name}
-from {package_name}.imports.standard import (
+import {package_name}_{publisher_dotted_snake}_v0
+from {package_name}_{publisher_dotted_snake}_v0.imports.standard import (
     Address,
     MessageRequest,
     MessageResponse,
@@ -13,7 +13,7 @@ from {package_name}.imports.standard import (
     send_and_await_response,
     send_response,
 )
-from {package_name}.types import Err
+from {package_name}_{publisher_dotted_snake}_v0.types import Err
 
 def parse_address(address_string):
     node, _, rest = address_string.partition("@")
@@ -90,7 +90,7 @@ def handle_message(our_node, message_archive):
 
     return message_archive
 
-class {package_name_upper_camel}({package_name}.{package_name_upper_camel}):
+class {package_name_upper_camel}{publisher_dotted_upper_camel}V0({package_name}_{publisher_dotted_snake}_v0.{package_name_upper_camel}{publisher_dotted_upper_camel}V0):
     def init(self, our):
         print_to_terminal(0, "{package_name}: begin (python)")
 

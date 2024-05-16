@@ -1,4 +1,4 @@
-use crate::kinode::process::{package_name}_{publisher_dotted_snake}_api_v0::{Address as WitAddress, TransferRequest, TransferResponse, WorkerRequest, DownloadRequest, ProgressRequest, FileInfo, InitializeRequest, ChunkRequest};
+use crate::kinode::process::{package_name}::{Address as WitAddress, Request as TransferRequest, Response as TransferResponse, WorkerRequest, DownloadRequest, ProgressRequest, FileInfo, InitializeRequest, ChunkRequest};
 use kinode_process_lib::{
     await_message, call_init, our_capabilities, println, spawn,
     vfs::{create_drive, metadata, open_dir, Directory, FileType},
@@ -7,7 +7,7 @@ use kinode_process_lib::{
 
 wit_bindgen::generate!({
     path: "target/wit",
-    world: "{package_name}",
+    world: "{package_name}-{publisher_dotted_kebab}-v0",
     generate_unused_types: true,
     additional_derives: [serde::Deserialize, serde::Serialize],
 });
