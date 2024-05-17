@@ -153,14 +153,11 @@ pub async fn drain_print_runtime(
             }
             Ok(should_print_std) = recv_kill.recv() => {
                 println!("len stdout, stderr: {} {}", stdout_buffer.len(), stderr_buffer.len());
-                //if should_print_std {
-                //    let stdout = remove_repeated_newlines(&stdout_buffer);
-                //    let stderr = remove_repeated_newlines(&stderr_buffer);
-                //    println!("stdout:\n{}\nstderr:\n{}", stdout, stderr);
-                //}
+                if should_print_std {
                     let stdout = remove_repeated_newlines(&stdout_buffer);
                     let stderr = remove_repeated_newlines(&stderr_buffer);
                     println!("stdout:\n{}\nstderr:\n{}", stdout, stderr);
+                }
                 return;
             }
         }
