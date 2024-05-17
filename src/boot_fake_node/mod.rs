@@ -208,9 +208,13 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> Result<
         Ok(v) => {
             let v = v.to_vec();
             if let Ok(s) = String::from_utf8(v.clone()) {
-                if s.contains("API rate limit exceeded") {
-                    warn!("GitHub throttled: can't fetch {owner}/{repo}/{endpoint}");
-                    return Ok(vec![]);
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&s) {
+                    if let serde_json::Value::String(ref s) = json["message"] {
+                        if s.contains("API rate limit exceeded") {
+                            warn!("GitHub throttled: can't fetch {owner}/{repo}/{endpoint}");
+                            return Ok(vec![]);
+                        }
+                    }
                 }
             }
             fs::create_dir_all(
