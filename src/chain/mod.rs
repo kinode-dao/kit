@@ -1,6 +1,6 @@
 use std::process::{Child, Command, Stdio};
 
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::{eyre::{eyre, Result}, Section};
 use fs_err as fs;
 use reqwest::Client;
 use sha2::{Digest, Sha256};
@@ -10,7 +10,8 @@ use tracing::{info, instrument};
 use crate::KIT_CACHE;
 use crate::run_tests::cleanup::{clean_process_by_pid, cleanup_on_signal};
 
-pub const KINOSTATE_JSON: &str = include_str!("./kinostate.json");
+const KINOSTATE_JSON: &str = include_str!("./kinostate.json");
+const DEFAULT_MAX_ATTEMPTS: u16 = 16;
 
 #[instrument(level = "trace", skip_all)]
 async fn write_kinostate() -> Result<String> {
@@ -30,13 +31,13 @@ async fn write_kinostate() -> Result<String> {
 }
 
 #[instrument(level = "trace", skip_all)]
-pub async fn start_chain(port: u16, piped: bool) -> Result<Child> {
+pub async fn start_chain(port: u16, piped: bool) -> Result<Option<Child>> {
     let state_hash = write_kinostate().await?;
     let state_path = format!("./kinostate-{}.json", state_hash);
 
     info!("Checking for Anvil on port {}...", port);
     if wait_for_anvil(port, 1).await.is_ok() {
-        return Err(eyre!("Port {} is already in use by another anvil process", port));
+        return Ok(None);
     }
 
     let mut child = Command::new("anvil")
@@ -49,12 +50,12 @@ pub async fn start_chain(port: u16, piped: bool) -> Result<Child> {
         .spawn()?;
 
     info!("Waiting for Anvil to be ready on port {}...", port);
-    if let Err(e) = wait_for_anvil(port, 15).await {
+    if let Err(e) = wait_for_anvil(port, DEFAULT_MAX_ATTEMPTS).await {
         let _ = child.kill();
-        return Err(eyre!("Failed to start Anvil: {}, cleaning up", e));
+        return Err(e);
     }
 
-    Ok(child)
+    Ok(Some(child))
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -92,13 +93,17 @@ async fn wait_for_anvil(port: u16, max_attempts: u16) -> Result<()> {
         "Failed to connect to Anvil on port {} after {} attempts",
         port,
         max_attempts
-    ))
+    ).with_suggestion(|| "Is port already occupied?")
+    )
 }
 
 /// kit chain, alias to anvil
 #[instrument(level = "trace", skip_all)]
 pub async fn execute(port: u16) -> Result<()> {
-    let mut child = start_chain(port, false).await?;
+    let child = start_chain(port, false).await?;
+    let Some(mut child) = child else {
+        return Err(eyre!("Port {} is already in use by another anvil process", port));
+    };
     let child_id = child.id() as i32;
 
     let (send_to_cleanup, mut recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();

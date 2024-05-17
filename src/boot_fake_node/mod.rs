@@ -423,7 +423,7 @@ pub async fn execute(
     }
 
     // boot fakechain
-    let anvil_process = chain::start_chain(fakechain_port, true).await;
+    let anvil_process = chain::start_chain(fakechain_port, true).await?;
 
     if node_home.exists() {
         fs::remove_dir_all(&node_home)?;
@@ -450,20 +450,12 @@ pub async fn execute(
     let mut node_cleanup_infos = node_cleanup_infos.lock().await;
     node_cleanup_infos.push(NodeCleanupInfo {
         master_fd,
-        //process_id: runtime_process.id() as i32,
         process_id: runtime_process.id().unwrap() as i32,
         home: node_home.clone(),
-        anvil_process: anvil_process.as_ref().ok().map(|p| p.id() as i32),
+        anvil_process: anvil_process.map(|ap| ap.id() as i32),
     });
     drop(node_cleanup_infos);
 
-    //tokio::spawn(drain_print_runtime(
-    //    runtime_process.stdout.take().unwrap(),
-    //    runtime_process.stderr.take().unwrap(),
-    //    send_to_kill.subscribe(),
-    //));
-
-    //runtime_process.wait().unwrap();
     runtime_process.wait().await.unwrap();
     let _ = send_to_cleanup.send(true);
     for handle in task_handles {
