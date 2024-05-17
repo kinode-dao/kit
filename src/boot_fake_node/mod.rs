@@ -429,8 +429,6 @@ pub async fn execute(
         fs::remove_dir_all(&node_home)?;
     }
 
-    std::thread::sleep_ms(1000);
-
     if let Some(ref rpc) = rpc {
         args.extend_from_slice(&["--rpc", rpc]);
     };
