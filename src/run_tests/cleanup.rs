@@ -1,6 +1,7 @@
 use std::os::fd::AsRawFd;
 
 use fs_err as fs;
+use tokio::io::AsyncBufReadExt;
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{error, info, instrument};
 
@@ -103,14 +104,17 @@ pub async fn cleanup(
         }
 
         if let Some(ref mut nh) = node_handles {
-            if should_print_std.is_some_and(|b| b) {
-                let output = nh.next().and_then(|n| n.wait_with_output().ok()).unwrap();
-                let stdout = remove_repeated_newlines(&String::from_utf8_lossy(&output.stdout));
-                let stderr = remove_repeated_newlines(&String::from_utf8_lossy(&output.stderr));
-                println!("stdout:\n{}\nstderr:\n{}", stdout, stderr);
-            } else {
-                nh.next().and_then(|mut n| n.wait().ok()).unwrap();
+            if let Some(mut node_handle) = nh.next() {
+                node_handle.wait().await.ok();
             }
+            //if should_print_std.is_some_and(|b| b) {
+            //    let output = nh.next().and_then(|n| n.wait_with_output().ok()).unwrap();
+            //    let stdout = remove_repeated_newlines(&String::from_utf8_lossy(&output.stdout));
+            //    let stderr = remove_repeated_newlines(&String::from_utf8_lossy(&output.stderr));
+            //    println!("stdout:\n{}\nstderr:\n{}", stdout, stderr);
+            //} else {
+            //    nh.next().and_then(|mut n| n.wait().ok()).unwrap();
+            //}
         }
 
         if remove_node_files && home.exists() {
@@ -123,5 +127,39 @@ pub async fn cleanup(
         }
         info!("Done cleaning up {:?}.\r", home);
     }
-    let _ = send_to_kill.send(true);
+    let _ = send_to_kill.send(should_print_std.is_some_and(|b| b));
+}
+
+#[instrument(level = "trace", skip_all)]
+pub async fn drain_print_runtime(
+    stdout: tokio::process::ChildStdout,
+    stderr: tokio::process::ChildStderr,
+    mut recv_kill: BroadcastRecvBool,
+) {
+    let mut stdout_reader = tokio::io::BufReader::new(stdout).lines();
+    let mut stderr_reader = tokio::io::BufReader::new(stderr).lines();
+    let mut stdout_buffer = String::new();
+    let mut stderr_buffer = String::new();
+
+    loop {
+        tokio::select! {
+            Ok(Some(line)) = stdout_reader.next_line() => {
+                stdout_buffer.push_str(&line);
+                stdout_buffer.push('\n');
+            }
+            Ok(Some(line)) = stderr_reader.next_line() => {
+                stderr_buffer.push_str(&line);
+                stderr_buffer.push('\n');
+            }
+            Ok(should_print_std) = recv_kill.recv() => {
+                println!("len stdout, stderr: {} {}", stdout_buffer.len(), stderr_buffer.len());
+                if should_print_std {
+                    let stdout = remove_repeated_newlines(&stdout_buffer);
+                    let stderr = remove_repeated_newlines(&stderr_buffer);
+                    println!("stdout:\n{}\nstderr:\n{}", stdout, stderr);
+                }
+                return;
+            }
+        }
+    }
 }
