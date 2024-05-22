@@ -9,6 +9,7 @@ use tracing::{info, instrument};
 
 use crate::KIT_CACHE;
 use crate::run_tests::cleanup::{clean_process_by_pid, cleanup_on_signal};
+use crate::setup::{check_foundry_deps, get_deps};
 
 const KINOSTATE_JSON: &str = include_str!("./kinostate.json");
 const DEFAULT_MAX_ATTEMPTS: u16 = 16;
@@ -32,6 +33,9 @@ async fn write_kinostate() -> Result<String> {
 
 #[instrument(level = "trace", skip_all)]
 pub async fn start_chain(port: u16, piped: bool) -> Result<Option<Child>> {
+    let deps = check_foundry_deps()?;
+    get_deps(deps)?;
+
     let state_hash = write_kinostate().await?;
     let state_path = format!("./kinostate-{}.json", state_hash);
 
