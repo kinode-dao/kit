@@ -2,7 +2,7 @@ use sha2::{Sha256, Digest};
 use std::io::{Read, Write};
 use std::path::Path;
 
-use color_eyre::{Result, eyre::{eyre, WrapErr}};
+use color_eyre::{Result, eyre::eyre};
 use fs_err as fs;
 use serde_json::json;
 use tracing::{info, instrument};
