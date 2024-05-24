@@ -8,7 +8,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use zip::read::ZipArchive;
 
-use color_eyre::eyre::{eyre, Result, WrapErr};
+use color_eyre::{eyre::{eyre, Result, WrapErr}, Section};
 use fs_err as fs;
 use semver::Version;
 use serde::Deserialize;
@@ -140,11 +140,14 @@ pub fn get_platform_runtime_name() -> Result<String> {
         ("Linux", "x86_64") => "x86_64-unknown-linux-gnu",
         ("Darwin", "arm64") => "arm64-apple-darwin",
         ("Darwin", "x86_64") => "x86_64-apple-darwin",
-        _ => return Err(eyre!(
-            "OS/Architecture {}/{} not supported.",
-            os_name,
-            architecture_name,
-        )),
+        _ => {
+            return Err(eyre!(
+                "OS/Architecture {}/{} not amongst pre-built [Linux/x86_64, Apple/arm64, Apple/x86_64].",
+                os_name,
+                architecture_name,
+            ).with_suggestion(|| "Use the `--runtime-path` flag to build a local copy of the https://github.com/kinode-dao/kinode repo")
+            );
+        }
     };
     Ok(format!("kinode-{}-simulation-mode.zip", zip_name_midfix))
 }
