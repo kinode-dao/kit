@@ -9,7 +9,7 @@ Documentation in the [Kinode Book](https://book.kinode.org/kit-dev-toolkit.html)
 Install with cargo:
 
 ```bash
-cargo install --git https://github.com/kinode-dao/kit
+cargo install --git https://github.com/kinode-dao/kit --locked
 ```
 
 ### Updating
@@ -17,7 +17,7 @@ cargo install --git https://github.com/kinode-dao/kit
 To update, re-run
 
 ```bash
-cargo install --git https://github.com/kinode-dao/kit
+cargo install --git https://github.com/kinode-dao/kit --locked
 ```
 
 or use
