@@ -1,6 +1,6 @@
 use std::process::{Child, Command, Stdio};
 
-use color_eyre::eyre::{eyre, Result};
+use color_eyre::{eyre::{eyre, Result}, Section};
 use fs_err as fs;
 use reqwest::Client;
 use sha2::{Digest, Sha256};
@@ -9,8 +9,11 @@ use tracing::{info, instrument};
 
 use crate::KIT_CACHE;
 use crate::run_tests::cleanup::{clean_process_by_pid, cleanup_on_signal};
+use crate::run_tests::types::BroadcastRecvBool;
+use crate::setup::{check_foundry_deps, get_deps};
 
-pub const KINOSTATE_JSON: &str = include_str!("./kinostate.json");
+const KINOSTATE_JSON: &str = include_str!("./kinostate.json");
+const DEFAULT_MAX_ATTEMPTS: u16 = 16;
 
 #[instrument(level = "trace", skip_all)]
 async fn write_kinostate() -> Result<String> {
@@ -30,13 +33,20 @@ async fn write_kinostate() -> Result<String> {
 }
 
 #[instrument(level = "trace", skip_all)]
-pub async fn start_chain(port: u16, piped: bool) -> Result<Child> {
+pub async fn start_chain(
+    port: u16,
+    piped: bool,
+    recv_kill: BroadcastRecvBool,
+) -> Result<Option<Child>> {
+    let deps = check_foundry_deps()?;
+    get_deps(deps)?;
+
     let state_hash = write_kinostate().await?;
     let state_path = format!("./kinostate-{}.json", state_hash);
 
-    info!("Checking for Anvil  on port {}...", port);
-    if wait_for_anvil(port, 1).await.is_ok() {
-        return Err(eyre!("Port {} is already in use by another anvil process", port));
+    info!("Checking for Anvil on port {}...", port);
+    if wait_for_anvil(port, 1, None).await.is_ok() {
+        return Ok(None);
     }
 
     let mut child = Command::new("anvil")
@@ -49,16 +59,20 @@ pub async fn start_chain(port: u16, piped: bool) -> Result<Child> {
         .spawn()?;
 
     info!("Waiting for Anvil to be ready on port {}...", port);
-    if let Err(e) = wait_for_anvil(port, 15).await {
+    if let Err(e) = wait_for_anvil(port, DEFAULT_MAX_ATTEMPTS, Some(recv_kill)).await {
         let _ = child.kill();
-        return Err(eyre!("Failed to start Anvil: {}, cleaning up", e));
+        return Err(e);
     }
 
-    Ok(child)
+    Ok(Some(child))
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn wait_for_anvil(port: u16, max_attempts: u16) -> Result<()> {
+async fn wait_for_anvil(
+    port: u16,
+    max_attempts: u16,
+    mut recv_kill: Option<BroadcastRecvBool>,
+) -> Result<()> {
     let client = Client::new();
     let url = format!("http://localhost:{}", port);
 
@@ -85,27 +99,41 @@ async fn wait_for_anvil(port: u16, max_attempts: u16) -> Result<()> {
             _ => (),
         }
 
-        sleep(Duration::from_millis(250)).await;
+        if let Some(ref mut recv_kill) = recv_kill {
+            tokio::select! {
+                _ = sleep(Duration::from_millis(250)) => {}
+                _ = recv_kill.recv() => {
+                    return Err(eyre!("Received kill: bringing down anvil."));
+                }
+            }
+        } else {
+            sleep(Duration::from_millis(250)).await;
+        }
     }
 
     Err(eyre!(
         "Failed to connect to Anvil on port {} after {} attempts",
         port,
         max_attempts
-    ))
+    ).with_suggestion(|| "Is port already occupied?")
+    )
 }
 
 /// kit chain, alias to anvil
 #[instrument(level = "trace", skip_all)]
 pub async fn execute(port: u16) -> Result<()> {
-    let mut child = start_chain(port, false).await?;
-    let child_id = child.id() as i32;
-
     let (send_to_cleanup, mut recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
     let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
     let recv_kill_in_cos = send_to_kill.subscribe();
 
     let handle_signals = tokio::spawn(cleanup_on_signal(send_to_cleanup.clone(), recv_kill_in_cos));
+
+    let recv_kill_in_start_chain = send_to_kill.subscribe();
+    let child = start_chain(port, false, recv_kill_in_start_chain).await?;
+    let Some(mut child) = child else {
+        return Err(eyre!("Port {} is already in use by another anvil process", port));
+    };
+    let child_id = child.id() as i32;
 
     let cleanup_anvil = tokio::spawn(async move {
         recv_in_cleanup.recv().await;

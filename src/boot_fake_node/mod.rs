@@ -3,7 +3,7 @@ use std::os::fd::AsRawFd;
 use std::os::unix::fs::PermissionsExt;
 use std::os::unix::io::{FromRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 use zip::read::ZipArchive;
@@ -12,6 +12,7 @@ use color_eyre::eyre::{eyre, Result, WrapErr};
 use fs_err as fs;
 use semver::Version;
 use serde::Deserialize;
+use tokio::process::{Child, Command as TCommand};
 use tokio::sync::Mutex;
 use tracing::{info, warn, instrument};
 
@@ -339,7 +340,7 @@ pub fn run_runtime(
 
     let fds = nix::pty::openpty(None, None)?;
 
-    let process = Command::new(path)
+    let process = TCommand::new(path)
         .args(&full_args)
         .stdin(if !detached { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
         .stdout(if verbose { Stdio::inherit() } else { Stdio::piped() })
@@ -395,6 +396,7 @@ pub async fn execute(
     let (send_to_cleanup, recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
     let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
     let recv_kill_in_cos = send_to_kill.subscribe();
+    let recv_kill_in_start_chain = send_to_kill.subscribe();
 
     let node_cleanup_infos_for_cleanup = Arc::clone(&node_cleanup_infos);
     let handle = tokio::spawn(cleanup(
@@ -422,12 +424,15 @@ pub async fn execute(
     }
 
     // boot fakechain
-    let anvil_process = chain::start_chain(fakechain_port, true).await;
+    let anvil_process = chain::start_chain(
+        fakechain_port,
+        true,
+        recv_kill_in_start_chain,
+    ).await?;
 
     if node_home.exists() {
         fs::remove_dir_all(&node_home)?;
     }
-
 
     if let Some(ref rpc) = rpc {
         args.extend_from_slice(&["--rpc", rpc]);
@@ -450,13 +455,13 @@ pub async fn execute(
     let mut node_cleanup_infos = node_cleanup_infos.lock().await;
     node_cleanup_infos.push(NodeCleanupInfo {
         master_fd,
-        process_id: runtime_process.id() as i32,
+        process_id: runtime_process.id().unwrap() as i32,
         home: node_home.clone(),
-        anvil_process: anvil_process.as_ref().ok().map(|p| p.id() as i32),
+        anvil_process: anvil_process.map(|ap| ap.id() as i32),
     });
     drop(node_cleanup_infos);
 
-    runtime_process.wait().unwrap();
+    runtime_process.wait().await.unwrap();
     let _ = send_to_cleanup.send(true);
     for handle in task_handles {
         handle.await.unwrap();

@@ -15,7 +15,7 @@ use crate::inject_message;
 use crate::start_package;
 
 pub mod cleanup;
-use cleanup::{cleanup, cleanup_on_signal};
+use cleanup::{cleanup, cleanup_on_signal, drain_print_runtime};
 pub mod types;
 use types::*;
 mod tester_types;
@@ -50,8 +50,8 @@ fn make_node_names(nodes: Vec<Node>) -> Result<Vec<String>> {
         .map(|node| get_basename(&node.home)
             .and_then(|base| Some(base.to_string()))
             .and_then(|mut base| {
-                if !base.ends_with(".os") {
-                    base.push_str(".os");
+                if !base.ends_with(".dev") {
+                    base.push_str(".dev");
                 }
                 Some(base)
             })
@@ -327,7 +327,12 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     let _cleanup_context = CleanupContext::new(send_to_cleanup.clone());
 
     // boot fakechain
-    let anvil_process = chain::start_chain(test.fakechain_router, true).await;
+    let recv_kill_in_start_chain = send_to_kill.subscribe();
+    let anvil_process = chain::start_chain(
+        test.fakechain_router,
+        true,
+        recv_kill_in_start_chain,
+    ).await?;
 
     // Process each node
     for node in &test.nodes {
@@ -359,7 +364,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
         }
 
 
-        let (runtime_process, master_fd) = run_runtime(
+        let (mut runtime_process, master_fd) = run_runtime(
             &runtime_path,
             &node_home,
             node.port,
@@ -374,17 +379,25 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
         let mut anvil_cleanup: Option<i32> = None;
 
         if master_node_port.is_none() {
-            anvil_cleanup = anvil_process.as_ref().ok().map(|process: &std::process::Child| process.id() as i32);
+            anvil_cleanup = anvil_process.as_ref().map(|ap| ap.id() as i32);
             master_node_port = Some(node.port);
         };
 
         let mut node_cleanup_infos = node_cleanup_infos.lock().await;
         node_cleanup_infos.push(NodeCleanupInfo {
             master_fd,
-            process_id: runtime_process.id() as i32,
+            //process_id: runtime_process.id() as i32,
+            process_id: runtime_process.id().unwrap() as i32,
             home: node_home.clone(),
             anvil_process: anvil_cleanup,
         });
+
+        let recv_kill_in_dpr = send_to_kill.subscribe();
+        tokio::spawn(drain_print_runtime(
+            runtime_process.stdout.take().unwrap(),
+            runtime_process.stderr.take().unwrap(),
+            recv_kill_in_dpr,
+        ));
 
         let mut node_handles = node_handles.lock().await;
         node_handles.push(runtime_process);
