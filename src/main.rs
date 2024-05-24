@@ -747,7 +747,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
             .about("Fetch the most recent version of kit")
             .arg(Arg::new("ARGUMENTS")
                 .action(ArgAction::Append)
-                .help("Additional arguments (e.g. `--branch next-release`)")
+                .help("Additional arguments to `cargo install` (e.g. `--version <VERSION>`)")
                 .required(false)
             )
             .arg(Arg::new("BRANCH")
