@@ -67,7 +67,7 @@ fn is_nvm_installed() -> Result<bool> {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn install_nvm() -> Result<()> {
+fn install_nvm(verbose: bool) -> Result<()> {
     info!("Getting nvm...");
     let install_nvm = format!(
         "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/{}/install.sh | bash",
@@ -75,7 +75,7 @@ fn install_nvm() -> Result<()> {
     );
     run_command(Command::new("bash")
         .args(&["-c", &install_nvm]),
-        false,
+        verbose,
     )?;
 
     info!("Done getting nvm.");
@@ -83,12 +83,12 @@ fn install_nvm() -> Result<()> {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn install_rust() -> Result<()> {
+fn install_rust(verbose: bool) -> Result<()> {
     info!("Getting rust...");
     let install_rust = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh";
     run_command(Command::new("bash")
         .args(&["-c", install_rust]),
-        false,
+        verbose,
     )?;
 
     info!("Done getting rust.");
@@ -221,25 +221,25 @@ fn call_with_nvm_output(arg: &str) -> Result<String> {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn call_with_nvm(arg: &str) -> Result<()> {
+fn call_with_nvm(arg: &str, verbose: bool) -> Result<()> {
     run_command(Command::new("bash")
         .args(&["-c", &format!("source ~/.nvm/nvm.sh && {}", arg)]),
-        false,
+        verbose,
     )?;
     Ok(())
 }
 
 #[instrument(level = "trace", skip_all)]
-fn call_rustup(arg: &str) -> Result<()> {
+fn call_rustup(arg: &str, verbose: bool) -> Result<()> {
     run_command(Command::new("bash")
         .args(&["-c", &format!("rustup {}", arg)]),
-        false,
+        verbose,
     )?;
     Ok(())
 }
 
 #[instrument(level = "trace", skip_all)]
-fn call_cargo(arg: &str) -> Result<()> {
+fn call_cargo(arg: &str, verbose: bool) -> Result<()> {
     let command = if arg.contains("--color=always") {
         format!("cargo {}", arg)
     } else {
@@ -247,7 +247,7 @@ fn call_cargo(arg: &str) -> Result<()> {
     };
     run_command(Command::new("bash")
         .args(&["-c", &command]),
-        false,
+        verbose,
     )?;
     Ok(())
 }
@@ -470,7 +470,7 @@ pub fn check_rust_deps() -> Result<Vec<Dependency>> {
 }
 
 #[instrument(level = "trace", skip_all)]
-pub fn get_deps(deps: Vec<Dependency>) -> Result<()> {
+pub fn get_deps(deps: Vec<Dependency>, verbose: bool) -> Result<()> {
     if deps.is_empty() {
         return Ok(());
     }
@@ -495,22 +495,31 @@ pub fn get_deps(deps: Vec<Dependency>) -> Result<()> {
         "y" | "yes" | "" => {
             for dep in deps {
                 match dep {
-                    Dependency::Nvm =>  install_nvm()?,
-                    Dependency::Npm =>  call_with_nvm(&format!("nvm install-latest-npm"))?,
+                    Dependency::Nvm =>  install_nvm(verbose)?,
+                    Dependency::Npm =>  call_with_nvm(
+                        &format!("nvm install-latest-npm"),
+                        verbose,
+                    )?,
                     Dependency::Node => {
-                        call_with_nvm(&format!(
-                            "nvm install {}.{}",
-                            REQUIRED_NODE_MAJOR,
-                            MINIMUM_NODE_MINOR,
-                        ))?
+                        call_with_nvm(
+                            &format!(
+                                "nvm install {}.{}",
+                                REQUIRED_NODE_MAJOR,
+                                MINIMUM_NODE_MINOR,
+                            ),
+                            verbose,
+                        )?
                     },
-                    Dependency::Rust => install_rust()?,
-                    Dependency::RustNightly => call_rustup("install nightly")?,
-                    Dependency::RustWasm32Wasi => call_rustup("target add wasm32-wasi")?,
+                    Dependency::Rust => install_rust(verbose)?,
+                    Dependency::RustNightly => call_rustup("install nightly", verbose)?,
+                    Dependency::RustWasm32Wasi => call_rustup(
+                        "target add wasm32-wasi",
+                        verbose,
+                    )?,
                     Dependency::RustNightlyWasm32Wasi => {
-                        call_rustup("target add wasm32-wasi --toolchain nightly")?
+                        call_rustup("target add wasm32-wasi --toolchain nightly", verbose)?
                     },
-                    Dependency::WasmTools => call_cargo("install wasm-tools")?,
+                    Dependency::WasmTools => call_cargo("install wasm-tools", verbose)?,
                     Dependency::Forge | Dependency::Anvil => {
                         install_foundry()?
                     },
@@ -523,13 +532,13 @@ pub fn get_deps(deps: Vec<Dependency>) -> Result<()> {
 }
 
 #[instrument(level = "trace", skip_all)]
-pub fn execute() -> Result<()> {
+pub fn execute(verbose: bool) -> Result<()> {
     info!("Setting up...");
 
     check_py_deps()?;
     let mut missing_deps = check_js_deps()?;
     missing_deps.append(&mut check_rust_deps()?);
-    get_deps(missing_deps)?;
+    get_deps(missing_deps, verbose)?;
 
     info!("Done setting up.");
     Ok(())

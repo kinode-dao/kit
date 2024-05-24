@@ -16,7 +16,7 @@ pub fn execute(
 ) -> Result<()> {
     if !skip_deps_check {
         let deps = check_js_deps()?;
-        get_deps(deps)?;
+        get_deps(deps, false)?;
     }
     let valid_node = get_newest_valid_node_version(None, None)?;
 

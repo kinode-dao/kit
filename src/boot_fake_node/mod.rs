@@ -432,6 +432,7 @@ pub async fn execute(
         fakechain_port,
         true,
         recv_kill_in_start_chain,
+        false,
     ).await?;
 
     if node_home.exists() {
