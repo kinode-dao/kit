@@ -22,7 +22,7 @@ pub const REQUIRED_PY_PACKAGE: &str = "componentize-py==0.11.0";
 #[derive(Clone)]
 pub enum Dependency {
     Anvil,
-    Forge, 
+    Forge,
     Nvm,
     Npm,
     Node,
@@ -74,7 +74,8 @@ fn install_nvm() -> Result<()> {
         FETCH_NVM_VERSION,
     );
     run_command(Command::new("bash")
-        .args(&["-c", &install_nvm])
+        .args(&["-c", &install_nvm]),
+        false,
     )?;
 
     info!("Done getting nvm.");
@@ -86,7 +87,8 @@ fn install_rust() -> Result<()> {
     info!("Getting rust...");
     let install_rust = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh";
     run_command(Command::new("bash")
-        .args(&["-c", install_rust])
+        .args(&["-c", install_rust]),
+        false,
     )?;
 
     info!("Done getting rust.");
@@ -98,7 +100,8 @@ fn check_python_venv(python: &str) -> Result<()> {
     info!("Checking for python venv...");
     let venv_result = run_command(Command::new(python)
         .args(&["-m", "venv", "kinode-test-venv"])
-        .current_dir("/tmp")
+        .current_dir("/tmp"),
+        false,
     );
     let venv_dir = PathBuf::from("/tmp/kinode-test-venv");
     if venv_dir.exists() {
@@ -220,7 +223,8 @@ fn call_with_nvm_output(arg: &str) -> Result<String> {
 #[instrument(level = "trace", skip_all)]
 fn call_with_nvm(arg: &str) -> Result<()> {
     run_command(Command::new("bash")
-        .args(&["-c", &format!("source ~/.nvm/nvm.sh && {}", arg)])
+        .args(&["-c", &format!("source ~/.nvm/nvm.sh && {}", arg)]),
+        false,
     )?;
     Ok(())
 }
@@ -228,7 +232,8 @@ fn call_with_nvm(arg: &str) -> Result<()> {
 #[instrument(level = "trace", skip_all)]
 fn call_rustup(arg: &str) -> Result<()> {
     run_command(Command::new("bash")
-        .args(&["-c", &format!("rustup {}", arg)])
+        .args(&["-c", &format!("rustup {}", arg)]),
+        false,
     )?;
     Ok(())
 }
@@ -241,7 +246,8 @@ fn call_cargo(arg: &str) -> Result<()> {
         format!("cargo --color=always {}", arg)
     };
     run_command(Command::new("bash")
-        .args(&["-c", &command])
+        .args(&["-c", &command]),
+        false,
     )?;
     Ok(())
 }
@@ -293,7 +299,8 @@ fn check_rust_toolchains_targets() -> Result<Vec<Dependency>> {
     run_command(Command::new("rustup")
         .args(&["default", "stable"])
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null()),
+        false,
     )?;
     let output = Command::new("rustup")
         .arg("show")
@@ -322,7 +329,8 @@ fn check_rust_toolchains_targets() -> Result<Vec<Dependency>> {
         run_command(Command::new("rustup")
             .args(&["default", "nightly"])
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::null()),
+            false,
         )?;
         let output = Command::new("rustup")
             .arg("show")
@@ -341,7 +349,8 @@ fn check_rust_toolchains_targets() -> Result<Vec<Dependency>> {
     run_command(Command::new("rustup")
         .args(&["default", original_default])
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null()),
+        false,
     )?;
     Ok(missing_deps)
 }
@@ -434,7 +443,7 @@ pub fn check_foundry_deps() -> Result<Vec<Dependency>> {
 // install forge+anvil+others, could be separated into binary extractions from github releases.
 pub fn install_foundry() -> Result<()> {
     let install_cmd = "curl -L https://foundry.paradigm.xyz | bash";
-    run_command(Command::new("bash").args(&["-c", install_cmd]))?;
+    run_command(Command::new("bash").args(&["-c", install_cmd]), false)?;
 
     Ok(())
 }

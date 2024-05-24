@@ -43,6 +43,7 @@ pub fn execute(
             Command::new("bash")
                 .args(&["-c", &install_command])
                 .current_dir(&ui_path),
+            false,
         )?;
 
         info!("Running {}", dev);
@@ -52,6 +53,7 @@ pub fn execute(
                 .args(&["-c", &dev_command])
                 .env("VITE_NODE_URL", url)
                 .current_dir(&ui_path),
+            false,
         )?;
     } else {
         return Err(eyre!("'ui' directory not found or 'ui/package.json' does not exist"));

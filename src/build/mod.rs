@@ -31,13 +31,18 @@ struct CargoPackage {
 }
 
 #[instrument(level = "trace", skip_all)]
-pub fn run_command(cmd: &mut Command) -> Result<(String, String)> {
+pub fn run_command(cmd: &mut Command, verbose: bool) -> Result<Option<(String, String)>> {
+    if verbose {
+        let mut child = cmd.spawn()?;
+        child.wait()?;
+        return Ok(None);
+    }
     let output = cmd.output()?;
     if output.status.success() {
-        Ok((
+        Ok(Some((
             String::from_utf8_lossy(&output.stdout).to_string(),
             String::from_utf8_lossy(&output.stderr).to_string(),
-        ))
+        )))
     } else {
         Err(eyre!(
             "Command `{} {:?}` failed with exit code {}\nstdout: {}\nstderr: {}",
@@ -127,12 +132,14 @@ async fn compile_javascript_wasm_process(
         Command::new("bash")
             .args(&["-c", &install])
             .current_dir(process_dir),
+        false,
     )?;
 
     run_command(
         Command::new("bash")
             .args(&["-c", &componentize])
             .current_dir(process_dir),
+        false,
     )?;
 
     info!(
@@ -154,13 +161,15 @@ async fn compile_python_wasm_process(process_dir: &Path, python: &str) -> Result
         Command::new(python)
             .args(&["-m", "venv", PY_VENV_NAME])
             .current_dir(process_dir),
+        false,
     )?;
     run_command(Command::new("bash")
         .args(&[
             "-c",
             &format!("source ../{PY_VENV_NAME}/bin/activate && pip install {REQUIRED_PY_PACKAGE} && componentize-py -d ../wit/ -w process componentize lib -o ../../pkg/{wasm_file_name}.wasm"),
         ])
-        .current_dir(process_dir.join("src"))
+        .current_dir(process_dir.join("src")),
+        false,
     )?;
 
     info!("Done compiling Python Kinode process in {:?}.", process_dir);
@@ -194,14 +203,17 @@ async fn compile_rust_wasm_process(
     download_file(&wasi_snapshot_url, &wasi_snapshot_file).await?;
 
     // Create target.wasm (compiled .wit) & world
-    run_command(Command::new("wasm-tools").args(&[
-        "component",
-        "wit",
-        wit_dir.to_str().unwrap(),
-        "-o",
-        &bindings_dir.join("target.wasm").to_str().unwrap(),
-        "--wasm",
-    ]))?;
+    run_command(Command::new("wasm-tools")
+        .args(&[
+            "component",
+            "wit",
+            wit_dir.to_str().unwrap(),
+            "-o",
+            &bindings_dir.join("target.wasm").to_str().unwrap(),
+            "--wasm",
+        ]),
+        false,
+    )?;
 
     // Copy wit directory to bindings
     fs::create_dir_all(&bindings_dir.join("wit"))?;
@@ -236,7 +248,8 @@ async fn compile_rust_wasm_process(
         Command::new("cargo")
             .args(&args)
             .current_dir(process_dir),
-    )?;
+        false,
+    )?.unwrap();
     if stdout.contains("warning") {
         warn!("{}", stdout);
     }
@@ -267,6 +280,7 @@ async fn compile_rust_wasm_process(
                 wasi_snapshot_file.to_str().unwrap(),
             ])
             .current_dir(process_dir),
+        false,
     )?;
 
     let wasm_path = format!("../pkg/{}.wasm", wasm_file_name);
@@ -286,6 +300,7 @@ async fn compile_rust_wasm_process(
                 wasm_path.to_str().unwrap(),
             ])
             .current_dir(process_dir),
+        false,
     )?;
 
     info!("Done compiling Rust Kinode process in {:?}.", process_dir);
@@ -319,6 +334,7 @@ async fn compile_and_copy_ui(package_dir: &Path, valid_node: Option<String>) -> 
                 Command::new("bash")
                     .args(&["-c", &install])
                     .current_dir(&ui_path),
+                false,
             )?;
 
             info!("Running npm run build:copy...");
@@ -327,6 +343,7 @@ async fn compile_and_copy_ui(package_dir: &Path, valid_node: Option<String>) -> 
                 Command::new("bash")
                     .args(&["-c", &run])
                     .current_dir(&ui_path),
+                false,
             )?;
         } else {
             let pkg_ui_path = package_dir.join("pkg/ui");
@@ -337,6 +354,7 @@ async fn compile_and_copy_ui(package_dir: &Path, valid_node: Option<String>) -> 
                 Command::new("cp")
                     .args(["-r", "ui", "pkg/ui"])
                     .current_dir(&package_dir),
+                false,
             )?;
         }
     } else {

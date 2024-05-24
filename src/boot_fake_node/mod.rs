@@ -91,7 +91,8 @@ pub fn compile_runtime(path: &Path, release: bool) -> Result<()> {
 
     build::run_command(Command::new("cargo")
         .args(&args)
-        .current_dir(path)
+        .current_dir(path),
+        false,
     )?;
 
     info!("Done compiling Kinode runtime.");

@@ -5,7 +5,7 @@ use fs_err as fs;
 use tracing::instrument;
 
 use crate::KIT_CACHE;
-//use crate::build;
+use crate::build::run_command;
 
 #[instrument(level = "trace", skip_all)]
 pub fn execute(mut user_args: Vec<String>, branch: &str) -> Result<()> {
@@ -19,10 +19,8 @@ pub fn execute(mut user_args: Vec<String>, branch: &str) -> Result<()> {
         .map(|v| v.to_string())
         .collect();
     args.append(&mut user_args);
-    let mut update_process = Command::new("cargo")
-        .args(&args[..])
-        .spawn()?;
-    update_process.wait()?;
+
+    run_command(Command::new("cargo").args(&args[..]), true)?;
 
     let cache_path = format!("{}/kinode-dao-kit-commits", KIT_CACHE);
     let cache_path = std::path::Path::new(&cache_path);
