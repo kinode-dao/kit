@@ -396,6 +396,7 @@ pub async fn execute(
     let (send_to_cleanup, recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
     let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
     let recv_kill_in_cos = send_to_kill.subscribe();
+    let recv_kill_in_start_chain = send_to_kill.subscribe();
 
     let node_cleanup_infos_for_cleanup = Arc::clone(&node_cleanup_infos);
     let handle = tokio::spawn(cleanup(
@@ -423,7 +424,11 @@ pub async fn execute(
     }
 
     // boot fakechain
-    let anvil_process = chain::start_chain(fakechain_port, true).await?;
+    let anvil_process = chain::start_chain(
+        fakechain_port,
+        true,
+        recv_kill_in_start_chain,
+    ).await?;
 
     if node_home.exists() {
         fs::remove_dir_all(&node_home)?;

@@ -327,7 +327,12 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     let _cleanup_context = CleanupContext::new(send_to_cleanup.clone());
 
     // boot fakechain
-    let anvil_process = chain::start_chain(test.fakechain_router, true).await?;
+    let recv_kill_in_start_chain = send_to_kill.subscribe();
+    let anvil_process = chain::start_chain(
+        test.fakechain_router,
+        true,
+        recv_kill_in_start_chain,
+    ).await?;
 
     // Process each node
     for node in &test.nodes {
