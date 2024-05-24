@@ -2,14 +2,14 @@ use sha2::{Sha256, Digest};
 use std::io::{Read, Write};
 use std::path::Path;
 
-use color_eyre::{Result, eyre::{eyre, WrapErr}};
+use color_eyre::{Result, Section, eyre::{eyre, WrapErr}};
 use fs_err as fs;
 use serde_json::json;
 use tracing::{info, instrument};
 use walkdir::WalkDir;
 use zip::write::FileOptions;
 
-use kinode_process_lib::kernel_types::Erc721Metadata;
+use kinode_process_lib::kernel_types::{Erc721Metadata, PackageManifestEntry};
 
 use crate::{inject_message, KIT_LOG_PATH_DEFAULT};
 
@@ -111,6 +111,24 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     let package_name = metadata.properties.package_name.as_str();
     let publisher = metadata.properties.publisher.as_str();
     let pkg_publisher = format!("{}:{}", package_name, publisher);
+
+    let manifest: Vec<PackageManifestEntry> =
+        serde_json::from_reader(fs::File::open(pkg_dir.join("manifest.json"))
+            .wrap_err_with(|| "Missing required manifest.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson")?
+        )?;
+    let has_all_entries = manifest.iter().fold(true, |has_all_entries, entry| {
+        let file_path = entry.process_wasm_path
+            .strip_prefix("/")
+            .unwrap_or_else(|| &entry.process_wasm_path);
+        has_all_entries && pkg_dir.join(file_path).exists()
+    });
+    if !has_all_entries {
+        return Err(eyre!(
+            "Missing a .wasm file declared by manifest.json."
+        ).with_suggestion(|| "Try `kit build`ing package first, or updating manifest.json.")
+        );
+    }
+
     info!("{}", pkg_publisher);
 
     // Create zip and put it in /target
@@ -119,7 +137,6 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     fs::create_dir_all(&target_dir)?;
     let zip_filename = target_dir.join(&pkg_publisher).with_extension("zip");
     zip_directory(&pkg_dir, &zip_filename.to_str().unwrap())?;
-
 
     let mut file = fs::File::open(&zip_filename)?;
     let mut hasher = Sha256::new();
