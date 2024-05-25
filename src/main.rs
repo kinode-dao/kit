@@ -173,8 +173,16 @@ async fn execute(
                 Some(f) => f.clone(),
                 None => "".into(),
             };
+            let verbose = build_matches.get_one::<bool>("VERBOSE").unwrap();
 
-            build::execute(&package_dir, *no_ui, *ui_only, *skip_deps_check, &features).await
+            build::execute(
+                &package_dir,
+                *no_ui,
+                *ui_only,
+                *skip_deps_check,
+                &features,
+                *verbose,
+            ).await
         }
         Some(("build-start-package", build_start_matches)) => {
             let package_dir = PathBuf::from(build_start_matches.get_one::<String>("DIR").unwrap());
@@ -196,6 +204,7 @@ async fn execute(
                 Some(f) => f.clone(),
                 None => "".into(),
             };
+            let verbose = build_start_matches.get_one::<bool>("VERBOSE").unwrap();
 
             build_start_package::execute(
                 &package_dir,
@@ -204,12 +213,14 @@ async fn execute(
                 &url,
                 *skip_deps_check,
                 &features,
+                *verbose,
             )
             .await
         }
         Some(("chain", chain_matches)) => {
             let port = chain_matches.get_one::<u16>("PORT").unwrap();
-            chain::execute(*port).await
+            let verbose = chain_matches.get_one::<bool>("VERBOSE").unwrap();
+            chain::execute(*port, *verbose).await
         }
         Some(("dev-ui", dev_ui_matches)) => {
             let package_dir = PathBuf::from(dev_ui_matches.get_one::<String>("DIR").unwrap());
@@ -300,7 +311,11 @@ async fn execute(
 
             run_tests::execute(config_path.to_str().unwrap()).await
         }
-        Some(("setup", _setup_matches)) => setup::execute(),
+        Some(("setup", setup_matches)) => {
+            let verbose = setup_matches.get_one::<bool>("VERBOSE").unwrap();
+
+            setup::execute(*verbose)
+        }
         Some(("start-package", start_package_matches)) => {
             let package_dir =
                 PathBuf::from(start_package_matches.get_one::<String>("DIR").unwrap());
@@ -469,6 +484,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("Pass these comma-delimited feature flags to Rust cargo builds")
                 .required(false)
             )
+            .arg(Arg::new("VERBOSE")
+                .action(ArgAction::SetTrue)
+                .short('v')
+                .long("verbose")
+                .help("If set, output stdout and stderr")
+                .required(false)
+            )
         )
         .subcommand(Command::new("build-start-package")
             .about("Build and start a Kinode package")
@@ -518,6 +540,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("Pass these comma-delimited feature flags to Rust cargo builds")
                 .required(false)
             )
+            .arg(Arg::new("VERBOSE")
+                .action(ArgAction::SetTrue)
+                .short('v')
+                .long("verbose")
+                .help("If set, output stdout and stderr")
+                .required(false)
+            )
         )
         .subcommand(Command::new("chain")
             .about("Start a local chain for development")
@@ -529,6 +558,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("Port to run the chain on")
                 .default_value("8545")
                 .value_parser(value_parser!(u16))
+            )
+            .arg(Arg::new("VERBOSE")
+                .action(ArgAction::SetTrue)
+                .short('v')
+                .long("verbose")
+                .help("If set, output stdout and stderr")
+                .required(false)
             )
         )
         .subcommand(Command::new("dev-ui")
@@ -712,6 +748,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
         )
         .subcommand(Command::new("setup")
             .about("Fetch & setup kit dependencies")
+            .arg(Arg::new("VERBOSE")
+                .action(ArgAction::SetTrue)
+                .short('v')
+                .long("verbose")
+                .help("If set, output stdout and stderr")
+                .required(false)
+            )
         )
         .subcommand(Command::new("start-package")
             .about("Start a built Kinode process")

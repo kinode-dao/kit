@@ -91,7 +91,8 @@ pub fn compile_runtime(path: &Path, release: bool) -> Result<()> {
 
     build::run_command(Command::new("cargo")
         .args(&args)
-        .current_dir(path)
+        .current_dir(path),
+        false,
     )?;
 
     info!("Done compiling Kinode runtime.");
@@ -431,6 +432,7 @@ pub async fn execute(
         fakechain_port,
         true,
         recv_kill_in_start_chain,
+        false,
     ).await?;
 
     if node_home.exists() {

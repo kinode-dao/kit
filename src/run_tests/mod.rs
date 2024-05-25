@@ -293,10 +293,10 @@ async fn run_tests(
 #[instrument(level = "trace", skip_all)]
 async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<()> {
     for setup_package_path in &test.setup_package_paths {
-        build::execute(&setup_package_path, false, false, false, "").await?;
+        build::execute(&setup_package_path, false, false, false, "", false).await?;
     }
     for TestPackage { ref path, .. } in &test.test_packages {
-        build::execute(path, false, false, false, "").await?;
+        build::execute(path, false, false, false, "", false).await?;
     }
 
     // Initialize variables for master node and nodes list
@@ -332,6 +332,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
         test.fakechain_router,
         true,
         recv_kill_in_start_chain,
+        false,
     ).await?;
 
     // Process each node
