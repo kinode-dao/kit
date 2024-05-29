@@ -1,4 +1,4 @@
-interface {package_name} {
+interface {package_name_kebab} {
     variant request {
         number(u32),
         numbers(tuple<u32, u32>),
@@ -10,7 +10,7 @@ interface {package_name} {
     }
 }
 
-world {package_name}-{publisher_dotted_kebab}-v0 {
-    import {package_name};
+world {package_name_kebab}-{publisher_dotted_kebab}-v0 {
+    import {package_name_kebab};
     include process;
 }

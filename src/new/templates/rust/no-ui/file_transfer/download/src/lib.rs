@@ -5,7 +5,7 @@ use kinode_process_lib::{
 
 wit_bindgen::generate!({
     path: "target/wit",
-    world: "{package_name}-{publisher_dotted_kebab}-v0",
+    world: "{package_name_kebab}-{publisher_dotted_kebab}-v0",
     generate_unused_types: true,
     additional_derives: [serde::Deserialize, serde::Serialize],
 });
