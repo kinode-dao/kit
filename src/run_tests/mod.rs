@@ -14,12 +14,12 @@ use crate::chain;
 use crate::inject_message;
 use crate::start_package;
 
+use crate::kinode::process::tester::{Response as TesterResponse, FailResponse};
+
 pub mod cleanup;
 use cleanup::{cleanup, cleanup_on_signal, drain_print_runtime};
 pub mod types;
 use types::*;
-mod tester_types;
-use tester_types as tt;
 
 fn get_basename(file_path: &Path) -> Option<&str> {
     file_path
@@ -272,14 +272,12 @@ async fn run_tests(
 
     match inject_message::parse_response(response).await {
         Ok(inject_message::Response { ref body, .. }) => {
-            match serde_json::from_str(body)? {
-                tt::TesterResponse::Pass => info!("PASS"),
-                tt::TesterResponse::Fail { test, file, line, column } => {
+            let TesterResponse::Run(result) = serde_json::from_str(body)?;
+            match result {
+                Ok(()) => info!("PASS"),
+                Err(FailResponse { test, file, line, column }) => {
                     return Err(eyre!("FAIL: {} {}:{}:{}", test, file, line, column));
-                },
-                tt::TesterResponse::GetFullMessage(_) => {
-                    return Err(eyre!("FAIL: Unexpected Response"));
-                },
+                }
             }
         },
         Err(e) => {
