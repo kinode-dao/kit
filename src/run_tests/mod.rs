@@ -289,12 +289,35 @@ async fn run_tests(
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<()> {
-    for setup_package_path in &test.setup_package_paths {
-        build::execute(&setup_package_path, false, false, false, "", None, None).await?;  // TODO
+async fn handle_test(
+    detached: bool,
+    runtime_path: &Path,
+    test: Test,
+    test_dir_path: &Path,
+) -> Result<()> {
+    let setup_package_paths: Vec<PathBuf> = test.setup_package_paths
+        .iter()
+        .cloned()
+        .map(|p| test_dir_path.join(p).canonicalize().unwrap())
+        .collect();
+    let test_packages: Vec<TestPackage> = test.test_packages
+        .iter()
+        .cloned()
+        .map(|tp| {
+            TestPackage {
+                path: test_dir_path.join(tp.path).canonicalize().unwrap(),
+                grant_capabilities: tp.grant_capabilities,
+            }
+        })
+        .collect();
+    //for setup_package_path in &test.setup_package_paths {
+    //    let path = test_dir_path.join(setup_package_path).canonicalize()?;
+    for path in &setup_package_paths {
+        build::execute(&path, false, false, false, "", None, None).await?;  // TODO
     }
-    for TestPackage { ref path, .. } in &test.test_packages {
-        build::execute(path, false, false, false, "", None, None).await?;  // TODO
+    for TestPackage { ref path, .. } in &test_packages {
+        let path = test_dir_path.join(path).canonicalize()?;
+        build::execute(&path, false, false, false, "", None, None).await?;  // TODO
     }
 
     // Initialize variables for master node and nodes list
@@ -405,10 +428,10 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     }
 
     for node in &test.nodes {
-        load_setups(&test.setup_package_paths, node.port.clone()).await?;
+        load_setups(&setup_package_paths, node.port.clone()).await?;
     }
 
-    load_tests(&test.test_packages, master_node_port.unwrap().clone()).await?;
+    load_tests(&test_packages, master_node_port.unwrap().clone()).await?;
 
     let ports = test.nodes.iter().map(|n| n.port).collect();
 
@@ -462,8 +485,10 @@ pub async fn execute(config_path: &str) -> Result<()> {
         },
     };
 
+    let test_dir_path = PathBuf::from(config_path).canonicalize()?;
+    let test_dir_path = test_dir_path.parent().unwrap();
     for test in config.tests {
-        handle_test(detached, &runtime_path, test).await?;
+        handle_test(detached, &runtime_path, test, &test_dir_path).await?;
     }
 
     Ok(())

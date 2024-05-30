@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
-use color_eyre::{eyre::{eyre, WrapErr}, Result};
+use color_eyre::{{eyre::{eyre, WrapErr}, Result}, Section};
 use fs_err as fs;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument, warn};
@@ -650,9 +650,10 @@ pub async fn execute(
             return Ok(());
         }
         return Err(eyre!(
-            "Required `pkg/` dir not found within given input dir {:?} (or cwd, if none given). Please re-run targeting a package.",
+            "Required `pkg/` dir not found within given input dir {:?} (or cwd, if none given).",
             package_dir,
-        ));
+        ).with_suggestion(|| "Please re-run targeting a package.")
+        );
     }
 
     let ui_dir = package_dir.join("ui");
