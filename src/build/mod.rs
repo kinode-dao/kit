@@ -581,14 +581,18 @@ async fn compile_package(
                     let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
                         continue;
                     };
-                    if file_name.starts_with(&format!(
-                        "{}:{}",
-                        metadata.properties.package_name,
-                        metadata.properties.publisher,
-                    )) {
-                        if let Ok(api_contents) = fs::read(&path) {
-                            apis.insert(file_name.to_string(), api_contents);
-                        }
+                    // TODO: reenable check once deps are working
+                    // if file_name.starts_with(&format!(
+                    //     "{}:{}",
+                    //     metadata.properties.package_name,
+                    //     metadata.properties.publisher,
+                    // )) {
+                    //     if let Ok(api_contents) = fs::read(&path) {
+                    //         apis.insert(file_name.to_string(), api_contents);
+                    //     }
+                    // }
+                    if let Ok(api_contents) = fs::read(&path) {
+                        apis.insert(file_name.to_string(), api_contents);
                     }
                 }
 

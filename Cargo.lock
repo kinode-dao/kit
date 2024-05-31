@@ -1529,6 +1529,7 @@ dependencies = [
  "tracing-error",
  "tracing-subscriber",
  "walkdir",
+ "wit-bindgen",
  "zip",
 ]
 
