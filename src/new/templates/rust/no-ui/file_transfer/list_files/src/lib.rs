@@ -11,7 +11,7 @@ wit_bindgen::generate!({
 });
 
 call_init!(init);
-fn init(our: Address) {
+fn init(_our: Address) {
     let Ok(body) = await_next_message_body() else {
         println!("failed to get args!");
         return;
@@ -19,7 +19,7 @@ fn init(our: Address) {
 
     let who = String::from_utf8(body).unwrap_or_default();
     if who.is_empty() {
-        println!("usage: {}@list_files:{package_name}:{publisher} who", our);
+        println!("usage: list_files:{package_name}:{publisher} who");
         return;
     }
 

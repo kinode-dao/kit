@@ -1,6 +1,7 @@
 use std::str::FromStr;
 
-use crate::kinode::process::{package_name}::{Request as TransferRequest, WorkerRequest, ProgressRequest, InitializeRequest, ChunkRequest};
+use crate::kinode::process::standard::{ProcessId as WitProcessId};
+use crate::kinode::process::{package_name}::{Address as WitAddress, Request as TransferRequest, WorkerRequest, ProgressRequest, InitializeRequest, ChunkRequest};
 use kinode_process_lib::{
     await_message, call_init, get_blob, println,
     vfs::{open_dir, open_file, Directory, File, SeekFrom},
@@ -13,6 +14,43 @@ wit_bindgen::generate!({
     generate_unused_types: true,
     additional_derives: [serde::Deserialize, serde::Serialize],
 });
+
+impl From<Address> for WitAddress {
+    fn from(address: Address) -> Self {
+        WitAddress {
+            node: address.node,
+            process: address.process.into(),
+        }
+    }
+}
+
+impl From<ProcessId> for WitProcessId {
+    fn from(process: ProcessId) -> Self {
+        WitProcessId {
+            process_name: process.process_name,
+            package_name: process.package_name,
+            publisher_node: process.publisher_node,
+        }
+    }
+}
+impl From<WitAddress> for Address {
+    fn from(address: WitAddress) -> Self {
+        Address {
+            node: address.node,
+            process: address.process.into(),
+        }
+    }
+}
+
+impl From<WitProcessId> for ProcessId {
+    fn from(process: WitProcessId) -> Self {
+        ProcessId {
+            process_name: process.process_name,
+            package_name: process.package_name,
+            publisher_node: process.publisher_node,
+        }
+    }
+}
 
 const CHUNK_SIZE: u64 = 1048576; // 1MB
 
@@ -43,8 +81,8 @@ fn handle_message(
                         open_file(&format!("{}/{}", files_dir.path, &name), true, None)?;
 
                     match target_worker {
-                        Some(ref target_worker) => {
-                            let target_worker: Address = serde_json::from_str(&serde_json::to_string(target_worker)?)?;
+                        Some(target_worker) => {
+                            let target_worker: Address = target_worker.into();
                             // we have a target, chunk the data, and send it.
                             let size = active_file.metadata()?.len;
                             let num_chunks = (size as f64 / CHUNK_SIZE as f64).ceil() as u64;
