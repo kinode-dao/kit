@@ -1,14 +1,10 @@
-use std::collections::HashMap;
-use std::io::prelude::*;
-use std::net::{TcpListener, TcpStream};
+use std::net::TcpListener;
+use std::path::PathBuf;
 use std::process::{Child, Command};
 
 use color_eyre::{eyre::eyre, Result, Section};
 use fs_err as fs;
-use procfs::net::{tcp, tcp6};
-use procfs::process::{all_processes, FDTarget};
-use ssh2::Session;
-use tracing::instrument;
+use tracing::{info, instrument};
 
 use crate::KIT_CACHE;
 
@@ -23,7 +19,7 @@ fn extract_port(input: &str) -> Vec<u16> {
         // Check if the line contains a valid port number within the specified range
         for word in line.split_whitespace() {
             // Attempt to parse the word as a u16
-            if let Ok(port) = word.trim_start_matches('*').parse::<u16>() {
+            if let Ok(port) = word.trim_start_matches("*:").parse::<u16>() {
                 // Check if the port is within the desired range
                 if port >= MIN_PORT && port <= MAX_PORT {
                     ports.push(port);
@@ -35,57 +31,22 @@ fn extract_port(input: &str) -> Vec<u16> {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn get_port(user: &str, host: &str) -> Result<u16> {
-    // Establish TCP connection
-    let tcp = TcpStream::connect(format!("{host}:22"))?;
+fn get_port(host: &str) -> Result<u16> {
+    let output = Command::new("bash")
+        .args(&["-c", &format!("ssh {host} lsof -i -P -n")])
+        .output()?;
 
-    // Create SSH session
-    let mut sess = Session::new()?;
-    sess.set_tcp_stream(tcp);
-    sess.handshake()?;
-
-    // Attempt to authenticate using ssh-agent
-    if let Ok(mut agent) = sess.agent() {
-        agent.connect()?;
-        agent.list_identities()?;
-
-        for identity in agent.identities()? {
-            if agent.userauth(user, &identity).is_ok() {
-                break;
-            }
-        }
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(eyre!("Failed to `ssh {host}`: {stderr}"));
     }
-
-    if !sess.authenticated() {
-        // If ssh-agent failed, prompt for password
-        print!("Password: ");
-        std::io::stdout().flush()?;
-
-        let mut password = String::new();
-        std::io::stdin().read_line(&mut password)?;
-        let password = password.trim();
-
-        sess.userauth_password(user, password)?;
-    }
-
-    if !sess.authenticated() {
-        return Err(eyre!("failed to authenticate ssh for {user}@{host}"));
-    }
-
-    let mut channel = sess.channel_session()?;
-
-    channel.exec("lsof -i -P -n")?;
-    let mut s = String::new();
-    channel.read_to_string(&mut s)?;
-    let ports = extract_port(&s);
+    let stdout = String::from_utf8(output.stdout)?;
+    let ports = extract_port(&stdout);
     if ports.len() != 1 {
+        println!("{stdout}");
         return Err(eyre!("couldn't find specific port for ssh amongst: {ports:?}"));
     }
     let port = ports[0];
-
-    // Close the channel and session
-    channel.close()?;
-    channel.wait_close()?;
 
     Ok(port)
 }
@@ -96,9 +57,9 @@ fn is_port_available(bind_addr: &str) -> bool {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn start_tunnel(local_port: u16, user: &str, host: &str, host_port: u16) -> Result<Child> {
+fn start_tunnel(local_port: u16, host: &str, host_port: u16) -> Result<Child> {
     let child = Command::new("ssh")
-        .args(["-L", &format!("{local_port}:localhost:{host_port}"), &format!("{user}@{host}"), "-f", "-N"])
+        .args(["-L", &format!("{local_port}:localhost:{host_port}"), &format!("{host}"), "-N"])
         .spawn()?;
     Ok(child)
 }
@@ -111,18 +72,23 @@ fn write_pid_to_file(local_port: u16, pid: u32) -> Result<()> {
     if !connect_path.exists() {
         std::fs::create_dir_all(&connect_path)?;
     }
-    std::fs::write(connect_path.join(format!("{}", local_port)), format!("{pid}"))?;
+    fs::write(connect_path.join(format!("{}", local_port)), format!("{pid}"))?;
     Ok(())
 }
 
-
 #[instrument(level = "trace", skip_all)]
-fn read_pid_from_file(local_port: u16) -> Result<u32> {
+fn make_pid_file_path(local_port: &u16) -> Result<PathBuf> {
     let kit_cache = std::path::PathBuf::from(KIT_CACHE);
     let pid_file_path = kit_cache.join("connect").join(format!("{local_port}"));
     if !pid_file_path.exists() {
-        return Err(eyre!("can't retrieve pid for local port {local_port}"));
+        return Err(eyre!("pid file {pid_file_path:?} doesn't exist"));
     }
+    Ok(pid_file_path)
+}
+
+#[instrument(level = "trace", skip_all)]
+fn read_pid_from_file(local_port: u16) -> Result<u32> {
+    let pid_file_path = make_pid_file_path(&local_port)?;
     let port = std::fs::read_to_string(pid_file_path)?;
     let port = port.parse()?;
     Ok(port)
@@ -141,8 +107,11 @@ fn disconnect(local_port: u16) -> Result<()> {
         return Err(eyre!("given local port {local_port} is not occupied: nothing to disconnect"));
     }
 
-    let pid = read_pid_from_file(local_port)?;
+    let pid = read_pid_from_file(local_port)
+        .map_err(|e| e.with_suggestion(|| "To disconnect, try\n```\nps -ef | grep -e PID -e 'ssh -L' | grep -v grep\n```\nto identify `ssh -L` tunnel PID then use `kill <PID>`"))?;
     kill_pid(pid as i32)?;
+    let pid_file_path = make_pid_file_path(&local_port)?;
+    fs::remove_file(pid_file_path)?;
 
     Ok(())
 }
@@ -152,38 +121,37 @@ fn disconnect(local_port: u16) -> Result<()> {
 pub fn execute(
     local_port: u16,
     is_disconnect: bool,
-    user: Option<&str>,
     host: Option<&str>,
     host_port: Option<u16>,
 ) -> Result<()> {
     if is_disconnect {
-        // disconnect
+        info!("Disconnecting tunnel on {local_port}...");
         disconnect(local_port)?;
-    } else {
-        let Some(user) = user else {
-            return Err(eyre!("user is a required field when connecting a new tunnel"));
-        };
-        let Some(host) = host else {
-            return Err(eyre!("host is a required field when connecting a new tunnel"));
-        };
-
-        // connect: create connection
-        if !is_port_available(&format!("127.0.0.1:{local_port}")) {
-            return Err(eyre!("given local port {local_port} occupied")
-                .with_suggestion(|| "try binding an open one")
-            );
-        }
-
-        let (host_port, is_host_port_given) = match host_port {
-            Some(hp) => (hp, true),
-            None => (get_port(user, host)?, false),
-        };
-
-        let child = start_tunnel(local_port, user, host, host_port)?;
-
-        let pid = child.id();
-        write_pid_to_file(local_port, pid)?;
+        info!("Done disconnecting tunnel on {local_port}.");
+        return Ok(());
     }
 
+    let Some(host) = host else {
+        return Err(eyre!("host is a required field when connecting a new tunnel."));
+    };
+    info!("Connecting tunnel on {local_port} to {host}...");
+
+    // connect: create connection
+    if !is_port_available(&format!("127.0.0.1:{local_port}")) {
+        return Err(eyre!("given local port {local_port} occupied")
+            .with_suggestion(|| "try binding an open one")
+        );
+    }
+
+    let host_port = host_port
+        .map(|hp| Ok(hp))  // enable the `?`
+        .unwrap_or_else(|| get_port(host))?;
+
+    let child = start_tunnel(local_port, host, host_port)?;
+
+    let pid = child.id();
+    write_pid_to_file(local_port, pid)?;
+
+    info!("Done connecting tunnel on {local_port} to {host}. Disconnect by running\n```\nkit connect -p {local_port} -d\n```");
     Ok(())
 }
