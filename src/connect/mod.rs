@@ -57,11 +57,26 @@ fn is_port_available(bind_addr: &str) -> bool {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn start_tunnel(local_port: u16, host: &str, host_port: u16) -> Result<Child> {
-    let child = Command::new("ssh")
-        .args(["-L", &format!("{local_port}:localhost:{host_port}"), &format!("{host}"), "-N"])
-        .spawn()?;
-    Ok(child)
+fn start_tunnel(local_port: u16, host: &str, host_port: u16) -> Result<u32> {
+    let command = format!("ssh -L {local_port}:localhost:{host_port} {host} -N -f");
+    let output = Command::new("bash")
+        .args(["-c", &command])
+        .output()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(eyre!("Failed to open ssh tunnel: {stderr}"));
+    }
+    let output = Command::new("bash")
+        .args(["-c", &format!("ps -ef | grep '{command}' | grep -v grep | awk '{{print $2}}'")])
+        .output()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(eyre!("Failed to get ssh tunnel PID: {stderr}"));
+    }
+    let stdout = String::from_utf8(output.stdout)?;
+    let pid = stdout.trim().parse()?;
+
+    Ok(pid)
 }
 
 /// Store `pid`, keyed by `local_port`, for use by `kit disconnect`
@@ -108,7 +123,7 @@ fn disconnect(local_port: u16) -> Result<()> {
     }
 
     let pid = read_pid_from_file(local_port)
-        .map_err(|e| e.with_suggestion(|| "To disconnect, try\n```\nps -ef | grep -e PID -e 'ssh -L' | grep -v grep\n```\nto identify `ssh -L` tunnel PID then use `kill <PID>`"))?;
+        .map_err(|e| e.with_suggestion(|| format!("To disconnect, try\n```\nps -ef | grep -e PID -e 'ssh -L.*{local_port}' | grep -v grep\n```\nto identify `ssh -L` tunnel PID then use `kill <PID>`")))?;
     kill_pid(pid as i32)?;
     let pid_file_path = make_pid_file_path(&local_port)?;
     fs::remove_file(pid_file_path)?;
@@ -147,9 +162,7 @@ pub fn execute(
         .map(|hp| Ok(hp))  // enable the `?`
         .unwrap_or_else(|| get_port(host))?;
 
-    let child = start_tunnel(local_port, host, host_port)?;
-
-    let pid = child.id();
+    let pid = start_tunnel(local_port, host, host_port)?;
     write_pid_to_file(local_port, pid)?;
 
     info!("Done connecting tunnel on {local_port} to {host}. Disconnect by running\n```\nkit connect -p {local_port} -d\n```");
