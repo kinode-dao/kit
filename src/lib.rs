@@ -1,4 +1,5 @@
 pub mod boot_fake_node;
+pub mod boot_real_node;
 pub mod build;
 pub mod build_start_package;
 pub mod chain;
