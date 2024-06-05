@@ -348,10 +348,10 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
 
         let mut args = vec![];
         if let Some(ref rpc) = node.rpc {
-            args.extend_from_slice(&["--rpc", rpc]);
+            args.extend_from_slice(&["--rpc".into(), rpc.clone()]);
         };
         if let Some(ref password) = node.password {
-            args.extend_from_slice(&["--password", password]);
+            args.extend_from_slice(&["--password".into(), password.clone()]);
         };
 
         // TODO: change this to be less restrictive; currently leads to weirdness
@@ -364,13 +364,15 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
             name.push_str(".dev");
         }
 
+        args.extend_from_slice(&[
+            "--fake-node-name".into(), name,
+            "--fakechain-port".into(), format!("{}", test.fakechain_router),
+        ]);
 
         let (mut runtime_process, master_fd) = run_runtime(
             &runtime_path,
             &node_home,
             node.port,
-            test.fakechain_router,
-            &name,
             &args[..],
             false,
             detached,
@@ -387,7 +389,6 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
         let mut node_cleanup_infos = node_cleanup_infos.lock().await;
         node_cleanup_infos.push(NodeCleanupInfo {
             master_fd,
-            //process_id: runtime_process.id() as i32,
             process_id: runtime_process.id().unwrap() as i32,
             home: node_home.clone(),
             anvil_process: anvil_cleanup,
@@ -442,7 +443,7 @@ pub async fn execute(config_path: &str) -> Result<()> {
 
     // TODO: factor out with boot_fake_node?
     let runtime_path = match config.runtime {
-        Runtime::FetchVersion(ref version) => get_runtime_binary(version).await?,
+        Runtime::FetchVersion(ref version) => get_runtime_binary(version, true).await?,
         Runtime::RepoPath(runtime_path) => {
             if !runtime_path.exists() {
                 return Err(eyre!("RepoPath {:?} does not exist.", runtime_path));
@@ -452,6 +453,7 @@ pub async fn execute(config_path: &str) -> Result<()> {
                 compile_runtime(
                     &runtime_path,
                     config.runtime_build_release,
+                    true,
                 )?;
                 runtime_path.join("target")
                     .join(if config.runtime_build_release { "release" } else { "debug" })

@@ -25,7 +25,7 @@ use crate::run_tests::types::*;
 const KINODE_RELEASE_BASE_URL: &str = "https://github.com/kinode-dao/kinode/releases/download";
 pub const KINODE_OWNER: &str = "kinode-dao";
 const KINODE_REPO: &str = "kinode";
-const LOCAL_PREFIX: &str = "/tmp/kinode-";
+const LOCAL_PREFIX: &str = "kinode-";
 pub const CACHE_EXPIRY_SECONDS: u64 = 300;
 
 #[derive(Deserialize, Debug)]
@@ -73,7 +73,7 @@ fn extract_zip(archive_path: &Path) -> Result<()> {
 }
 
 #[instrument(level = "trace", skip_all)]
-pub fn compile_runtime(path: &Path, release: bool) -> Result<()> {
+pub fn compile_runtime(path: &Path, release: bool, is_simulation_mode: bool) -> Result<()> {
     info!("Compiling Kinode runtime...");
 
     let mut args = vec![
@@ -81,12 +81,13 @@ pub fn compile_runtime(path: &Path, release: bool) -> Result<()> {
         "build",
         "-p",
         "kinode",
-        "--features",
-        "simulation-mode",
         "--color=always",
     ];
     if release {
         args.push("--release");
+    }
+    if is_simulation_mode {
+        args.extend_from_slice(&["--features", "simulation-mode"]);
     }
 
     build::run_command(Command::new("cargo")
@@ -123,7 +124,7 @@ async fn get_runtime_binary_inner(
 }
 
 #[instrument(level = "trace", skip_all)]
-pub fn get_platform_runtime_name() -> Result<String> {
+pub fn get_platform_runtime_name(is_simulation_mode: bool) -> Result<String> {
     let uname = Command::new("uname").output()?;
     if !uname.status.success() {
         return Err(eyre!("Could not determine OS."));
@@ -150,12 +151,16 @@ pub fn get_platform_runtime_name() -> Result<String> {
             );
         }
     };
-    Ok(format!("kinode-{}-simulation-mode.zip", zip_name_midfix))
+    Ok(format!(
+        "kinode-{}{}.zip",
+        zip_name_midfix,
+        if is_simulation_mode { "-simulation-mode" } else { "" },
+    ))
 }
 
 #[instrument(level = "trace", skip_all)]
-pub async fn get_runtime_binary(version: &str) -> Result<PathBuf> {
-    let zip_name = get_platform_runtime_name()?;
+pub async fn get_runtime_binary(version: &str, is_simulation_mode: bool) -> Result<PathBuf> {
+    let zip_name = get_platform_runtime_name(is_simulation_mode)?;
 
     let version =
         if version != "latest" {
@@ -164,7 +169,7 @@ pub async fn get_runtime_binary(version: &str) -> Result<PathBuf> {
             find_releases_with_asset_if_online(
                 Some(KINODE_OWNER),
                 Some(KINODE_REPO),
-                &get_platform_runtime_name()?,
+                &get_platform_runtime_name(is_simulation_mode)?,
             )
             .await?
             .first()
@@ -172,7 +177,13 @@ pub async fn get_runtime_binary(version: &str) -> Result<PathBuf> {
             .clone()
         };
 
-    let runtime_dir = PathBuf::from(format!("{}{}", LOCAL_PREFIX, version));
+    let runtime_dir = PathBuf::from(KIT_CACHE)
+        .join(format!(
+            "{}{}{}",
+            LOCAL_PREFIX,
+            version,
+            if is_simulation_mode { "-simulation-mode" } else { "" },
+        ));
     let runtime_path = runtime_dir.join("kinode");
 
     if !runtime_dir.exists() {
@@ -321,21 +332,15 @@ pub fn run_runtime(
     path: &Path,
     home: &Path,
     port: u16,
-    fakechain_port: u16,
-    name: &str,
-    args: &[&str],
+    args: &[String],
     verbose: bool,
     detached: bool,
     verbosity: u8,
 ) -> Result<(Child, OwnedFd)> {
-    let port = format!("{}", port);
-    let fakechain_port = format!("{}", fakechain_port);
-    let verbosity = format!("{}", verbosity);
     let mut full_args = vec![
-        home.to_str().unwrap(), "--port", port.as_str(),
-        "--fake-node-name", name,
-        "--fakechain-port", fakechain_port.as_str(),
-        "--verbosity", verbosity.as_str(),
+        home.to_str().unwrap().into(),
+        "--port".into(), format!("{port}"),
+        "--verbosity".into(), format!("{verbosity}"),
     ];
 
     if !args.is_empty() {
@@ -368,19 +373,19 @@ pub async fn execute(
     is_persist: bool,
     release: bool,
     verbosity: u8,
-    mut args: Vec<&str>,
+    mut args: Vec<String>,
 ) -> Result<()> {
     let detached = false;  // TODO: to argument?
     // TODO: factor out with run_tests?
     let runtime_path = match runtime_path {
-        None => get_runtime_binary(&version).await?,
+        None => get_runtime_binary(&version, true).await?,
         Some(runtime_path) => {
             if !runtime_path.exists() {
                 return Err(eyre!("--runtime-path {:?} does not exist.", runtime_path));
             }
             if runtime_path.is_dir() {
                 // Compile the runtime binary
-                compile_runtime(&runtime_path, release)?;
+                compile_runtime(&runtime_path, release, true)?;
                 runtime_path.join("target")
                     .join(if release { "release" } else { "debug" })
                     .join("kinode")
@@ -435,22 +440,20 @@ pub async fn execute(
         false,
     ).await?;
 
-    if node_home.exists() {
-        fs::remove_dir_all(&node_home)?;
-    }
-
-    if let Some(ref rpc) = rpc {
-        args.extend_from_slice(&["--rpc", rpc]);
+    if let Some(rpc) = rpc {
+        args.extend_from_slice(&["--rpc".into(), rpc.into()]);
     };
 
-    args.extend_from_slice(&["--password", password]);
+    args.extend_from_slice(&[
+        "--password".into(), password.into(),
+        "--fake-node-name".into(), fake_node_name,
+        "--fakechain-port".into(), format!("{fakechain_port}"),
+    ]);
 
     let (mut runtime_process, master_fd) = run_runtime(
         &runtime_path,
         &node_home,
         node_port,
-        fakechain_port,
-        &fake_node_name,
         &args[..],
         true,
         detached,

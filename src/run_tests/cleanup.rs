@@ -107,23 +107,10 @@ pub async fn cleanup(
             if let Some(mut node_handle) = nh.next() {
                 node_handle.wait().await.ok();
             }
-            //if should_print_std.is_some_and(|b| b) {
-            //    let output = nh.next().and_then(|n| n.wait_with_output().ok()).unwrap();
-            //    let stdout = remove_repeated_newlines(&String::from_utf8_lossy(&output.stdout));
-            //    let stderr = remove_repeated_newlines(&String::from_utf8_lossy(&output.stderr));
-            //    println!("stdout:\n{}\nstderr:\n{}", stdout, stderr);
-            //} else {
-            //    nh.next().and_then(|mut n| n.wait().ok()).unwrap();
-            //}
         }
 
         if remove_node_files && home.exists() {
-            for dir in &["kernel", "kv", "sqlite", "vfs"] {
-                let dir = home.join(dir);
-                if dir.exists() {
-                    fs::remove_dir_all(&dir).unwrap();
-                }
-            }
+            fs::remove_dir_all(&home).unwrap();
         }
         info!("Done cleaning up {:?}.\r", home);
     }
