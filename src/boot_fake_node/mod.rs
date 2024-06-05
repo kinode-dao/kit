@@ -359,7 +359,7 @@ pub async fn execute(
     node_port: u16,
     fakechain_port: u16,
     rpc: Option<&str>,
-    mut fake_node_name: String,
+    fake_node_name: String,
     password: &str,
     is_persist: bool,
     release: bool,
@@ -419,9 +419,10 @@ pub async fn execute(
     //  The reason we need it for now is that non-`.dev` nodes are not currently
     //  addressable.
     //  Once they are addressable, change this to, perhaps, `!name.contains(".")
-    if !fake_node_name.ends_with(".dev") {
-        fake_node_name.push_str(".dev");
-    }
+    // if !fake_node_name.ends_with(".dev") {
+    //     fake_node_name.push_str(".dev");
+    // }
+    // note, this is commented out here for now, but runtime still expects and mints a .dev
 
     // boot fakechain
     let anvil_process = chain::start_chain(

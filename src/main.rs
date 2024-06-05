@@ -429,7 +429,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('f')
                 .long("fake-node-name")
                 .help("Name for fake node")
-                .default_value("fake.dev")
+                .default_value("fake")
             )
             .arg(Arg::new("FAKECHAIN_PORT")
                 .action(ArgAction::Set)

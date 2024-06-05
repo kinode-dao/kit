@@ -49,12 +49,6 @@ fn make_node_names(nodes: Vec<Node>) -> Result<Vec<String>> {
         .iter()
         .map(|node| get_basename(&node.home)
             .and_then(|base| Some(base.to_string()))
-            .and_then(|mut base| {
-                if !base.ends_with(".dev") {
-                    base.push_str(".dev");
-                }
-                Some(base)
-            })
             .ok_or_else(|| {
                 eyre!("run_tests:make_node_names: did not find basename for {:?}", node.home)
             })
@@ -356,10 +350,9 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
         //  The reason we need it for now is that non-`.dev` nodes are not currently
         //  addressable.
         //  Once they are addressable, change this to, perhaps, `!name.contains(".")
-        let mut name = node.fake_node_name.clone();
-        if !name.ends_with(".dev") {
-            name.push_str(".dev");
-        }
+        // if !name.ends_with(".dev") {
+        //     name.push_str(".dev");
+        // }
 
 
         let (mut runtime_process, master_fd) = run_runtime(
@@ -367,7 +360,7 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
             &node_home,
             node.port,
             test.fakechain_router,
-            &name,
+            &node.fake_node_name,
             &args[..],
             false,
             detached,
