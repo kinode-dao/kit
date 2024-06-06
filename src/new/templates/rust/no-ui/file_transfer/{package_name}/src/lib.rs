@@ -1,8 +1,9 @@
-use crate::kinode::process::{package_name}::{Address as WitAddress, Request as TransferRequest, Response as TransferResponse, WorkerRequest, DownloadRequest, ProgressRequest, FileInfo, InitializeRequest, ChunkRequest};
+use crate::kinode::process::standard::{ProcessId as WitProcessId};
+use crate::kinode::process::{package_name}::{Address as WitAddress, Request as TransferRequest, Response as TransferResponse, WorkerRequest, DownloadRequest, ProgressRequest, FileInfo, InitializeRequest};
 use kinode_process_lib::{
     await_message, call_init, our_capabilities, println, spawn,
     vfs::{create_drive, metadata, open_dir, Directory, FileType},
-    Address, OnExit, Request, Response,
+    Address, OnExit, ProcessId, Request, Response,
 };
 
 wit_bindgen::generate!({
@@ -11,6 +12,43 @@ wit_bindgen::generate!({
     generate_unused_types: true,
     additional_derives: [serde::Deserialize, serde::Serialize],
 });
+
+impl From<Address> for WitAddress {
+    fn from(address: Address) -> Self {
+        WitAddress {
+            node: address.node,
+            process: address.process.into(),
+        }
+    }
+}
+
+impl From<ProcessId> for WitProcessId {
+    fn from(process: ProcessId) -> Self {
+        WitProcessId {
+            process_name: process.process_name,
+            package_name: process.package_name,
+            publisher_node: process.publisher_node,
+        }
+    }
+}
+impl From<WitAddress> for Address {
+    fn from(address: WitAddress) -> Self {
+        Address {
+            node: address.node,
+            process: address.process.into(),
+        }
+    }
+}
+
+impl From<WitProcessId> for ProcessId {
+    fn from(process: WitProcessId) -> Self {
+        ProcessId {
+            process_name: process.process_name,
+            package_name: process.package_name,
+            publisher_node: process.publisher_node,
+        }
+    }
+}
 
 fn ls_files(files_dir: &Directory) -> anyhow::Result<Vec<FileInfo>> {
     let entries = files_dir.read()?;
@@ -45,7 +83,7 @@ fn handle_transfer_request(
                 .body(serde_json::to_vec(&TransferResponse::ListFiles(files))?)
                 .send()?;
         }
-        TransferRequest::Download(DownloadRequest { name, ref target }) => {
+        TransferRequest::Download(DownloadRequest { name, target }) => {
             // spin up a worker, initialize based on whether it's a downloader or a sender.
             let our_worker = spawn(
                 None,
@@ -60,7 +98,6 @@ fn handle_transfer_request(
                 node: our.node.clone(),
                 process: our_worker,
             };
-            let our_worker_wit_address = serde_json::from_str(&serde_json::to_string(&our_worker_address)?)?;
 
             if source.node == our.node {
                 // we want to download a file
@@ -73,21 +110,19 @@ fn handle_transfer_request(
                     .send_and_await_response(5)??;
 
                 // send our initialized worker address to the other node
-                let target = serde_json::from_str(&serde_json::to_string(target)?)?;
                 Request::new()
                     .body(serde_json::to_vec(&TransferRequest::Download(DownloadRequest {
                         name: name.clone(),
-                        target: our_worker_wit_address,
+                        target: our_worker_address.into(),
                     }))?)
-                    .target(&target)
-                    //.target(&target.into())
+                    .target::<Address>(target.clone().into())
                     .send()?;
             } else {
                 // they want to download a file
                 Request::new()
                     .body(serde_json::to_vec(&WorkerRequest::Initialize(InitializeRequest {
                         name: name.clone(),
-                        target_worker: Some(target.clone()),
+                        target_worker: Some(target),
                     }))?)
                     .target(&our_worker_address)
                     .send()?;

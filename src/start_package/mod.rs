@@ -23,8 +23,25 @@ fn new_package(
 ) -> Result<serde_json::Value> {
     let message = json!({
         "NewPackage": {
-            "package": {"package_name": package_name, "publisher_node": publisher_node},
-            "metadata": metadata,
+            "package_id": {"package_name": package_name, "publisher_node": publisher_node},
+            "metadata": {
+                "name": metadata.name,
+                "description": metadata.description,
+                "image": metadata.image,
+                "external_url": metadata.external_url,
+                "animation_url": metadata.animation_url,
+                "properties": {
+                    "package_name": metadata.properties.package_name,
+                    "publisher": metadata.properties.publisher,
+                    "current_version": metadata.properties.current_version,
+                    "mirrors": metadata.properties.mirrors,
+                    "code_hashes": metadata.properties.code_hashes.clone().into_iter().collect::<Vec<(String, String)>>(),
+                    "license": metadata.properties.license,
+                    "screenshots": metadata.properties.screenshots,
+                    "wit_version": metadata.properties.wit_version,
+                    "dependencies": metadata.properties.dependencies,
+                },
+            },
             "mirror": true
         }
     });
