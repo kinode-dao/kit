@@ -40,13 +40,18 @@ struct CargoPackage {
 }
 
 #[instrument(level = "trace", skip_all)]
-pub fn run_command(cmd: &mut Command) -> Result<(String, String)> {
+pub fn run_command(cmd: &mut Command, verbose: bool) -> Result<Option<(String, String)>> {
+    if verbose {
+        let mut child = cmd.spawn()?;
+        child.wait()?;
+        return Ok(None);
+    }
     let output = cmd.output()?;
     if output.status.success() {
-        Ok((
+        Ok(Some((
             String::from_utf8_lossy(&output.stdout).to_string(),
             String::from_utf8_lossy(&output.stderr).to_string(),
-        ))
+        )))
     } else {
         Err(eyre!(
             "Command `{} {:?}` failed with exit code {}\nstdout: {}\nstderr: {}",
@@ -158,6 +163,7 @@ async fn compile_javascript_wasm_process(
     process_dir: &Path,
     valid_node: Option<String>,
     world: String,
+    verbose: bool,
 ) -> Result<()> {
     info!(
         "Compiling Javascript Kinode process in {:?}...",
@@ -188,12 +194,14 @@ async fn compile_javascript_wasm_process(
         Command::new("bash")
             .args(&["-c", &install])
             .current_dir(process_dir),
+        verbose,
     )?;
 
     run_command(
         Command::new("bash")
             .args(&["-c", &componentize])
             .current_dir(process_dir),
+        verbose,
     )?;
 
     info!(
@@ -208,6 +216,7 @@ async fn compile_python_wasm_process(
     process_dir: &Path,
     python: &str,
     world: String,
+    verbose: bool,
 ) -> Result<()> {
     info!("Compiling Python Kinode process in {:?}...", process_dir);
 
@@ -226,10 +235,12 @@ async fn compile_python_wasm_process(
         Command::new(python)
             .args(&["-m", "venv", PY_VENV_NAME])
             .current_dir(process_dir),
+        verbose,
     )?;
     run_command(Command::new("bash")
         .args(&["-c", &format!("{source} && {install} && {componentize}")])
-        .current_dir(process_dir.join("src"))
+        .current_dir(process_dir.join("src")),
+        verbose,
     )?;
 
     info!("Done compiling Python Kinode process in {:?}.", process_dir);
@@ -241,6 +252,7 @@ async fn compile_rust_wasm_process(
     process_dir: &Path,
     features: &str,
     world: String,
+    verbose: bool,
 ) -> Result<()> {
     info!("Compiling Rust Kinode process in {:?}...", process_dir);
 
@@ -261,14 +273,17 @@ async fn compile_rust_wasm_process(
     download_file(&wasi_snapshot_url, &wasi_snapshot_file).await?;
 
     // Create target.wasm (compiled .wit) & world
-    run_command(Command::new("wasm-tools").args(&[
-        "component",
-        "wit",
-        wit_dir.to_str().unwrap(),
-        "-o",
-        &bindings_dir.join("target.wasm").to_str().unwrap(),
-        "--wasm",
-    ]))?;
+    run_command(Command::new("wasm-tools")
+        .args(&[
+            "component",
+            "wit",
+            wit_dir.to_str().unwrap(),
+            "-o",
+            &bindings_dir.join("target.wasm").to_str().unwrap(),
+            "--wasm",
+        ]),
+        verbose,
+    )?;
 
     // Copy wit directory to bindings
     fs::create_dir_all(&bindings_dir.join("wit"))?;
@@ -299,16 +314,20 @@ async fn compile_rust_wasm_process(
         args.push("--features");
         args.push(&features);
     }
-    let (stdout, stderr) = run_command(
+    let result = run_command(
         Command::new("cargo")
             .args(&args)
             .current_dir(process_dir),
+        verbose,
     )?;
-    if stdout.contains("warning") {
-        warn!("{}", stdout);
-    }
-    if stderr.contains("warning") {
-        warn!("{}", stderr);
+
+    if let Some((stdout, stderr)) = result {
+        if stdout.contains("warning") {
+            warn!("{}", stdout);
+        }
+        if stderr.contains("warning") {
+            warn!("{}", stderr);
+        }
     }
 
     // Adapt the module using wasm-tools
@@ -334,6 +353,7 @@ async fn compile_rust_wasm_process(
                 wasi_snapshot_file.to_str().unwrap(),
             ])
             .current_dir(process_dir),
+        verbose,
     )?;
 
     let wasm_path = format!("../pkg/{}.wasm", wasm_file_name);
@@ -353,6 +373,7 @@ async fn compile_rust_wasm_process(
                 wasm_path.to_str().unwrap(),
             ])
             .current_dir(process_dir),
+        verbose,
     )?;
 
     info!("Done compiling Rust Kinode process in {:?}.", process_dir);
@@ -360,7 +381,11 @@ async fn compile_rust_wasm_process(
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn compile_and_copy_ui(package_dir: &Path, valid_node: Option<String>) -> Result<()> {
+async fn compile_and_copy_ui(
+    package_dir: &Path,
+    valid_node: Option<String>,
+    verbose: bool,
+) -> Result<()> {
     let ui_path = package_dir.join("ui");
     info!("Building UI in {:?}...", ui_path);
 
@@ -386,6 +411,7 @@ async fn compile_and_copy_ui(package_dir: &Path, valid_node: Option<String>) -> 
                 Command::new("bash")
                     .args(&["-c", &install])
                     .current_dir(&ui_path),
+                verbose,
             )?;
 
             info!("Running npm run build:copy...");
@@ -394,6 +420,7 @@ async fn compile_and_copy_ui(package_dir: &Path, valid_node: Option<String>) -> 
                 Command::new("bash")
                     .args(&["-c", &run])
                     .current_dir(&ui_path),
+                verbose,
             )?;
         } else {
             let pkg_ui_path = package_dir.join("pkg/ui");
@@ -404,6 +431,7 @@ async fn compile_and_copy_ui(package_dir: &Path, valid_node: Option<String>) -> 
                 Command::new("cp")
                     .args(["-r", "ui", "pkg/ui"])
                     .current_dir(&package_dir),
+                verbose,
             )?;
         }
     } else {
@@ -422,9 +450,17 @@ async fn compile_package_and_ui(
     features: &str,
     url: Option<String>,
     default_world: Option<String>,
+    verbose: bool,
 ) -> Result<()> {
-    compile_and_copy_ui(package_dir, valid_node).await?;
-    compile_package(package_dir, skip_deps_check, features, url, default_world).await?;
+    compile_and_copy_ui(package_dir, valid_node, verbose).await?;
+    compile_package(
+        package_dir,
+        skip_deps_check,
+        features,
+        url,
+        default_world,
+        verbose,
+    ).await?;
     Ok(())
 }
 
@@ -464,6 +500,7 @@ async fn compile_package_item(
     apis: HashMap<String, Vec<u8>>,
     world: String,
     wit_version: Option<u32>,
+    verbose: bool,
 ) -> Result<()> {
     let entry = entry?;
     let path = entry.path();
@@ -476,14 +513,14 @@ async fn compile_package_item(
         }
 
         if is_rust_process {
-            compile_rust_wasm_process(&path, &features, world).await?;
+            compile_rust_wasm_process(&path, &features, world, verbose).await?;
         } else if is_py_process {
             let python = get_python_version(None, None)?
                 .ok_or_else(|| eyre!("kit requires Python 3.10 or newer"))?;
-            compile_python_wasm_process(&path, &python, world).await?;
+            compile_python_wasm_process(&path, &python, world, verbose).await?;
         } else if is_js_process {
             let valid_node = get_newest_valid_node_version(None, None)?;
-            compile_javascript_wasm_process(&path, valid_node, world).await?;
+            compile_javascript_wasm_process(&path, valid_node, world, verbose).await?;
         }
     }
     Ok(())
@@ -541,6 +578,7 @@ async fn compile_package(
     features: &str,
     url: Option<String>,
     default_world: Option<String>,
+    verbose: bool,
 ) -> Result<()> {
     let metadata = read_metadata(package_dir)?;
     let mut checked_rust = false;
@@ -553,14 +591,14 @@ async fn compile_package(
         if path.is_dir() {
             if path.join(RUST_SRC_PATH).exists() && !checked_rust && !skip_deps_check {
                 let deps = check_rust_deps()?;
-                get_deps(deps)?;
+                get_deps(deps, verbose)?;
                 checked_rust = true;
             } else if path.join(PYTHON_SRC_PATH).exists() && !checked_py {
                 check_py_deps()?;
                 checked_py = true;
             } else if path.join(JAVASCRIPT_SRC_PATH).exists() && !checked_js && !skip_deps_check {
                 let deps = check_js_deps()?;
-                get_deps(deps)?;
+                get_deps(deps, verbose)?;
                 checked_js = true;
             } else if Some("api") == path.file_name().and_then(|s| s.to_str()) {
                 // zip & place in pkg/: publish API inside Kinode
@@ -625,6 +663,7 @@ async fn compile_package(
             apis.clone(),
             wit_world.clone(),
             metadata.properties.wit_version,
+            verbose.clone(),
         ));
     }
     while let Some(res) = tasks.join_next().await {
@@ -643,6 +682,7 @@ pub async fn execute(
     features: &str,
     url: Option<String>,
     default_world: Option<String>,
+    verbose: bool,
 ) -> Result<()> {
     if !package_dir.join("pkg").exists() {
         if Some(".DS_Store") == package_dir.file_name().and_then(|s| s.to_str()) {
@@ -660,7 +700,14 @@ pub async fn execute(
         if ui_only {
             return Err(eyre!("kit build: can't build UI: no ui directory exists"));
         } else {
-            compile_package(package_dir, skip_deps_check, features, url, default_world).await
+            compile_package(
+                package_dir,
+                skip_deps_check,
+                features,
+                url,
+                default_world,
+                verbose,
+            ).await
         }
     } else {
         if no_ui {
@@ -670,15 +717,16 @@ pub async fn execute(
                 features,
                 url,
                 default_world,
+                verbose,
             ).await;
         }
 
         let deps = check_js_deps()?;
-        get_deps(deps)?;
+        get_deps(deps, verbose)?;
         let valid_node = get_newest_valid_node_version(None, None)?;
 
         if ui_only {
-            compile_and_copy_ui(package_dir, valid_node).await
+            compile_and_copy_ui(package_dir, valid_node, verbose).await
         } else {
             compile_package_and_ui(
                 package_dir,
@@ -687,6 +735,7 @@ pub async fn execute(
                 features,
                 url,
                 default_world,
+                verbose,
             ).await
         }
     }

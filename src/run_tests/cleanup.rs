@@ -123,12 +123,7 @@ pub async fn cleanup(
         }
 
         if remove_node_files && home.exists() {
-            for dir in &["kernel", "kv", "sqlite", "vfs"] {
-                let dir = home.join(dir);
-                if dir.exists() {
-                    fs::remove_dir_all(&dir).unwrap();
-                }
-            }
+            fs::remove_dir_all(&home).unwrap();
         }
         info!("Done cleaning up {:?}.\r", home);
     }
