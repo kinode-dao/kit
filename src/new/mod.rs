@@ -200,16 +200,28 @@ pub fn execute(
         ui_infix,
         template.to_string(),
     );
+    let test_prefix = format!(
+        "test/{}/",
+        template.to_string(),
+    );
     let mut path_to_content: HashMap<String, String> = PATH_TO_CONTENT
         .iter()
-        .filter_map(|(k, v)| {
-            k
-                .strip_prefix(&template_prefix)
-                .or_else(|| k.strip_prefix(&ui_prefix))
+        .filter_map(|(path, content)| {
+            path.strip_prefix(&template_prefix)
+                .map(|p| p.to_string())
+                .or_else(|| path.strip_prefix(&ui_prefix).map(|p| p.to_string()))
+                .or_else(|| path.strip_prefix(&test_prefix).map(|p| format!("test/{p}")))
+                .or_else(|| {
+                    if path.starts_with(&test_prefix) {
+                        Some(path.to_string())
+                    } else {
+                        None
+                    }
+                })
                 .and_then(|stripped| {
-                    let key = replace_vars(stripped, &package_name, &publisher);
-                    let val = replace_vars(v, &package_name, &publisher);
-                    Some((key, val))
+                    let modified_path = replace_vars(&stripped, &package_name, &publisher);
+                    let modified_content = replace_vars(content, &package_name, &publisher);
+                    Some((modified_path, modified_content))
                 })
         })
         .collect();

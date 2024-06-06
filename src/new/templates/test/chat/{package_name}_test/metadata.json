@@ -1,0 +1,17 @@
+{
+    "name": "{package_name} Test",
+    "description": "A test for {package_name}.",
+    "image": "",
+    "properties": {
+        "package_name": "{package_name}_test",
+        "current_version": "0.1.0",
+        "publisher": "{publisher}",
+        "mirrors": [],
+        "code_hashes": {
+            "0.1.0": ""
+        },
+        "wit_version": 0
+    },
+    "external_url": "",
+    "animation_url": ""
+}
