@@ -22,7 +22,7 @@ pub const REQUIRED_PY_PACKAGE: &str = "componentize-py==0.11.0";
 #[derive(Clone)]
 pub enum Dependency {
     Anvil,
-    Forge, 
+    Forge,
     Nvm,
     Npm,
     Node,
@@ -67,14 +67,15 @@ fn is_nvm_installed() -> Result<bool> {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn install_nvm() -> Result<()> {
+fn install_nvm(verbose: bool) -> Result<()> {
     info!("Getting nvm...");
     let install_nvm = format!(
         "curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/{}/install.sh | bash",
         FETCH_NVM_VERSION,
     );
     run_command(Command::new("bash")
-        .args(&["-c", &install_nvm])
+        .args(&["-c", &install_nvm]),
+        verbose,
     )?;
 
     info!("Done getting nvm.");
@@ -82,11 +83,12 @@ fn install_nvm() -> Result<()> {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn install_rust() -> Result<()> {
+fn install_rust(verbose: bool) -> Result<()> {
     info!("Getting rust...");
     let install_rust = "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh";
     run_command(Command::new("bash")
-        .args(&["-c", install_rust])
+        .args(&["-c", install_rust]),
+        verbose,
     )?;
 
     info!("Done getting rust.");
@@ -98,7 +100,8 @@ fn check_python_venv(python: &str) -> Result<()> {
     info!("Checking for python venv...");
     let venv_result = run_command(Command::new(python)
         .args(&["-m", "venv", "kinode-test-venv"])
-        .current_dir("/tmp")
+        .current_dir("/tmp"),
+        false,
     );
     let venv_dir = PathBuf::from("/tmp/kinode-test-venv");
     if venv_dir.exists() {
@@ -218,30 +221,33 @@ fn call_with_nvm_output(arg: &str) -> Result<String> {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn call_with_nvm(arg: &str) -> Result<()> {
+fn call_with_nvm(arg: &str, verbose: bool) -> Result<()> {
     run_command(Command::new("bash")
-        .args(&["-c", &format!("source ~/.nvm/nvm.sh && {}", arg)])
+        .args(&["-c", &format!("source ~/.nvm/nvm.sh && {}", arg)]),
+        verbose,
     )?;
     Ok(())
 }
 
 #[instrument(level = "trace", skip_all)]
-fn call_rustup(arg: &str) -> Result<()> {
+fn call_rustup(arg: &str, verbose: bool) -> Result<()> {
     run_command(Command::new("bash")
-        .args(&["-c", &format!("rustup {}", arg)])
+        .args(&["-c", &format!("rustup {}", arg)]),
+        verbose,
     )?;
     Ok(())
 }
 
 #[instrument(level = "trace", skip_all)]
-fn call_cargo(arg: &str) -> Result<()> {
+fn call_cargo(arg: &str, verbose: bool) -> Result<()> {
     let command = if arg.contains("--color=always") {
         format!("cargo {}", arg)
     } else {
         format!("cargo --color=always {}", arg)
     };
     run_command(Command::new("bash")
-        .args(&["-c", &command])
+        .args(&["-c", &command]),
+        verbose,
     )?;
     Ok(())
 }
@@ -293,7 +299,8 @@ fn check_rust_toolchains_targets() -> Result<Vec<Dependency>> {
     run_command(Command::new("rustup")
         .args(&["default", "stable"])
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null()),
+        false,
     )?;
     let output = Command::new("rustup")
         .arg("show")
@@ -322,7 +329,8 @@ fn check_rust_toolchains_targets() -> Result<Vec<Dependency>> {
         run_command(Command::new("rustup")
             .args(&["default", "nightly"])
             .stdout(Stdio::null())
-            .stderr(Stdio::null())
+            .stderr(Stdio::null()),
+            false,
         )?;
         let output = Command::new("rustup")
             .arg("show")
@@ -341,7 +349,8 @@ fn check_rust_toolchains_targets() -> Result<Vec<Dependency>> {
     run_command(Command::new("rustup")
         .args(&["default", original_default])
         .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::null()),
+        false,
     )?;
     Ok(missing_deps)
 }
@@ -434,7 +443,7 @@ pub fn check_foundry_deps() -> Result<Vec<Dependency>> {
 // install forge+anvil+others, could be separated into binary extractions from github releases.
 pub fn install_foundry() -> Result<()> {
     let install_cmd = "curl -L https://foundry.paradigm.xyz | bash";
-    run_command(Command::new("bash").args(&["-c", install_cmd]))?;
+    run_command(Command::new("bash").args(&["-c", install_cmd]), false)?;
 
     Ok(())
 }
@@ -461,7 +470,7 @@ pub fn check_rust_deps() -> Result<Vec<Dependency>> {
 }
 
 #[instrument(level = "trace", skip_all)]
-pub fn get_deps(deps: Vec<Dependency>) -> Result<()> {
+pub fn get_deps(deps: Vec<Dependency>, verbose: bool) -> Result<()> {
     if deps.is_empty() {
         return Ok(());
     }
@@ -486,22 +495,31 @@ pub fn get_deps(deps: Vec<Dependency>) -> Result<()> {
         "y" | "yes" | "" => {
             for dep in deps {
                 match dep {
-                    Dependency::Nvm =>  install_nvm()?,
-                    Dependency::Npm =>  call_with_nvm(&format!("nvm install-latest-npm"))?,
+                    Dependency::Nvm =>  install_nvm(verbose)?,
+                    Dependency::Npm =>  call_with_nvm(
+                        &format!("nvm install-latest-npm"),
+                        verbose,
+                    )?,
                     Dependency::Node => {
-                        call_with_nvm(&format!(
-                            "nvm install {}.{}",
-                            REQUIRED_NODE_MAJOR,
-                            MINIMUM_NODE_MINOR,
-                        ))?
+                        call_with_nvm(
+                            &format!(
+                                "nvm install {}.{}",
+                                REQUIRED_NODE_MAJOR,
+                                MINIMUM_NODE_MINOR,
+                            ),
+                            verbose,
+                        )?
                     },
-                    Dependency::Rust => install_rust()?,
-                    Dependency::RustNightly => call_rustup("install nightly")?,
-                    Dependency::RustWasm32Wasi => call_rustup("target add wasm32-wasi")?,
+                    Dependency::Rust => install_rust(verbose)?,
+                    Dependency::RustNightly => call_rustup("install nightly", verbose)?,
+                    Dependency::RustWasm32Wasi => call_rustup(
+                        "target add wasm32-wasi",
+                        verbose,
+                    )?,
                     Dependency::RustNightlyWasm32Wasi => {
-                        call_rustup("target add wasm32-wasi --toolchain nightly")?
+                        call_rustup("target add wasm32-wasi --toolchain nightly", verbose)?
                     },
-                    Dependency::WasmTools => call_cargo("install wasm-tools")?,
+                    Dependency::WasmTools => call_cargo("install wasm-tools", verbose)?,
                     Dependency::Forge | Dependency::Anvil => {
                         install_foundry()?
                     },
@@ -514,13 +532,13 @@ pub fn get_deps(deps: Vec<Dependency>) -> Result<()> {
 }
 
 #[instrument(level = "trace", skip_all)]
-pub fn execute() -> Result<()> {
+pub fn execute(verbose: bool) -> Result<()> {
     info!("Setting up...");
 
     check_py_deps()?;
     let mut missing_deps = check_js_deps()?;
     missing_deps.append(&mut check_rust_deps()?);
-    get_deps(missing_deps)?;
+    get_deps(missing_deps, verbose)?;
 
     info!("Done setting up.");
     Ok(())

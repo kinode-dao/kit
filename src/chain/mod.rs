@@ -37,9 +37,10 @@ pub async fn start_chain(
     port: u16,
     piped: bool,
     recv_kill: BroadcastRecvBool,
+    verbose: bool,
 ) -> Result<Option<Child>> {
     let deps = check_foundry_deps()?;
-    get_deps(deps)?;
+    get_deps(deps, verbose)?;
 
     let state_hash = write_kinostate().await?;
     let state_path = format!("./kinostate-{}.json", state_hash);
@@ -121,7 +122,7 @@ async fn wait_for_anvil(
 
 /// kit chain, alias to anvil
 #[instrument(level = "trace", skip_all)]
-pub async fn execute(port: u16) -> Result<()> {
+pub async fn execute(port: u16, verbose: bool) -> Result<()> {
     let (send_to_cleanup, mut recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
     let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
     let recv_kill_in_cos = send_to_kill.subscribe();
@@ -129,7 +130,7 @@ pub async fn execute(port: u16) -> Result<()> {
     let handle_signals = tokio::spawn(cleanup_on_signal(send_to_cleanup.clone(), recv_kill_in_cos));
 
     let recv_kill_in_start_chain = send_to_kill.subscribe();
-    let child = start_chain(port, false, recv_kill_in_start_chain).await?;
+    let child = start_chain(port, false, recv_kill_in_start_chain, verbose).await?;
     let Some(mut child) = child else {
         return Err(eyre!("Port {} is already in use by another anvil process", port));
     };

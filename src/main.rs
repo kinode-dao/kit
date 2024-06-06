@@ -14,6 +14,7 @@ use tracing_subscriber::{
 
 use kit::{
     boot_fake_node,
+    boot_real_node,
     build,
     build_start_package,
     chain,
@@ -165,6 +166,33 @@ async fn execute(
             )
             .await
         }
+        Some(("boot-real-node", boot_matches)) => {
+            let runtime_path = boot_matches
+                .get_one::<String>("PATH")
+                .and_then(|p| Some(PathBuf::from(p)));
+            let version = boot_matches.get_one::<String>("VERSION").unwrap();
+            let node_home = PathBuf::from(boot_matches.get_one::<String>("HOME").unwrap());
+            let node_port = boot_matches.get_one::<u16>("NODE_PORT").unwrap();
+            let rpc = boot_matches
+                .get_one::<String>("RPC_ENDPOINT")
+                .and_then(|s| Some(s.as_str()));
+            // let password = boot_matches.get_one::<String>("PASSWORD").unwrap(); // TODO: with develop 0.8.0
+            let release = boot_matches.get_one::<bool>("RELEASE").unwrap();
+            let verbosity = boot_matches.get_one::<u8>("VERBOSITY").unwrap();
+
+            boot_real_node::execute(
+                runtime_path,
+                version.clone(),
+                node_home,
+                *node_port,
+                rpc,
+                // password, // TODO: with develop 0.8.0
+                *release,
+                *verbosity,
+                vec![],
+            )
+            .await
+        }
         Some(("build", build_matches)) => {
             let package_dir = PathBuf::from(build_matches.get_one::<String>("DIR").unwrap());
             let no_ui = build_matches.get_one::<bool>("NO_UI").unwrap();
@@ -182,6 +210,7 @@ async fn execute(
                 }
             };
             let default_world = build_matches.get_one::<String>("WORLD");
+            let verbose = build_matches.get_one::<bool>("VERBOSE").unwrap();
 
             build::execute(
                 &package_dir,
@@ -191,6 +220,7 @@ async fn execute(
                 &features,
                 url,
                 default_world.cloned(),
+                *verbose,
             ).await
         }
         Some(("build-start-package", build_start_matches)) => {
@@ -214,6 +244,7 @@ async fn execute(
                 None => "".into(),
             };
             let default_world = build_start_matches.get_one::<String>("WORLD");
+            let verbose = build_start_matches.get_one::<bool>("VERBOSE").unwrap();
 
             build_start_package::execute(
                 &package_dir,
@@ -223,12 +254,14 @@ async fn execute(
                 *skip_deps_check,
                 &features,
                 default_world.cloned(),
+                *verbose,
             )
             .await
         }
         Some(("chain", chain_matches)) => {
             let port = chain_matches.get_one::<u16>("PORT").unwrap();
-            chain::execute(*port).await
+            let verbose = chain_matches.get_one::<bool>("VERBOSE").unwrap();
+            chain::execute(*port, *verbose).await
         }
         Some(("dev-ui", dev_ui_matches)) => {
             let package_dir = PathBuf::from(dev_ui_matches.get_one::<String>("DIR").unwrap());
@@ -319,7 +352,11 @@ async fn execute(
 
             run_tests::execute(config_path.to_str().unwrap()).await
         }
-        Some(("setup", _setup_matches)) => setup::execute(),
+        Some(("setup", setup_matches)) => {
+            let verbose = setup_matches.get_one::<bool>("VERBOSE").unwrap();
+
+            setup::execute(*verbose)
+        }
         Some(("start-package", start_package_matches)) => {
             let package_dir =
                 PathBuf::from(start_package_matches.get_one::<String>("DIR").unwrap());
@@ -381,12 +418,11 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
         .subcommand(Command::new("boot-fake-node")
             .about("Boot a fake node for development")
             .visible_alias("f")
-            .disable_help_flag(true)
             .arg(Arg::new("PATH")
                 .action(ArgAction::Set)
                 .short('r')
                 .long("runtime-path")
-                .help("Path to Kinode core repo or runtime binary (overrides --version)")
+                .help("Path to Kinode core repo (overrides --version)")
             )
             .arg(Arg::new("VERSION")
                 .action(ArgAction::Set)
@@ -399,7 +435,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                     let mut remote_values = boot_fake_node::find_releases_with_asset_if_online(
                         None,
                         None,
-                        &boot_fake_node::get_platform_runtime_name()?
+                        &boot_fake_node::get_platform_runtime_name(true)?
                     ).await?;
                     remote_values.truncate(MAX_REMOTE_VALUES);
                     if remote_values.len() == 0 {
@@ -419,9 +455,9 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
             )
             .arg(Arg::new("HOME")
                 .action(ArgAction::Set)
-                .short('h')
+                .short('o')
                 .long("home")
-                .help("Where to place the home directory for the fake node")
+                .help("Path to home directory for fake node")
                 .default_value("/tmp/kinode-fake-node")
             )
             .arg(Arg::new("NODE_NAME")
@@ -470,10 +506,76 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .default_value("0")
                 .value_parser(value_parser!(u8))
             )
-            .arg(Arg::new("help")
-                .long("help")
-                .action(ArgAction::Help)
-                .help("Print help")
+        )
+        .subcommand(Command::new("boot-real-node")
+            .about("Boot a real node")
+            .visible_alias("e")
+            .arg(Arg::new("PATH")
+                .action(ArgAction::Set)
+                .short('r')
+                .long("runtime-path")
+                .help("Path to Kinode core repo (overrides --version)")
+            )
+            .arg(Arg::new("VERSION")
+                .action(ArgAction::Set)
+                .short('v')
+                .long("version")
+                .help("Version of Kinode binary to use (overridden by --runtime-path)")
+                .default_value("latest")
+                .value_parser(PossibleValuesParser::new({
+                    let mut possible_values = vec!["latest".to_string()];
+                    let mut remote_values = boot_fake_node::find_releases_with_asset_if_online(
+                        None,
+                        None,
+                        &boot_fake_node::get_platform_runtime_name(false)?
+                    ).await?;
+                    remote_values.truncate(MAX_REMOTE_VALUES);
+                    if remote_values.len() == 0 {
+                        possible_values = vec![];
+                    }
+                    possible_values.append(&mut remote_values);
+                    possible_values
+                }))
+            )
+            .arg(Arg::new("NODE_PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("The port to run the real node on")
+                .default_value("8080")
+                .value_parser(value_parser!(u16))
+            )
+            .arg(Arg::new("HOME")
+                .action(ArgAction::Set)
+                .short('o')
+                .long("home")
+                .help("Path to home directory for real node")
+                .required(true)
+            )
+            .arg(Arg::new("RPC_ENDPOINT")
+                .action(ArgAction::Set)
+                .long("rpc")
+                .help("Ethereum RPC endpoint (wss://)")
+                .required(false)
+            )
+            //.arg(Arg::new("PASSWORD")  // TODO: with develop 0.8.0
+            //    .action(ArgAction::Set)
+            //    .long("password")
+            //    .help("Password to login")
+            //    .required(false)
+            //)
+            .arg(Arg::new("RELEASE")
+                .action(ArgAction::SetTrue)
+                .long("release")
+                .help("If set and given --runtime-path, compile release build [default: debug build]")
+                .required(false)
+            )
+            .arg(Arg::new("VERBOSITY")
+                .action(ArgAction::Set)
+                .long("verbosity")
+                .help("Verbosity of node: higher is more verbose")
+                .default_value("0")
+                .value_parser(value_parser!(u8))
             )
         )
         .subcommand(Command::new("build")
@@ -529,6 +631,12 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('w')
                 .long("world")
                 .help("Fallback WIT world name")
+            )
+            .arg(Arg::new("VERBOSE")
+                .action(ArgAction::SetTrue)
+                .short('v')
+                .long("verbose")
+                .help("If set, output stdout and stderr")
                 .required(false)
             )
         )
@@ -587,6 +695,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("Pass these comma-delimited feature flags to Rust cargo builds")
                 .required(false)
             )
+            .arg(Arg::new("VERBOSE")
+                .action(ArgAction::SetTrue)
+                .short('v')
+                .long("verbose")
+                .help("If set, output stdout and stderr")
+                .required(false)
+            )
         )
         .subcommand(Command::new("chain")
             .about("Start a local chain for development")
@@ -598,6 +713,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("Port to run the chain on")
                 .default_value("8545")
                 .value_parser(value_parser!(u16))
+            )
+            .arg(Arg::new("VERBOSE")
+                .action(ArgAction::SetTrue)
+                .short('v')
+                .long("verbose")
+                .help("If set, output stdout and stderr")
+                .required(false)
             )
         )
         .subcommand(Command::new("dev-ui")
@@ -780,6 +902,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
         )
         .subcommand(Command::new("setup")
             .about("Fetch & setup kit dependencies")
+            .arg(Arg::new("VERBOSE")
+                .action(ArgAction::SetTrue)
+                .short('v')
+                .long("verbose")
+                .help("If set, output stdout and stderr")
+                .required(false)
+            )
         )
         .subcommand(Command::new("start-package")
             .about("Start a built Kinode process")
