@@ -457,8 +457,26 @@ async fn handle_test(
 pub async fn execute(config_path: &str) -> Result<()> {
     let detached = true; // TODO: to arg?
 
-    let config_content = fs::read_to_string(config_path)?;
-    let config = toml::from_str::<Config>(&config_content)?.expand_home_paths();
+    let config_path = PathBuf::from(config_path);
+    if !config_path.exists() {
+        return Err(eyre!("given config path {config_path:?} does not exist"));
+    }
+    let config_path = if config_path.is_file() {
+        config_path
+    } else {
+        let config_path = config_path.join("test").join("tests.toml");
+        if !config_path.exists() {
+            return Err(eyre!("given config path {config_path:?} does not exist"));
+        }
+        if config_path.is_file() {
+            config_path
+        } else {
+            return Err(eyre!("given config path {config_path:?} is not a file"));
+        }
+    };
+
+    let content = fs::read_to_string(&config_path)?;
+    let config = toml::from_str::<Config>(&content)?.expand_home_paths();
 
     debug!("{:?}", config);
 
