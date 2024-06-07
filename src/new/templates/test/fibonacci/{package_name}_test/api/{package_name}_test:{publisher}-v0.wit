@@ -1,0 +1,5 @@
+world {package_name_kebab}-test-{publisher_dotted_kebab}-v0 {
+    import {package_name_kebab};
+    import tester;
+    include process-v0;
+}
