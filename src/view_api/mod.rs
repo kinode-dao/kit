@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use color_eyre::{Result, eyre::eyre};
+use color_eyre::{Result, Section, eyre::eyre};
 use fs_err as fs;
 use serde_json::json;
 use tracing::{info, instrument};
@@ -9,7 +9,7 @@ use crate::{boot_fake_node::extract_zip, inject_message, KIT_CACHE, KIT_LOG_PATH
 
 #[instrument(level = "trace", skip_all)]
 fn list_apis(node: Option<&str>) -> Result<serde_json::Value> {
-    let message = json!("ListApis");
+    let message = json!("Apis");
 
     inject_message::make_message(
         "main:app_store:sys",
@@ -78,7 +78,8 @@ pub async fn execute(
             .map_err(|e| {
                 let e_string = e.to_string();
                 if e_string.contains("Failed with status code:") {
-                    eyre!("{}\ncheck logs (default at {}) for full http response\n\nhint: is Kinode running at url {}?", e_string, KIT_LOG_PATH_DEFAULT, url)
+                    eyre!("{e_string}\ncheck logs (default at {KIT_LOG_PATH_DEFAULT}) for full http response")
+                        .with_suggestion(|| "is Kinode running at url {url}?")
                 } else {
                     eyre!(e_string)
                 }
