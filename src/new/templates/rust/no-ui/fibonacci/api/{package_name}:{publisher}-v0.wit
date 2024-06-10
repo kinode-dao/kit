@@ -12,5 +12,5 @@ interface {package_name_kebab} {
 
 world {package_name_kebab}-{publisher_dotted_kebab}-v0 {
     import {package_name_kebab};
-    include process;
+    include process-v0;
 }

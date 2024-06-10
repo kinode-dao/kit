@@ -46,7 +46,7 @@ fn handle_message (our: &Address) -> anyhow::Result<()> {
     if response.is_request() { fail!("{package_name}_test"); };
     if serde_json::json!("Ack") != serde_json::from_slice::<serde_json::Value>(
         response.body()
-    ) {
+    )? {
         fail!("{package_name}_test");
     };
 
