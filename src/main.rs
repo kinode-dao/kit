@@ -18,6 +18,7 @@ use kit::{
     build,
     build_start_package,
     chain,
+    connect,
     dev_ui,
     inject_message,
     new,
@@ -262,6 +263,15 @@ async fn execute(
             let port = chain_matches.get_one::<u16>("PORT").unwrap();
             let verbose = chain_matches.get_one::<bool>("VERBOSE").unwrap();
             chain::execute(*port, *verbose).await
+        }
+        Some(("connect", connect_matches)) => {
+            let local_port = connect_matches.get_one::<u16>("LOCAL_PORT").unwrap();
+            let disconnect = connect_matches.get_one::<bool>("IS_DISCONNECT").unwrap();
+            let host = connect_matches.get_one::<String>("HOST")
+                .map(|s| s.as_ref());
+            let host_port = connect_matches.get_one::<u16>("HOST_PORT")
+                .map(|hp| hp.clone());
+            connect::execute(*local_port, *disconnect, host, host_port)
         }
         Some(("dev-ui", dev_ui_matches)) => {
             let package_dir = PathBuf::from(dev_ui_matches.get_one::<String>("DIR").unwrap());
@@ -719,6 +729,37 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('v')
                 .long("verbose")
                 .help("If set, output stdout and stderr")
+                .required(false)
+            )
+        )
+        .subcommand(Command::new("connect")
+            .about("Connect (or disconnect) a ssh tunnel to a remote server")
+            .arg(Arg::new("LOCAL_PORT")
+                .action(ArgAction::Set)
+                .help("Local port to bind")
+                .default_value("9090")
+                .value_parser(value_parser!(u16))
+            )
+            .arg(Arg::new("IS_DISCONNECT")
+                .action(ArgAction::SetTrue)
+                .short('d')
+                .long("disconnect")
+                .help("If set, disconnect an existing tunnel (default: connect a new tunnel)")
+                .required(false)
+            )
+            .arg(Arg::new("HOST")
+                .action(ArgAction::Set)
+                .short('o')
+                .long("host")
+                .help("Host URL/IP Kinode is running on (not required for disconnect)")
+                .required(false)
+            )
+            .arg(Arg::new("HOST_PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("Remote (host) port Kinode is running on")
+                .value_parser(value_parser!(u16))
                 .required(false)
             )
         )
