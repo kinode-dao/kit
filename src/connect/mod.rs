@@ -1,6 +1,6 @@
 use std::net::TcpListener;
 use std::path::PathBuf;
-use std::process::{Child, Command};
+use std::process::Command;
 
 use color_eyre::{eyre::eyre, Result, Section};
 use fs_err as fs;
