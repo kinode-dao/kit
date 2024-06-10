@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use color_eyre::{Result, Section, eyre::eyre};
+use color_eyre::{eyre::eyre, Result, Section};
 use fs_err as fs;
 use serde_json::json;
 use tracing::{info, instrument};
@@ -47,12 +47,11 @@ fn get_api(
 #[instrument(level = "trace", skip_all)]
 fn split_package_id(package_id: &str) -> Result<(String, String)> {
     let mut pids = package_id.splitn(2, ':');
-    let (Some(package_name), Some(publisher_node), None) = (
-        pids.next(),
-        pids.next(),
-        pids.next(),
-    ) else {
-        return Err(eyre!("package_id must be None or Some(<package>:<publisher>)"));
+    let (Some(package_name), Some(publisher_node), None) = (pids.next(), pids.next(), pids.next())
+    else {
+        return Err(eyre!(
+            "package_id must be None or Some(<package>:<publisher>)"
+        ));
     };
     Ok((package_name.to_string(), publisher_node.to_string()))
 }

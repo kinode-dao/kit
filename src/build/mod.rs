@@ -2,20 +2,26 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::Command;
 
-use color_eyre::{{eyre::{eyre, WrapErr}, Result}, Section};
+use color_eyre::{
+    Section,
+    {
+        eyre::{eyre, WrapErr},
+        Result,
+    },
+};
 use fs_err as fs;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument, warn};
 
 use kinode_process_lib::kernel_types::Erc721Metadata;
 
-use crate::KIT_CACHE;
 use crate::setup::{
     check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version,
     get_python_version, REQUIRED_PY_PACKAGE,
 };
 use crate::start_package::zip_directory;
 use crate::view_api;
+use crate::KIT_CACHE;
 
 const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
@@ -80,7 +86,10 @@ pub async fn download_file(url: &str, path: &Path) -> Result<()> {
 
         // Check if response status is 200 (OK)
         if response.status() != reqwest::StatusCode::OK {
-            return Err(eyre!("Failed to download file: HTTP Status {}", response.status()));
+            return Err(eyre!(
+                "Failed to download file: HTTP Status {}",
+                response.status()
+            ));
         }
 
         let content = response.bytes().await?.to_vec();
@@ -119,7 +128,8 @@ pub fn read_metadata(package_dir: &Path) -> Result<Erc721Metadata> {
 #[instrument(level = "trace", skip_all)]
 fn extract_world(data: &str) -> Option<String> {
     let re = regex::Regex::new(r"world\s+([^\s\{]+)").unwrap();
-    re.captures(data).and_then(|caps| caps.get(1).map(|match_| match_.as_str().to_string()))
+    re.captures(data)
+        .and_then(|caps| caps.get(1).map(|match_| match_.as_str().to_string()))
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -135,8 +145,9 @@ fn extract_worlds_from_files(directory: &Path) -> Vec<String> {
     for entry in entries.filter_map(Result::ok) {
         let path = entry.path();
         if !path.is_file()
-        || Some("kinode.wit") == path.file_name().and_then(|s| s.to_str())
-        || Some("wit") != path.extension().and_then(|s| s.to_str()) {
+            || Some("kinode.wit") == path.file_name().and_then(|s| s.to_str())
+            || Some("wit") != path.extension().and_then(|s| s.to_str())
+        {
             continue;
         }
         let contents = fs::read_to_string(&path).unwrap_or_default();
@@ -154,7 +165,10 @@ fn get_world_or_default(directory: &Path, default_world: String) -> String {
     if worlds.len() == 1 {
         return worlds[0].clone();
     }
-    warn!("Found {} worlds in {directory:?}; defaulting to {default_world}", worlds.len());
+    warn!(
+        "Found {} worlds in {directory:?}; defaulting to {default_world}",
+        worlds.len()
+    );
     default_world
 }
 
@@ -227,8 +241,7 @@ async fn compile_python_wasm_process(
     let install = format!("pip install {REQUIRED_PY_PACKAGE}");
     let componentize = format!(
         "componentize-py -d ../target/wit/ -w {} componentize lib -o ../../pkg/{}.wasm",
-        world_name,
-        wasm_file_name,
+        world_name, wasm_file_name,
     );
 
     run_command(
@@ -237,9 +250,10 @@ async fn compile_python_wasm_process(
             .current_dir(process_dir),
         verbose,
     )?;
-    run_command(Command::new("bash")
-        .args(&["-c", &format!("{source} && {install} && {componentize}")])
-        .current_dir(process_dir.join("src")),
+    run_command(
+        Command::new("bash")
+            .args(&["-c", &format!("{source} && {install} && {componentize}")])
+            .current_dir(process_dir.join("src")),
         verbose,
     )?;
 
@@ -273,8 +287,8 @@ async fn compile_rust_wasm_process(
     download_file(&wasi_snapshot_url, &wasi_snapshot_file).await?;
 
     // Create target.wasm (compiled .wit) & world
-    run_command(Command::new("wasm-tools")
-        .args(&[
+    run_command(
+        Command::new("wasm-tools").args(&[
             "component",
             "wit",
             wit_dir.to_str().unwrap(),
@@ -308,16 +322,14 @@ async fn compile_rust_wasm_process(
         "wasm32-wasi",
         "--target-dir",
         "target",
-        "--color=always"
+        "--color=always",
     ];
     if !features.is_empty() {
         args.push("--features");
         args.push(&features);
     }
     let result = run_command(
-        Command::new("cargo")
-            .args(&args)
-            .current_dir(process_dir),
+        Command::new("cargo").args(&args).current_dir(process_dir),
         verbose,
     )?;
 
@@ -460,7 +472,8 @@ async fn compile_package_and_ui(
         url,
         default_world,
         verbose,
-    ).await?;
+    )
+    .await?;
     Ok(())
 }
 
@@ -533,13 +546,18 @@ async fn fetch_dependencies(
 ) -> Result<()> {
     for dependency in dependencies {
         let Some(zip_dir) = view_api::execute(None, Some(dependency), &url, false).await? else {
-            return Err(eyre!("Got unexpected result from fetching API for {dependency}"));
+            return Err(eyre!(
+                "Got unexpected result from fetching API for {dependency}"
+            ));
         };
         for entry in zip_dir.read_dir()? {
             let entry = entry?;
             let path = entry.path();
             if Some("wit") == path.extension().and_then(|s| s.to_str()) {
-                let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or_default();
+                let file_name = path
+                    .file_name()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or_default();
                 let wit_contents = fs::read(&path)?;
                 apis.insert(file_name.into(), wit_contents);
             }
@@ -692,8 +710,8 @@ pub async fn execute(
         return Err(eyre!(
             "Required `pkg/` dir not found within given input dir {:?} (or cwd, if none given).",
             package_dir,
-        ).with_suggestion(|| "Please re-run targeting a package.")
-        );
+        )
+        .with_suggestion(|| "Please re-run targeting a package."));
     }
 
     let ui_dir = package_dir.join("ui");
@@ -708,7 +726,8 @@ pub async fn execute(
                 url,
                 default_world,
                 verbose,
-            ).await
+            )
+            .await
         }
     } else {
         if no_ui {
@@ -719,7 +738,8 @@ pub async fn execute(
                 url,
                 default_world,
                 verbose,
-            ).await;
+            )
+            .await;
         }
 
         let deps = check_js_deps()?;
@@ -737,7 +757,8 @@ pub async fn execute(
                 url,
                 default_world,
                 verbose,
-            ).await
+            )
+            .await
         }
     }
 }

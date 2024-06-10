@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::process::Child;
 use tokio::sync::Mutex;
 
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -67,9 +67,7 @@ pub struct CleanupContext {
 }
 
 impl CleanupContext {
-    pub fn new(
-        send_to_cleanup: SendBool,
-    ) -> Self {
+    pub fn new(send_to_cleanup: SendBool) -> Self {
         CleanupContext { send_to_cleanup }
     }
 }

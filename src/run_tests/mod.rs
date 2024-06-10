@@ -14,7 +14,7 @@ use crate::chain;
 use crate::inject_message;
 use crate::start_package;
 
-use crate::kinode::process::tester::{Response as TesterResponse, FailResponse};
+use crate::kinode::process::tester::{FailResponse, Response as TesterResponse};
 
 pub mod cleanup;
 use cleanup::{cleanup, cleanup_on_signal, drain_print_runtime};
@@ -47,18 +47,22 @@ fn expand_home_path(path: &PathBuf) -> Option<PathBuf> {
 fn make_node_names(nodes: Vec<Node>) -> Result<Vec<String>> {
     nodes
         .iter()
-        .map(|node| get_basename(&node.home)
-            .and_then(|base| Some(base.to_string()))
-            .and_then(|mut base| {
-                if !base.ends_with(".dev") {
-                    base.push_str(".dev");
-                }
-                Some(base)
-            })
-            .ok_or_else(|| {
-                eyre!("run_tests:make_node_names: did not find basename for {:?}", node.home)
-            })
-        )
+        .map(|node| {
+            get_basename(&node.home)
+                .and_then(|base| Some(base.to_string()))
+                .and_then(|mut base| {
+                    if !base.ends_with(".dev") {
+                        base.push_str(".dev");
+                    }
+                    Some(base)
+                })
+                .ok_or_else(|| {
+                    eyre!(
+                        "run_tests:make_node_names: did not find basename for {:?}",
+                        node.home
+                    )
+                })
+        })
         .collect()
 }
 
@@ -68,16 +72,15 @@ impl Config {
             Runtime::FetchVersion(version) => Runtime::FetchVersion(version),
             Runtime::RepoPath(runtime_path) => {
                 Runtime::RepoPath(expand_home_path(&runtime_path).unwrap_or(runtime_path))
-            },
+            }
         };
         for test in self.tests.iter_mut() {
-            test.test_packages = test.test_packages
+            test.test_packages = test
+                .test_packages
                 .iter()
-                .map(|tp| {
-                    TestPackage {
-                        path: expand_home_path(&tp.path).unwrap_or_else(|| tp.path.clone()),
-                        grant_capabilities: tp.grant_capabilities.clone(),
-                    }
+                .map(|tp| TestPackage {
+                    path: expand_home_path(&tp.path).unwrap_or_else(|| tp.path.clone()),
+                    grant_capabilities: tp.grant_capabilities.clone(),
                 })
                 .collect();
             for node in test.nodes.iter_mut() {
@@ -95,7 +98,10 @@ async fn wait_until_booted(
     max_waits: u16,
     mut recv_kill_in_wait: BroadcastRecvBool,
 ) -> Result<()> {
-    info!("Waiting for node {:?} on port {} to be ready...", node, port);
+    info!(
+        "Waiting for node {:?} on port {} to be ready...",
+        node, port
+    );
     for _ in 0..max_waits {
         let request = inject_message::make_message(
             "vfs:distro:sys",
@@ -103,23 +109,23 @@ async fn wait_until_booted(
             &serde_json::to_string(&serde_json::json!({
                 "path": "/tester:sys/pkg",
                 "action": "ReadDir",
-            })).unwrap(),
+            }))
+            .unwrap(),
             None,
             None,
             None,
         )?;
 
-        match inject_message::send_request_inner(
-            &format!("http://localhost:{}", port),
-            request,
-        ).await {
+        match inject_message::send_request_inner(&format!("http://localhost:{}", port), request)
+            .await
+        {
             Ok(response) => match inject_message::parse_response(response).await {
                 Ok(_) => {
                     info!("Done waiting for node {:?} on port {}.", node, port);
-                    return Ok(())
-                },
+                    return Ok(());
+                }
                 _ => (),
-            }
+            },
             _ => (),
         }
 
@@ -157,24 +163,27 @@ async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> Result<()> {
             &serde_json::to_string(&serde_json::json!({
                 "path": format!("/tester:sys/tests/{basename}.wasm"),
                 "action": "Write",
-            })).unwrap(),
+            }))
+            .unwrap(),
             None,
             None,
             path.join("pkg").join(format!("{basename}.wasm")).to_str(),
         )?;
 
-        let response = inject_message::send_request(
-            &format!("http://localhost:{}", port),
-            request,
-        ).await?;
+        let response =
+            inject_message::send_request(&format!("http://localhost:{}", port), request).await?;
         match inject_message::parse_response(response).await {
-            Ok(_) => {},
+            Ok(_) => {}
             Err(e) => return Err(eyre!("Failed to load tests: {}", e)),
         }
     }
 
     let mut grant_caps = std::collections::HashMap::new();
-    for TestPackage { ref path, ref grant_capabilities } in test_packages {
+    for TestPackage {
+        ref path,
+        ref grant_capabilities,
+    } in test_packages
+    {
         grant_caps.insert(
             path.file_name().map(|f| f.to_str()).unwrap(),
             grant_capabilities,
@@ -188,21 +197,19 @@ async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> Result<()> {
         &serde_json::to_string(&serde_json::json!({
             "path": format!("/tester:sys/tests/grant_capabilities.json"),
             "action": "Write",
-        })).unwrap(),
+        }))
+        .unwrap(),
         None,
         Some(&grant_caps),
         None,
     )?;
 
-    let response = inject_message::send_request(
-        &format!("http://localhost:{}", port),
-        request,
-    ).await?;
+    let response =
+        inject_message::send_request(&format!("http://localhost:{}", port), request).await?;
     match inject_message::parse_response(response).await {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => return Err(eyre!("Failed to load tests capabilities: {}", e)),
     }
-
 
     info!("Done loading tests.");
     Ok(())
@@ -231,18 +238,17 @@ async fn run_tests(
                         .collect::<Vec<&str>>(),
                     "test_timeout": test_timeout,
                 }
-            })).unwrap(),
+            }))
+            .unwrap(),
             None,
             None,
             None,
         )?;
-        let response = inject_message::send_request(
-            &format!("http://localhost:{}", port),
-            request,
-        ).await?;
+        let response =
+            inject_message::send_request(&format!("http://localhost:{}", port), request).await?;
 
         if response.status() != 200 {
-            return Err(eyre!("Failed with status code: {}", response.status()))
+            return Err(eyre!("Failed with status code: {}", response.status()));
         }
     }
 
@@ -260,29 +266,33 @@ async fn run_tests(
                     .collect::<Vec<&str>>(),
                 "test_timeout": test_timeout,
             }
-        })).unwrap(),
+        }))
+        .unwrap(),
         None,
         None,
         None,
     )?;
-    let response = inject_message::send_request(
-        &format!("http://localhost:{}", master_port),
-        request,
-    ).await?;
+    let response =
+        inject_message::send_request(&format!("http://localhost:{}", master_port), request).await?;
 
     match inject_message::parse_response(response).await {
         Ok(inject_message::Response { ref body, .. }) => {
             let TesterResponse::Run(result) = serde_json::from_str(body)?;
             match result {
                 Ok(()) => info!("PASS"),
-                Err(FailResponse { test, file, line, column }) => {
+                Err(FailResponse {
+                    test,
+                    file,
+                    line,
+                    column,
+                }) => {
                     return Err(eyre!("FAIL: {} {}:{}:{}", test, file, line, column));
                 }
             }
-        },
+        }
         Err(e) => {
             return Err(eyre!("FAIL: {}", e));
-        },
+        }
     };
 
     Ok(())
@@ -295,29 +305,31 @@ async fn handle_test(
     test: Test,
     test_dir_path: &Path,
 ) -> Result<()> {
-    let setup_package_paths: Vec<PathBuf> = test.setup_package_paths
+    let setup_package_paths: Vec<PathBuf> = test
+        .setup_package_paths
         .iter()
         .cloned()
         .map(|p| test_dir_path.join(p).canonicalize().unwrap())
         .collect();
-    let test_packages: Vec<TestPackage> = test.test_packages
+    let test_packages: Vec<TestPackage> = test
+        .test_packages
         .iter()
         .cloned()
-        .map(|tp| {
-            TestPackage {
-                path: test_dir_path.join(tp.path).canonicalize().unwrap(),
-                grant_capabilities: tp.grant_capabilities,
-            }
+        .map(|tp| TestPackage {
+            path: test_dir_path.join(tp.path).canonicalize().unwrap(),
+            grant_capabilities: tp.grant_capabilities,
         })
         .collect();
     //for setup_package_path in &test.setup_package_paths {
     //    let path = test_dir_path.join(setup_package_path).canonicalize()?;
     for path in &setup_package_paths {
-        build::execute(&path, false, false, false, "", None, None, false).await?;  // TODO
+        build::execute(&path, false, false, false, "", None, None, false).await?;
+        // TODO
     }
     for TestPackage { ref path, .. } in &test_packages {
         let path = test_dir_path.join(path).canonicalize()?;
-        build::execute(&path, false, false, false, "", None, None, false).await?;  // TODO
+        build::execute(&path, false, false, false, "", None, None, false).await?;
+        // TODO
     }
 
     // Initialize variables for master node and nodes list
@@ -343,18 +355,17 @@ async fn handle_test(
     ));
     task_handles.push(handle);
     let send_to_cleanup_for_signal = send_to_cleanup.clone();
-    let handle = tokio::spawn(cleanup_on_signal(send_to_cleanup_for_signal, recv_kill_in_cos));
+    let handle = tokio::spawn(cleanup_on_signal(
+        send_to_cleanup_for_signal,
+        recv_kill_in_cos,
+    ));
     task_handles.push(handle);
     let _cleanup_context = CleanupContext::new(send_to_cleanup.clone());
 
     // boot fakechain
     let recv_kill_in_start_chain = send_to_kill.subscribe();
-    let anvil_process = chain::start_chain(
-        test.fakechain_router,
-        true,
-        recv_kill_in_start_chain,
-        false,
-    ).await?;
+    let anvil_process =
+        chain::start_chain(test.fakechain_router, true, recv_kill_in_start_chain, false).await?;
 
     // Process each node
     for node in &test.nodes {
@@ -386,8 +397,10 @@ async fn handle_test(
         }
 
         args.extend_from_slice(&[
-            "--fake-node-name".into(), name,
-            "--fakechain-port".into(), format!("{}", test.fakechain_router),
+            "--fake-node-name".into(),
+            name,
+            "--fakechain-port".into(),
+            format!("{}", test.fakechain_router),
         ]);
 
         let (mut runtime_process, master_fd) = run_runtime(
@@ -442,7 +455,8 @@ async fn handle_test(
         ports,
         make_node_names(test.nodes)?,
         test.timeout_secs,
-    ).await;
+    )
+    .await;
 
     let _ = send_to_cleanup.send(tests_result.is_err());
     for handle in task_handles {
@@ -489,13 +503,14 @@ pub async fn execute(config_path: &str) -> Result<()> {
             }
             if runtime_path.is_dir() {
                 // Compile the runtime binary
-                compile_runtime(
-                    &runtime_path,
-                    config.runtime_build_release,
-                    true,
-                )?;
-                runtime_path.join("target")
-                    .join(if config.runtime_build_release { "release" } else { "debug" })
+                compile_runtime(&runtime_path, config.runtime_build_release, true)?;
+                runtime_path
+                    .join("target")
+                    .join(if config.runtime_build_release {
+                        "release"
+                    } else {
+                        "debug"
+                    })
                     .join("kinode")
             } else {
                 return Err(eyre!(
@@ -503,7 +518,7 @@ pub async fn execute(config_path: &str) -> Result<()> {
                     runtime_path
                 ));
             }
-        },
+        }
     };
 
     let test_dir_path = PathBuf::from(config_path).canonicalize()?;

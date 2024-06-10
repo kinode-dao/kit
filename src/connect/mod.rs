@@ -44,7 +44,9 @@ fn get_port(host: &str) -> Result<u16> {
     let ports = extract_port(&stdout);
     if ports.len() != 1 {
         println!("{stdout}");
-        return Err(eyre!("couldn't find specific port for ssh amongst: {ports:?}"));
+        return Err(eyre!(
+            "couldn't find specific port for ssh amongst: {ports:?}"
+        ));
     }
     let port = ports[0];
 
@@ -59,15 +61,16 @@ fn is_port_available(bind_addr: &str) -> bool {
 #[instrument(level = "trace", skip_all)]
 fn start_tunnel(local_port: u16, host: &str, host_port: u16) -> Result<u32> {
     let command = format!("ssh -L {local_port}:localhost:{host_port} {host} -N -f");
-    let output = Command::new("bash")
-        .args(["-c", &command])
-        .output()?;
+    let output = Command::new("bash").args(["-c", &command]).output()?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(eyre!("Failed to open ssh tunnel: {stderr}"));
     }
     let output = Command::new("bash")
-        .args(["-c", &format!("ps -ef | grep '{command}' | grep -v grep | awk '{{print $2}}'")])
+        .args([
+            "-c",
+            &format!("ps -ef | grep '{command}' | grep -v grep | awk '{{print $2}}'"),
+        ])
         .output()?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -87,7 +90,10 @@ fn write_pid_to_file(local_port: u16, pid: u32) -> Result<()> {
     if !connect_path.exists() {
         std::fs::create_dir_all(&connect_path)?;
     }
-    fs::write(connect_path.join(format!("{}", local_port)), format!("{pid}"))?;
+    fs::write(
+        connect_path.join(format!("{}", local_port)),
+        format!("{pid}"),
+    )?;
     Ok(())
 }
 
@@ -119,7 +125,9 @@ fn kill_pid(pid: i32) -> Result<()> {
 #[instrument(level = "trace", skip_all)]
 fn disconnect(local_port: u16) -> Result<()> {
     if is_port_available(&format!("127.0.0.1:{local_port}")) {
-        return Err(eyre!("given local port {local_port} is not occupied: nothing to disconnect"));
+        return Err(eyre!(
+            "given local port {local_port} is not occupied: nothing to disconnect"
+        ));
     }
 
     let pid = read_pid_from_file(local_port)
@@ -147,19 +155,20 @@ pub fn execute(
     }
 
     let Some(host) = host else {
-        return Err(eyre!("host is a required field when connecting a new tunnel."));
+        return Err(eyre!(
+            "host is a required field when connecting a new tunnel."
+        ));
     };
     info!("Connecting tunnel on {local_port} to {host}...");
 
     // connect: create connection
     if !is_port_available(&format!("127.0.0.1:{local_port}")) {
         return Err(eyre!("given local port {local_port} occupied")
-            .with_suggestion(|| "try binding an open one")
-        );
+            .with_suggestion(|| "try binding an open one"));
     }
 
     let host_port = host_port
-        .map(|hp| Ok(hp))  // enable the `?`
+        .map(|hp| Ok(hp)) // enable the `?`
         .unwrap_or_else(|| get_port(host))?;
 
     let pid = start_tunnel(local_port, host, host_port)?;
