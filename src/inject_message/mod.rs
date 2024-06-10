@@ -140,6 +140,7 @@ pub async fn parse_response(response: reqwest::Response) -> Result<Response> {
             })
             .ok_or_else(|| eyre!("Response did not contain `body` field."))??;
 
+        #[allow(deprecated)]
         let blob = data
             .get("lazy_load_blob")
             .and_then(|b| {
@@ -174,12 +175,12 @@ pub async fn parse_response(response: reqwest::Response) -> Result<Response> {
                     ))),
                 }
             })
-            .transpose()?;
+            .transpose()?
+            .and_then(|b| decode(b).ok());
 
-        #[allow(deprecated)]
         Ok(Response {
             body,
-            lazy_load_blob_utf8: blob.clone().and_then(|b| decode(b).ok()).map(|b| String::from_utf8(b).ok()),
+            lazy_load_blob_utf8: blob.clone().map(|b| String::from_utf8(b).ok()),
             lazy_load_blob: blob,
         })
     }

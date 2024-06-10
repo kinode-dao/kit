@@ -1,29 +1,18 @@
-use serde::{Deserialize, Serialize};
-
+use crate::kinode::process::{package_name}::{Request as FibonacciRequest, Response as FibonacciResponse};
 use kinode_process_lib::{
-    await_next_request_body, call_init, println, Address, Message, Request,
+    await_next_message_body, call_init, println, Address, Message, Request,
 };
 
 wit_bindgen::generate!({
-    path: "wit",
-    world: "process",
+    path: "target/wit",
+    world: "{package_name_kebab}-{publisher_dotted_kebab}-v0",
+    generate_unused_types: true,
+    additional_derives: [serde::Deserialize, serde::Serialize],
 });
-
-#[derive(Debug, Serialize, Deserialize)]
-enum FibonacciRequest {
-    Number(u32),
-    Numbers((u32, u32)),
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-enum FibonacciResponse {
-    Number(u128),
-    Numbers((u128, u32)),
-}
 
 call_init!(init);
 fn init(our: Address) {
-    let Ok(body) = await_next_request_body() else {
+    let Ok(body) = await_next_message_body() else {
         println!("failed to get args!");
         return;
     };

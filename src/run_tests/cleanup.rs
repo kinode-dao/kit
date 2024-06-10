@@ -34,14 +34,22 @@ pub async fn cleanup_on_signal(
     send_to_cleanup: SendBool,
     mut recv_kill_in_cos: BroadcastRecvBool,
 ) {
-    let mut sigalrm = signal(SignalKind::alarm()).expect("kit run-tests: failed to set up SIGALRM handler");
-    let mut sighup = signal(SignalKind::hangup()).expect("kit run-tests: failed to set up SIGHUP handler");
-    let mut sigint = signal(SignalKind::interrupt()).expect("kit run-tests: failed to set up SIGINT handler");
-    let mut sigpipe = signal(SignalKind::pipe()).expect("kit run-tests: failed to set up SIGPIPE handler");
-    let mut sigquit = signal(SignalKind::quit()).expect("kit run-tests: failed to set up SIGQUIT handler");
-    let mut sigterm = signal(SignalKind::terminate()).expect("kit run-tests: failed to set up SIGTERM handler");
-    let mut sigusr1 = signal(SignalKind::user_defined1()).expect("kit run-tests: failed to set up SIGUSR1 handler");
-    let mut sigusr2 = signal(SignalKind::user_defined2()).expect("kit run-tests: failed to set up SIGUSR2 handler");
+    let mut sigalrm = signal(SignalKind::alarm())
+        .expect("kit run-tests: failed to set up SIGALRM handler");
+    let mut sighup = signal(SignalKind::hangup())
+        .expect("kit run-tests: failed to set up SIGHUP handler");
+    let mut sigint = signal(SignalKind::interrupt())
+        .expect("kit run-tests: failed to set up SIGINT handler");
+    let mut sigpipe = signal(SignalKind::pipe())
+        .expect("kit run-tests: failed to set up SIGPIPE handler");
+    let mut sigquit = signal(SignalKind::quit())
+        .expect("kit run-tests: failed to set up SIGQUIT handler");
+    let mut sigterm = signal(SignalKind::terminate())
+        .expect("kit run-tests: failed to set up SIGTERM handler");
+    let mut sigusr1 = signal(SignalKind::user_defined1())
+        .expect("kit run-tests: failed to set up SIGUSR1 handler");
+    let mut sigusr2 = signal(SignalKind::user_defined2())
+        .expect("kit run-tests: failed to set up SIGUSR2 handler");
 
     tokio::select! {
         _ = sigalrm.recv() => error!("kit cleanup got SIGALRM\r"),
@@ -76,11 +84,16 @@ pub async fn cleanup(
         Some(nh) => {
             let mut nh = nh.lock().await;
             let nh_vec = std::mem::replace(&mut *nh, Vec::new());
-            Some(nh_vec.into_iter())
+            Some(nh_vec.into_iter().rev())
         },
     };
 
-    for NodeCleanupInfo { master_fd, process_id, home, anvil_process } in node_cleanup_infos.iter_mut() {
+    for NodeCleanupInfo {
+        master_fd,
+        process_id,
+        home,
+        anvil_process,
+    } in node_cleanup_infos.iter_mut().rev() {
         // Send Ctrl-C to the process
         info!("Cleaning up {:?}...\r", home);
 
@@ -139,7 +152,6 @@ pub async fn drain_print_runtime(
                 stderr_buffer.push('\n');
             }
             Ok(should_print_std) = recv_kill.recv() => {
-                println!("len stdout, stderr: {} {}", stdout_buffer.len(), stderr_buffer.len());
                 if should_print_std {
                     let stdout = remove_repeated_newlines(&stdout_buffer);
                     let stderr = remove_repeated_newlines(&stderr_buffer);

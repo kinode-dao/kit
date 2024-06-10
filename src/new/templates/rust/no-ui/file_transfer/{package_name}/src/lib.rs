@@ -1,42 +1,53 @@
+use crate::kinode::process::standard::{ProcessId as WitProcessId};
+use crate::kinode::process::{package_name}::{Address as WitAddress, Request as TransferRequest, Response as TransferResponse, WorkerRequest, DownloadRequest, ProgressRequest, FileInfo, InitializeRequest};
 use kinode_process_lib::{
     await_message, call_init, our_capabilities, println, spawn,
     vfs::{create_drive, metadata, open_dir, Directory, FileType},
-    Address, OnExit, Request, Response,
+    Address, OnExit, ProcessId, Request, Response,
 };
-use serde::{Deserialize, Serialize};
 
 wit_bindgen::generate!({
-    path: "wit",
-    world: "process",
+    path: "target/wit",
+    world: "{package_name_kebab}-{publisher_dotted_kebab}-v0",
+    generate_unused_types: true,
+    additional_derives: [serde::Deserialize, serde::Serialize],
 });
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum TransferRequest {
-    ListFiles,
-    Download { name: String, target: Address },
-    Progress { name: String, progress: u64 },
+impl From<Address> for WitAddress {
+    fn from(address: Address) -> Self {
+        WitAddress {
+            node: address.node,
+            process: address.process.into(),
+        }
+    }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum TransferResponse {
-    ListFiles(Vec<FileInfo>),
-    Download { name: String, worker: Address },
-    Done,
-    Started,
+impl From<ProcessId> for WitProcessId {
+    fn from(process: ProcessId) -> Self {
+        WitProcessId {
+            process_name: process.process_name,
+            package_name: process.package_name,
+            publisher_node: process.publisher_node,
+        }
+    }
+}
+impl From<WitAddress> for Address {
+    fn from(address: WitAddress) -> Self {
+        Address {
+            node: address.node,
+            process: address.process.into(),
+        }
+    }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub struct FileInfo {
-    pub name: String,
-    pub size: u64,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum WorkerRequest {
-    Initialize {
-        name: String,
-        target_worker: Option<Address>,
-    },
+impl From<WitProcessId> for ProcessId {
+    fn from(process: WitProcessId) -> Self {
+        ProcessId {
+            process_name: process.process_name,
+            package_name: process.package_name,
+            publisher_node: process.publisher_node,
+        }
+    }
 }
 
 fn ls_files(files_dir: &Directory) -> anyhow::Result<Vec<FileInfo>> {
@@ -64,9 +75,7 @@ fn handle_transfer_request(
     body: &[u8],
     files_dir: &Directory,
 ) -> anyhow::Result<()> {
-    let transfer_request = serde_json::from_slice::<TransferRequest>(body)?;
-
-    match transfer_request {
+    match serde_json::from_slice(body)? {
         TransferRequest::ListFiles => {
             let files = ls_files(files_dir)?;
 
@@ -74,7 +83,7 @@ fn handle_transfer_request(
                 .body(serde_json::to_vec(&TransferResponse::ListFiles(files))?)
                 .send()?;
         }
-        TransferRequest::Download { name, target } => {
+        TransferRequest::Download(DownloadRequest { name, target }) => {
             // spin up a worker, initialize based on whether it's a downloader or a sender.
             let our_worker = spawn(
                 None,
@@ -93,33 +102,33 @@ fn handle_transfer_request(
             if source.node == our.node {
                 // we want to download a file
                 let _resp = Request::new()
-                    .body(serde_json::to_vec(&WorkerRequest::Initialize {
+                    .body(serde_json::to_vec(&WorkerRequest::Initialize(InitializeRequest {
                         name: name.clone(),
                         target_worker: None,
-                    })?)
+                    }))?)
                     .target(&our_worker_address)
                     .send_and_await_response(5)??;
 
                 // send our initialized worker address to the other node
                 Request::new()
-                    .body(serde_json::to_vec(&TransferRequest::Download {
+                    .body(serde_json::to_vec(&TransferRequest::Download(DownloadRequest {
                         name: name.clone(),
-                        target: our_worker_address,
-                    })?)
-                    .target(&target)
+                        target: our_worker_address.into(),
+                    }))?)
+                    .target::<Address>(target.clone().into())
                     .send()?;
             } else {
                 // they want to download a file
                 Request::new()
-                    .body(serde_json::to_vec(&WorkerRequest::Initialize {
+                    .body(serde_json::to_vec(&WorkerRequest::Initialize(InitializeRequest {
                         name: name.clone(),
                         target_worker: Some(target),
-                    })?)
+                    }))?)
                     .target(&our_worker_address)
                     .send()?;
             }
         }
-        TransferRequest::Progress { name, progress } => {
+        TransferRequest::Progress(ProgressRequest { name, progress }) => {
             println!("{} progress: {}%", name, progress);
         }
     }

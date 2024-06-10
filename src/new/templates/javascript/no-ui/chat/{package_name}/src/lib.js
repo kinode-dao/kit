@@ -22,6 +22,19 @@ function inputBytesToString(byteObject) {
     return { bytes: byteArray, string: string };
 }
 
+function addToArchive(conversation, author, content, messageArchive) {
+    const message = {
+        author: author,
+        content: content
+    };
+    if (messageArchive.hasOwnProperty(conversation)) {
+        messageArchive[conversation].push(message);
+    } else {
+        messageArchive[conversation] = [message];
+    }
+    return messageArchive;
+}
+
 function handleMessage(ourNode, messageArchive) {
     const [source, message] = receive();
 
@@ -35,7 +48,12 @@ function handleMessage(ourNode, messageArchive) {
             const { target, message: messageText } = body.Send;
             if (target === ourNode) {
                 printToTerminal(0, `{package_name}|${source.node}: ${messageText}`);
-                messageArchive[source.node] = messageText;
+                messageArchive = addToArchive(
+                    source.node,
+                    source.node,
+                    messageText,
+                    messageArchive,
+                );
             } else {
                 sendAndAwaitResponse(
                     {
@@ -53,6 +71,12 @@ function handleMessage(ourNode, messageArchive) {
                         metadata: null
                     },
                     null
+                );
+                messageArchive = addToArchive(
+                    target,
+                    ourNode,
+                    messageText,
+                    messageArchive,
                 );
             }
             sendResponse(

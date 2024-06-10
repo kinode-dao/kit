@@ -14,9 +14,19 @@ pub async fn execute(
     url: &str,
     skip_deps_check: bool,
     features: &str,
+    default_world: Option<String>,
     verbose: bool,
 ) -> Result<()> {
-    build::execute(package_dir, no_ui, ui_only, skip_deps_check, features, verbose).await?;
+    build::execute(
+        package_dir,
+        no_ui,
+        ui_only,
+        skip_deps_check,
+        features,
+        Some(url.into()),
+        default_world,
+        verbose,
+    ).await?;
     start_package::execute(package_dir, url).await?;
     Ok(())
 }

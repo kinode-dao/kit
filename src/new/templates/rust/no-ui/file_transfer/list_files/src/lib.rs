@@ -1,45 +1,25 @@
-use serde::{Deserialize, Serialize};
-
+use crate::kinode::process::{package_name}::{Request as TransferRequest, Response as TransferResponse};
 use kinode_process_lib::{
-    await_next_request_body, call_init, println, Address, Message, Request,
+    await_next_message_body, call_init, println, Address, Message, Request,
 };
 
 wit_bindgen::generate!({
-    path: "wit",
-    world: "process",
+    path: "target/wit",
+    world: "{package_name_kebab}-{publisher_dotted_kebab}-v0",
+    generate_unused_types: true,
+    additional_derives: [serde::Deserialize, serde::Serialize],
 });
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum TransferRequest {
-    ListFiles,
-    Download { name: String, target: Address },
-    Progress { name: String, progress: u64 },
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum TransferResponse {
-    ListFiles(Vec<FileInfo>),
-    Download { name: String, worker: Address },
-    Done,
-    Started,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct FileInfo {
-    pub name: String,
-    pub size: u64,
-}
-
 call_init!(init);
-fn init(our: Address) {
-    let Ok(body) = await_next_request_body() else {
+fn init(_our: Address) {
+    let Ok(body) = await_next_message_body() else {
         println!("failed to get args!");
         return;
     };
 
     let who = String::from_utf8(body).unwrap_or_default();
     if who.is_empty() {
-        println!("usage: {}@list_files:{package_name}:{publisher} who", our);
+        println!("usage: list_files:{package_name}:{publisher} who");
         return;
     }
 

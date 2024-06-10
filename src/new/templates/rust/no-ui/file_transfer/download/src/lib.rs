@@ -1,45 +1,45 @@
-use serde::{Deserialize, Serialize};
-
+use crate::kinode::process::standard::{ProcessId as WitProcessId};
+use crate::kinode::process::{package_name}::{Address as WitAddress, Request as TransferRequest, DownloadRequest};
 use kinode_process_lib::{
-    await_next_request_body, call_init, println, Address, Message, Request,
+    await_next_message_body, call_init, println, Address, Message, ProcessId, Request,
 };
 
 wit_bindgen::generate!({
-    path: "wit",
-    world: "process",
+    path: "target/wit",
+    world: "{package_name_kebab}-{publisher_dotted_kebab}-v0",
+    generate_unused_types: true,
+    additional_derives: [serde::Deserialize, serde::Serialize],
 });
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum TransferRequest {
-    ListFiles,
-    Download { name: String, target: Address },
-    Progress { name: String, progress: u64 },
+impl From<Address> for WitAddress {
+    fn from(address: Address) -> Self {
+        WitAddress {
+            node: address.node,
+            process: address.process.into(),
+        }
+    }
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-pub enum TransferResponse {
-    ListFiles(Vec<FileInfo>),
-    Download { name: String, worker: Address },
-    Done,
-    Started,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub struct FileInfo {
-    pub name: String,
-    pub size: u64,
+impl From<ProcessId> for WitProcessId {
+    fn from(process: ProcessId) -> Self {
+        WitProcessId {
+            process_name: process.process_name,
+            package_name: process.package_name,
+            publisher_node: process.publisher_node,
+        }
+    }
 }
 
 call_init!(init);
 fn init(our: Address) {
-    let Ok(body) = await_next_request_body() else {
+    let Ok(body) = await_next_message_body() else {
         println!("failed to get args!");
         return;
     };
 
     let args = String::from_utf8(body).unwrap_or_default();
     let Some((name, who)) = args.split_once(" ") else {
-        println!("usage: {}@download:{package_name}:{publisher} file_name who", our.node());
+        println!("usage: download:{package_name}:{publisher} file_name who");
         return
     };
     let our: Address = format!("{}@{package_name}:{package_name}:{publisher}", our.node())
@@ -52,13 +52,13 @@ fn init(our: Address) {
 
     let Ok(Ok(Message::Response { .. })) =
         Request::to(our)
-            .body(serde_json::to_vec(&TransferRequest::Download {
+            .body(serde_json::to_vec(&TransferRequest::Download(DownloadRequest {
                 name: name.into(),
-                target: target.clone(),
-            }).unwrap())
+                target: target.clone().into(),
+            })).unwrap())
             .send_and_await_response(5)
     else {
-        println!("did not receive expected Response from {target}");
+        println!("download: did not receive expected Response from {target:?}");
         return;
     };
 }

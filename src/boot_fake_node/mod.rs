@@ -40,7 +40,7 @@ struct Asset {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn extract_zip(archive_path: &Path) -> Result<()> {
+pub fn extract_zip(archive_path: &Path) -> Result<()> {
     let file = fs::File::open(archive_path)?;
     let mut archive = ZipArchive::new(file)?;
 

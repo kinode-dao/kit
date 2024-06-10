@@ -14,12 +14,12 @@ use crate::chain;
 use crate::inject_message;
 use crate::start_package;
 
+use crate::kinode::process::tester::{Response as TesterResponse, FailResponse};
+
 pub mod cleanup;
 use cleanup::{cleanup, cleanup_on_signal, drain_print_runtime};
 pub mod types;
 use types::*;
-mod tester_types;
-use tester_types as tt;
 
 fn get_basename(file_path: &Path) -> Option<&str> {
     file_path
@@ -272,14 +272,12 @@ async fn run_tests(
 
     match inject_message::parse_response(response).await {
         Ok(inject_message::Response { ref body, .. }) => {
-            match serde_json::from_str(body)? {
-                tt::TesterResponse::Pass => info!("PASS"),
-                tt::TesterResponse::Fail { test, file, line, column } => {
+            let TesterResponse::Run(result) = serde_json::from_str(body)?;
+            match result {
+                Ok(()) => info!("PASS"),
+                Err(FailResponse { test, file, line, column }) => {
                     return Err(eyre!("FAIL: {} {}:{}:{}", test, file, line, column));
-                },
-                tt::TesterResponse::GetFullMessage(_) => {
-                    return Err(eyre!("FAIL: Unexpected Response"));
-                },
+                }
             }
         },
         Err(e) => {
@@ -291,12 +289,35 @@ async fn run_tests(
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<()> {
-    for setup_package_path in &test.setup_package_paths {
-        build::execute(&setup_package_path, false, false, false, "", false).await?;
+async fn handle_test(
+    detached: bool,
+    runtime_path: &Path,
+    test: Test,
+    test_dir_path: &Path,
+) -> Result<()> {
+    let setup_package_paths: Vec<PathBuf> = test.setup_package_paths
+        .iter()
+        .cloned()
+        .map(|p| test_dir_path.join(p).canonicalize().unwrap())
+        .collect();
+    let test_packages: Vec<TestPackage> = test.test_packages
+        .iter()
+        .cloned()
+        .map(|tp| {
+            TestPackage {
+                path: test_dir_path.join(tp.path).canonicalize().unwrap(),
+                grant_capabilities: tp.grant_capabilities,
+            }
+        })
+        .collect();
+    //for setup_package_path in &test.setup_package_paths {
+    //    let path = test_dir_path.join(setup_package_path).canonicalize()?;
+    for path in &setup_package_paths {
+        build::execute(&path, false, false, false, "", None, None, false).await?;  // TODO
     }
-    for TestPackage { ref path, .. } in &test.test_packages {
-        build::execute(path, false, false, false, "", false).await?;
+    for TestPackage { ref path, .. } in &test_packages {
+        let path = test_dir_path.join(path).canonicalize()?;
+        build::execute(&path, false, false, false, "", None, None, false).await?;  // TODO
     }
 
     // Initialize variables for master node and nodes list
@@ -409,10 +430,10 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
     }
 
     for node in &test.nodes {
-        load_setups(&test.setup_package_paths, node.port.clone()).await?;
+        load_setups(&setup_package_paths, node.port.clone()).await?;
     }
 
-    load_tests(&test.test_packages, master_node_port.unwrap().clone()).await?;
+    load_tests(&test_packages, master_node_port.unwrap().clone()).await?;
 
     let ports = test.nodes.iter().map(|n| n.port).collect();
 
@@ -436,8 +457,26 @@ async fn handle_test(detached: bool, runtime_path: &Path, test: Test) -> Result<
 pub async fn execute(config_path: &str) -> Result<()> {
     let detached = true; // TODO: to arg?
 
-    let config_content = fs::read_to_string(config_path)?;
-    let config = toml::from_str::<Config>(&config_content)?.expand_home_paths();
+    let config_path = PathBuf::from(config_path);
+    if !config_path.exists() {
+        return Err(eyre!("given config path {config_path:?} does not exist"));
+    }
+    let config_path = if config_path.is_file() {
+        config_path
+    } else {
+        let config_path = config_path.join("test").join("tests.toml");
+        if !config_path.exists() {
+            return Err(eyre!("given config path {config_path:?} does not exist"));
+        }
+        if config_path.is_file() {
+            config_path
+        } else {
+            return Err(eyre!("given config path {config_path:?} is not a file"));
+        }
+    };
+
+    let content = fs::read_to_string(&config_path)?;
+    let config = toml::from_str::<Config>(&content)?.expand_home_paths();
 
     debug!("{:?}", config);
 
@@ -467,8 +506,10 @@ pub async fn execute(config_path: &str) -> Result<()> {
         },
     };
 
+    let test_dir_path = PathBuf::from(config_path).canonicalize()?;
+    let test_dir_path = test_dir_path.parent().unwrap();
     for test in config.tests {
-        handle_test(detached, &runtime_path, test).await?;
+        handle_test(detached, &runtime_path, test, &test_dir_path).await?;
     }
 
     Ok(())

@@ -28,6 +28,7 @@ use kit::{
     setup,
     start_package,
     update,
+    view_api,
     KIT_LOG_PATH_DEFAULT,
 };
 
@@ -202,6 +203,14 @@ async fn execute(
                 Some(f) => f.clone(),
                 None => "".into(),
             };
+            let url: Option<String> = match build_matches.get_one::<String>("URL") {
+                Some(url) => Some(url.clone()),
+                None => {
+                    build_matches.get_one::<u16>("NODE_PORT")
+                        .map(|p| format!("http://localhost:{}", p))
+                }
+            };
+            let default_world = build_matches.get_one::<String>("WORLD");
             let verbose = build_matches.get_one::<bool>("VERBOSE").unwrap();
 
             build::execute(
@@ -210,6 +219,8 @@ async fn execute(
                 *ui_only,
                 *skip_deps_check,
                 &features,
+                url,
+                default_world.cloned(),
                 *verbose,
             ).await
         }
@@ -233,6 +244,7 @@ async fn execute(
                 Some(f) => f.clone(),
                 None => "".into(),
             };
+            let default_world = build_start_matches.get_one::<String>("WORLD");
             let verbose = build_start_matches.get_one::<bool>("VERBOSE").unwrap();
 
             build_start_package::execute(
@@ -242,6 +254,7 @@ async fn execute(
                 &url,
                 *skip_deps_check,
                 &features,
+                default_world.cloned(),
                 *verbose,
             )
             .await
@@ -375,6 +388,21 @@ async fn execute(
             let branch = update_matches.get_one::<String>("BRANCH").unwrap();
 
             update::execute(args, branch)
+        }
+        Some(("view-api", view_api_matches)) => {
+            let package_id = view_api_matches
+                .get_one::<String>("PACKAGE_ID")
+                .and_then(|s: &String| Some(s.as_str()));
+            let url: String = match view_api_matches.get_one::<String>("URL") {
+                Some(url) => url.clone(),
+                None => {
+                    let port = view_api_matches.get_one::<u16>("NODE_PORT").unwrap();
+                    format!("http://localhost:{}", port)
+                }
+            };
+
+            view_api::execute(None, package_id, &url, true).await?;
+            Ok(())
         }
         _ => {
             warn!("Invalid subcommand. Usage:\n{}", usage);
@@ -593,6 +621,27 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("Pass these comma-delimited feature flags to Rust cargo builds")
                 .required(false)
             )
+            .arg(Arg::new("NODE_PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("Node port: for use on localhost (overridden by URL)")
+                .value_parser(value_parser!(u16))
+                .required(false)
+            )
+            .arg(Arg::new("URL")
+                .action(ArgAction::Set)
+                .short('u')
+                .long("url")
+                .help("Node URL (overrides NODE_PORT)")
+                .required(false)
+            )
+            .arg(Arg::new("WORLD")
+                .action(ArgAction::Set)
+                .short('w')
+                .long("world")
+                .help("Fallback WIT world name")
+            )
             .arg(Arg::new("VERBOSE")
                 .action(ArgAction::SetTrue)
                 .short('v')
@@ -622,6 +671,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('u')
                 .long("url")
                 .help("Node URL (overrides NODE_PORT)")
+                .required(false)
+            )
+            .arg(Arg::new("WORLD")
+                .action(ArgAction::Set)
+                .short('w')
+                .long("world")
+                .help("Fallback WIT world name")
                 .required(false)
             )
             .arg(Arg::new("NO_UI")
@@ -871,7 +927,6 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .long("url")
                 .help("Node URL (overrides NODE_PORT)")
                 .required(false)
-                //.default_value("http://localhost:8080")
             )
         )
         .subcommand(Command::new("reset-cache")
@@ -932,6 +987,30 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .long("branch")
                 .help("Branch name (e.g. `next-release`)")
                 .default_value("master")
+            )
+        )
+        .subcommand(Command::new("view-api")
+            .about("Fetch the list of APIs or a specific API")
+            .visible_alias("v")
+            .arg(Arg::new("PACKAGE_ID")
+                .action(ArgAction::Set)
+                .help("Get API of this package (default: list all APIs)")
+                .required(false)
+            )
+            .arg(Arg::new("NODE_PORT")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("port")
+                .help("Node port: for use on localhost (overridden by URL)")
+                .default_value("8080")
+                .value_parser(value_parser!(u16))
+            )
+            .arg(Arg::new("URL")
+                .action(ArgAction::Set)
+                .short('u')
+                .long("url")
+                .help("Node URL (overrides NODE_PORT)")
+                .required(false)
             )
         )
     )

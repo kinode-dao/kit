@@ -1,6 +1,7 @@
-use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
+use crate::kinode::process::standard::{ProcessId as WitProcessId};
+use crate::kinode::process::{package_name}::{Address as WitAddress, Request as TransferRequest, WorkerRequest, ProgressRequest, InitializeRequest, ChunkRequest};
 use kinode_process_lib::{
     await_message, call_init, get_blob, println,
     vfs::{open_dir, open_file, Directory, File, SeekFrom},
@@ -8,32 +9,50 @@ use kinode_process_lib::{
 };
 
 wit_bindgen::generate!({
-    path: "wit",
-    world: "process",
+    path: "target/wit",
+    world: "{package_name_kebab}-{publisher_dotted_kebab}-v0",
+    generate_unused_types: true,
+    additional_derives: [serde::Deserialize, serde::Serialize],
 });
 
+impl From<Address> for WitAddress {
+    fn from(address: Address) -> Self {
+        WitAddress {
+            node: address.node,
+            process: address.process.into(),
+        }
+    }
+}
+
+impl From<ProcessId> for WitProcessId {
+    fn from(process: ProcessId) -> Self {
+        WitProcessId {
+            process_name: process.process_name,
+            package_name: process.package_name,
+            publisher_node: process.publisher_node,
+        }
+    }
+}
+impl From<WitAddress> for Address {
+    fn from(address: WitAddress) -> Self {
+        Address {
+            node: address.node,
+            process: address.process.into(),
+        }
+    }
+}
+
+impl From<WitProcessId> for ProcessId {
+    fn from(process: WitProcessId) -> Self {
+        ProcessId {
+            process_name: process.process_name,
+            package_name: process.package_name,
+            publisher_node: process.publisher_node,
+        }
+    }
+}
+
 const CHUNK_SIZE: u64 = 1048576; // 1MB
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum WorkerRequest {
-    Initialize {
-        name: String,
-        target_worker: Option<Address>,
-    },
-    Chunk {
-        name: String,
-        offset: u64,
-        length: u64,
-    },
-    Size(u64),
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-pub enum TransferRequest {
-    ListFiles,
-    Download { name: String, target: Address },
-    Progress { name: String, progress: u64 },
-}
 
 fn handle_message(
     our: &Address,
@@ -48,13 +67,11 @@ fn handle_message(
             ref body,
             ..
         } => {
-            let request = serde_json::from_slice::<WorkerRequest>(body)?;
-
-            match request {
-                WorkerRequest::Initialize {
+            match serde_json::from_slice(body)? {
+                WorkerRequest::Initialize(InitializeRequest {
                     name,
                     target_worker,
-                } => {
+                }) => {
                     // initialize command from main process,
                     // sets up worker, matches on if it's a sender or receiver.
                     // target_worker = None, we are receiver, else sender.
@@ -65,6 +82,7 @@ fn handle_message(
 
                     match target_worker {
                         Some(target_worker) => {
+                            let target_worker: Address = target_worker.into();
                             // we have a target, chunk the data, and send it.
                             let size = active_file.metadata()?.len;
                             let num_chunks = (size as f64 / CHUNK_SIZE as f64).ceil() as u64;
@@ -85,11 +103,11 @@ fn handle_message(
                                 active_file.read_at(&mut buffer)?;
 
                                 Request::new()
-                                    .body(serde_json::to_vec(&WorkerRequest::Chunk {
+                                    .body(serde_json::to_vec(&WorkerRequest::Chunk(ChunkRequest {
                                         name: name.clone(),
                                         offset,
                                         length,
-                                    })?)
+                                    }))?)
                                     .target(target_worker.clone())
                                     .blob_bytes(buffer)
                                     .send()?;
@@ -107,11 +125,11 @@ fn handle_message(
                     }
                 }
                 // someone sending a chunk to us!
-                WorkerRequest::Chunk {
+                WorkerRequest::Chunk(ChunkRequest {
                     name,
                     offset,
                     length,
-                } => {
+                }) => {
                     let file = match file {
                         Some(file) => file,
                         None => {
@@ -143,10 +161,10 @@ fn handle_message(
                         };
 
                         Request::new()
-                            .body(serde_json::to_vec(&TransferRequest::Progress {
+                            .body(serde_json::to_vec(&TransferRequest::Progress(ProgressRequest {
                                 name,
                                 progress,
-                            })?)
+                            }))?)
                             .target(&main_app)
                             .send()?;
 
