@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::{Path, PathBuf},
 };
 
@@ -156,6 +156,15 @@ pub fn execute(
             true,
         ),
     };
+
+    let disallowed_package_names = HashSet::from(["api", "test"]);
+    if disallowed_package_names.contains(package_name.as_str()) {
+        return Err(eyre!(
+            "Package name {} not allowed; cannot be in {:?}.",
+            package_name,
+            disallowed_package_names,
+        ));
+    }
 
     if !is_url_safe(&package_name) {
         let error = if !is_from_dir {
