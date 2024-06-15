@@ -487,6 +487,7 @@ pub async fn execute(
         process_id: runtime_process.id().unwrap() as i32,
         home: node_home.clone(),
         anvil_process: anvil_process.map(|ap| ap.id() as i32),
+        other_processes: vec![],
     });
     drop(node_cleanup_infos);
 

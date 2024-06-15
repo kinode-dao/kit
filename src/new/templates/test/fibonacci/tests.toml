@@ -8,6 +8,8 @@ setup_package_paths = [".."]
 test_packages = [
     { path = "{package_name}_test", grant_capabilities = ["{package_name}:{package_name}:{publisher}"] },
 ]
+setup_scripts = []
+test_scripts = []
 timeout_secs = 5
 fakechain_router = 8545
 

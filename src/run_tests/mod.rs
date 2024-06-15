@@ -1,3 +1,4 @@
+use std::process::Command;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -320,8 +321,6 @@ async fn handle_test(
             grant_capabilities: tp.grant_capabilities,
         })
         .collect();
-    //for setup_package_path in &test.setup_package_paths {
-    //    let path = test_dir_path.join(setup_package_path).canonicalize()?;
     for path in &setup_package_paths {
         build::execute(&path, false, false, false, "", None, None, false).await?;
         // TODO
@@ -361,6 +360,19 @@ async fn handle_test(
     ));
     task_handles.push(handle);
     let _cleanup_context = CleanupContext::new(send_to_cleanup.clone());
+
+    let setup_scripts: Vec<i32> = test.setup_scripts
+        .iter()
+        .map(|s| {
+            let p = test_dir_path.join(&s.path).canonicalize().unwrap();
+            let p = p.to_str().unwrap();
+            Command::new("bash")
+                .args(["-c", &format!("{} {}", p, &s.args)])
+                .spawn()
+                .expect("")
+                .id() as i32
+        })
+        .collect();
 
     // boot fakechain
     let recv_kill_in_start_chain = send_to_kill.subscribe();
@@ -414,10 +426,12 @@ async fn handle_test(
         )?;
 
         let mut anvil_cleanup: Option<i32> = None;
+        let mut other_processes = vec![];
 
         if master_node_port.is_none() {
             anvil_cleanup = anvil_process.as_ref().map(|ap| ap.id() as i32);
             master_node_port = Some(node.port);
+            other_processes.extend_from_slice(&setup_scripts);
         };
 
         let mut node_cleanup_infos = node_cleanup_infos.lock().await;
@@ -426,6 +440,7 @@ async fn handle_test(
             process_id: runtime_process.id().unwrap() as i32,
             home: node_home.clone(),
             anvil_process: anvil_cleanup,
+            other_processes,
         });
 
         let recv_kill_in_dpr = send_to_kill.subscribe();
@@ -457,6 +472,15 @@ async fn handle_test(
         test.timeout_secs,
     )
     .await;
+
+    for script in test.test_scripts {
+        let p = test_dir_path.join(&script.path).canonicalize().unwrap();
+        let p = p.to_str().unwrap();
+        build::run_command(
+            Command::new("bash").args(["-c", &format!("{} {}", p, script.args)]),
+            false,
+        )?;
+    }
 
     let _ = send_to_cleanup.send(tests_result.is_err());
     for handle in task_handles {

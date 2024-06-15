@@ -25,6 +25,8 @@ pub enum Runtime {
 pub struct Test {
     pub setup_package_paths: Vec<PathBuf>,
     pub test_packages: Vec<TestPackage>,
+    pub setup_scripts: Vec<Script>,
+    pub test_scripts: Vec<Script>,
     pub timeout_secs: u64,
     pub fakechain_router: u16,
     pub nodes: Vec<Node>,
@@ -34,6 +36,12 @@ pub struct Test {
 pub struct TestPackage {
     pub path: PathBuf,
     pub grant_capabilities: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Script {
+    pub path: PathBuf,
+    pub args: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +68,7 @@ pub struct NodeCleanupInfo {
     pub process_id: i32,
     pub home: PathBuf,
     pub anvil_process: Option<i32>,
+    pub other_processes: Vec<i32>,
 }
 
 pub struct CleanupContext {

@@ -94,6 +94,7 @@ pub async fn execute(
         process_id: runtime_process.id().unwrap() as i32,
         home: node_home.clone(),
         anvil_process: None,
+        other_processes: vec![],
     });
     drop(node_cleanup_infos);
 

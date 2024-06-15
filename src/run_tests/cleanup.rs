@@ -93,6 +93,7 @@ pub async fn cleanup(
         process_id,
         home,
         anvil_process,
+        other_processes,
     } in node_cleanup_infos.iter_mut().rev()
     {
         // Send Ctrl-C to the process
@@ -116,6 +117,10 @@ pub async fn cleanup(
             clean_process_by_pid(*anvil);
             info!("Cleaned up anvil fakechain.");
         }
+
+        other_processes
+            .iter()
+            .for_each(|pid| clean_process_by_pid(*pid));
 
         if let Some(ref mut nh) = node_handles {
             if let Some(mut node_handle) = nh.next() {
