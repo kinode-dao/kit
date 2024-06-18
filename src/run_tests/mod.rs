@@ -50,7 +50,7 @@ fn make_node_names(nodes: Vec<Node>) -> Result<Vec<String>> {
         .map(|node| get_basename(&node.home)
             .and_then(|base| Some(base.to_string()))
             .and_then(|mut base| {
-                if !base.ends_with(".dev") {
+                if !base.contains(".") {
                     base.push_str(".dev");
                 }
                 Some(base)
@@ -375,13 +375,8 @@ async fn handle_test(
             args.extend_from_slice(&["--password".into(), password.clone()]);
         };
 
-        // TODO: change this to be less restrictive; currently leads to weirdness
-        //  like an input of `fake.os` -> `fake.os.dev`.
-        //  The reason we need it for now is that non-`.dev` nodes are not currently
-        //  addressable.
-        //  Once they are addressable, change this to, perhaps, `!name.contains(".")
         let mut name = node.fake_node_name.clone();
-        if !name.ends_with(".dev") {
+        if !name.contains(".") {
             name.push_str(".dev");
         }
 
