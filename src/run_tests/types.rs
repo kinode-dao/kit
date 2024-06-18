@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     pub runtime: Runtime,
     pub runtime_build_release: bool,
+    pub persist_home: bool,
     pub tests: Vec<Test>,
 }
 
@@ -23,13 +24,19 @@ pub enum Runtime {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Test {
-    pub setup_package_paths: Vec<PathBuf>,
-    pub test_packages: Vec<TestPackage>,
+    pub setup_packages: Vec<SetupPackage>,
     pub setup_scripts: Vec<Script>,
+    pub test_packages: Vec<TestPackage>,
     pub test_scripts: Vec<Script>,
     pub timeout_secs: u64,
     pub fakechain_router: u16,
     pub nodes: Vec<Node>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SetupPackage {
+    pub path: PathBuf,
+    pub run: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

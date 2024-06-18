@@ -141,14 +141,45 @@ async fn wait_until_booted(
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> Result<()> {
+async fn load_setups(setup_paths: &Vec<SetupPackage>, port: u16) -> Result<()> {
     info!("Loading setup packages...");
 
     for setup_path in setup_paths {
-        start_package::execute(&setup_path, &format!("http://localhost:{}", port)).await?;
+        if setup_path.run {
+            start_package::execute(
+                &setup_path.path,
+                &format!("http://localhost:{}", port),
+            ).await?;
+        }
+        load_process(&setup_path.path, "setup", &port).await?;
     }
 
     info!("Done loading setup packages.");
+    Ok(())
+}
+
+#[instrument(level = "trace", skip_all)]
+async fn load_process(path: &Path, drive: &str, port: &u16) -> Result<()> {
+    let basename = get_basename(path).unwrap();
+    let request = inject_message::make_message(
+        "vfs:distro:sys",
+        Some(15),
+        &serde_json::to_string(&serde_json::json!({
+            "path": format!("/tester:sys/{drive}/{basename}.wasm"),
+            "action": "Write",
+        }))
+        .unwrap(),
+        None,
+        None,
+        path.join("pkg").join(format!("{basename}.wasm")).to_str(),
+    )?;
+
+    let response =
+        inject_message::send_request(&format!("http://localhost:{}", port), request).await?;
+    match inject_message::parse_response(response).await {
+        Ok(_) => {}
+        Err(e) => return Err(eyre!("Failed to load test {path:?}: {}", e)),
+    }
     Ok(())
 }
 
@@ -157,26 +188,7 @@ async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> Result<()> {
     info!("Loading tests...");
 
     for TestPackage { ref path, .. } in test_packages {
-        let basename = get_basename(path).unwrap();
-        let request = inject_message::make_message(
-            "vfs:distro:sys",
-            Some(15),
-            &serde_json::to_string(&serde_json::json!({
-                "path": format!("/tester:sys/tests/{basename}.wasm"),
-                "action": "Write",
-            }))
-            .unwrap(),
-            None,
-            None,
-            path.join("pkg").join(format!("{basename}.wasm")).to_str(),
-        )?;
-
-        let response =
-            inject_message::send_request(&format!("http://localhost:{}", port), request).await?;
-        match inject_message::parse_response(response).await {
-            Ok(_) => {}
-            Err(e) => return Err(eyre!("Failed to load tests: {}", e)),
-        }
+        load_process(path, "tests", &port).await?;
     }
 
     let mut grant_caps = std::collections::HashMap::new();
@@ -305,12 +317,18 @@ async fn handle_test(
     runtime_path: &Path,
     test: Test,
     test_dir_path: &Path,
+    persist_home: bool,
 ) -> Result<()> {
-    let setup_package_paths: Vec<PathBuf> = test
-        .setup_package_paths
+    let setup_packages: Vec<SetupPackage> = test
+        .setup_packages
         .iter()
         .cloned()
-        .map(|p| test_dir_path.join(p).canonicalize().unwrap())
+        .map(|s| {
+            SetupPackage {
+                path: test_dir_path.join(s.path).canonicalize().unwrap(),
+                run: s.run,
+            }
+        })
         .collect();
     let test_packages: Vec<TestPackage> = test
         .test_packages
@@ -321,14 +339,30 @@ async fn handle_test(
             grant_capabilities: tp.grant_capabilities,
         })
         .collect();
-    for path in &setup_package_paths {
-        build::execute(&path, false, false, false, "", None, None, false).await?;
-        // TODO
+    for setup_package in &setup_packages {
+        build::execute(
+            &setup_package.path,
+            false,
+            false,
+            false,
+            "test",
+            None,
+            None,
+            false,
+        ).await?; // TODO
     }
     for TestPackage { ref path, .. } in &test_packages {
         let path = test_dir_path.join(path).canonicalize()?;
-        build::execute(&path, false, false, false, "", None, None, false).await?;
-        // TODO
+        build::execute(
+            &path,
+            false,
+            false,
+            false,
+            "test",
+            None,
+            None,
+            false,
+        ).await?; // TODO
     }
 
     // Initialize variables for master node and nodes list
@@ -350,7 +384,7 @@ async fn handle_test(
         node_cleanup_infos_for_cleanup,
         Some(node_handles_for_cleanup),
         detached,
-        true,
+        !persist_home,
     ));
     task_handles.push(handle);
     let send_to_cleanup_for_signal = send_to_cleanup.clone();
@@ -458,7 +492,7 @@ async fn handle_test(
     }
 
     for node in &test.nodes {
-        load_setups(&setup_package_paths, node.port.clone()).await?;
+        load_setups(&setup_packages, node.port.clone()).await?;
     }
 
     load_tests(&test_packages, master_node_port.unwrap().clone()).await?;
@@ -548,7 +582,13 @@ pub async fn execute(config_path: &str) -> Result<()> {
     let test_dir_path = PathBuf::from(config_path).canonicalize()?;
     let test_dir_path = test_dir_path.parent().unwrap();
     for test in config.tests {
-        handle_test(detached, &runtime_path, test, &test_dir_path).await?;
+        handle_test(
+            detached,
+            &runtime_path,
+            test,
+            &test_dir_path,
+            config.persist_home,
+        ).await?;
     }
 
     Ok(())
