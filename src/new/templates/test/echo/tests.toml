@@ -5,7 +5,9 @@ runtime_build_release = false
 
 
 [[tests]]
-setup_package_paths = [".."]
+setup_packages = [
+    { path = "..", run = true }
+]
 setup_scripts = []
 test_packages = [
     { path = "{package_name}_test", grant_capabilities = ["{package_name}:{package_name}:{publisher}"] },
