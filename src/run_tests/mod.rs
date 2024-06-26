@@ -307,7 +307,7 @@ async fn run_tests(
         Ok(inject_message::Response { ref body, .. }) => {
             let TesterResponse::Run(result) = serde_json::from_str(body)?;
             match result {
-                Ok(()) => info!("PASS"),
+                Ok(()) => {}
                 Err(FailResponse {
                     test,
                     file,
@@ -480,14 +480,16 @@ async fn handle_test(
             other_processes.extend_from_slice(&setup_scripts);
         };
 
-        let mut node_cleanup_infos = node_cleanup_infos.lock().await;
-        node_cleanup_infos.push(NodeCleanupInfo {
-            master_fd,
-            process_id: runtime_process.id().unwrap() as i32,
-            home: node_home.clone(),
-            anvil_process: anvil_cleanup,
-            other_processes,
-        });
+        {
+            let mut node_cleanup_infos = node_cleanup_infos.lock().await;
+            node_cleanup_infos.push(NodeCleanupInfo {
+                master_fd,
+                process_id: runtime_process.id().unwrap() as i32,
+                home: node_home.clone(),
+                anvil_process: anvil_cleanup,
+                other_processes,
+            });
+        }
 
         let recv_kill_in_dpr = send_to_kill.subscribe();
         tokio::spawn(drain_print_runtime(
@@ -496,8 +498,10 @@ async fn handle_test(
             recv_kill_in_dpr,
         ));
 
-        let mut node_handles = node_handles.lock().await;
-        node_handles.push(runtime_process);
+        {
+            let mut node_handles = node_handles.lock().await;
+            node_handles.push(runtime_process);
+        }
 
         let recv_kill_in_wait = send_to_kill.subscribe();
         wait_until_booted(&node.home, node.port, 10, recv_kill_in_wait).await?;
@@ -522,10 +526,19 @@ async fn handle_test(
     for script in test.test_scripts {
         let p = test_dir_path.join(&script.path).canonicalize().unwrap();
         let p = p.to_str().unwrap();
+        let command = if script.args.is_empty() {
+            p.to_string()
+        } else {
+            format!("{} {}", p, script.args)
+        };
         build::run_command(
-            Command::new("bash").args(["-c", &format!("{} {}", p, script.args)]),
+            Command::new("bash").args(["-c", &command]),
             false,
         )?;
+    }
+
+    if tests_result.is_ok() {
+        info!("PASS");
     }
 
     let _ = send_to_cleanup.send(tests_result.is_err());

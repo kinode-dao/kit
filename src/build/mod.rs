@@ -97,12 +97,12 @@ pub fn run_command(cmd: &mut Command, verbose: bool) -> Result<Option<(String, S
         )))
     } else {
         Err(eyre!(
-            "Command `{} {:?}` failed with exit code {}\nstdout: {}\nstderr: {}",
+            "Command `{} {:?}` failed with exit code {:?}\nstdout: {}\nstderr: {}",
             cmd.get_program().to_str().unwrap(),
             cmd.get_args()
                 .map(|a| a.to_str().unwrap())
                 .collect::<Vec<_>>(),
-            output.status.code().unwrap(),
+            output.status.code(),
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr),
         ))

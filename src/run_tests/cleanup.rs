@@ -88,6 +88,10 @@ pub async fn cleanup(
         }
     };
 
+    let _ = send_to_kill.send(
+        should_print_std.is_none() || should_print_std.is_some_and(|b| b)
+    );
+
     for NodeCleanupInfo {
         master_fd,
         process_id,
@@ -115,7 +119,7 @@ pub async fn cleanup(
         if let Some(anvil) = anvil_process {
             info!("Cleaning up anvil fakechain...\r");
             clean_process_by_pid(*anvil);
-            info!("Cleaned up anvil fakechain.");
+            info!("Done cleaning up anvil fakechain.\r");
         }
 
         other_processes
@@ -133,7 +137,6 @@ pub async fn cleanup(
         }
         info!("Done cleaning up {:?}.\r", home);
     }
-    let _ = send_to_kill.send(should_print_std.is_some_and(|b| b));
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -161,7 +164,7 @@ pub async fn drain_print_runtime(
                 if should_print_std {
                     let stdout = remove_repeated_newlines(&stdout_buffer);
                     let stderr = remove_repeated_newlines(&stderr_buffer);
-                    println!("stdout:\n{}\nstderr:\n{}", stdout, stderr);
+                    info!("stdout:\n{}\nstderr:\n{}", stdout, stderr);
                 }
                 return;
             }
