@@ -1,6 +1,5 @@
 use std::os::unix::io::OwnedFd;
 use std::path::PathBuf;
-//use std::process::Child;
 use std::sync::Arc;
 
 use tokio::process::Child;
@@ -26,7 +25,8 @@ pub enum Runtime {
 pub struct Test {
     pub setup_packages: Vec<SetupPackage>,
     pub setup_scripts: Vec<Script>,
-    pub test_packages: Vec<TestPackage>,
+    pub test_package_paths: Vec<PathBuf>,
+    //pub test_packages: Vec<TestPackage>,
     pub test_scripts: Vec<Script>,
     pub timeout_secs: u64,
     pub fakechain_router: u16,
@@ -37,12 +37,6 @@ pub struct Test {
 pub struct SetupPackage {
     pub path: PathBuf,
     pub run: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TestPackage {
-    pub path: PathBuf,
-    pub grant_capabilities: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
