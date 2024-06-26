@@ -1,6 +1,10 @@
-use crate::kinode::process::tester::{Request as TesterRequest, Response as TesterResponse, RunRequest, FailResponse};
+use crate::kinode::process::tester::{
+    FailResponse, Request as TesterRequest, Response as TesterResponse, RunRequest,
+};
 
-use kinode_process_lib::{await_message, call_init, print_to_terminal, println, Address, ProcessId, Request, Response};
+use kinode_process_lib::{
+    await_message, call_init, print_to_terminal, Address, ProcessId, Request, Response,
+};
 
 mod tester_lib;
 
@@ -11,7 +15,7 @@ wit_bindgen::generate!({
     additional_derives: [PartialEq, serde::Deserialize, serde::Serialize, process_macros::SerdeJsonInto],
 });
 
-fn handle_message (our: &Address) -> anyhow::Result<()> {
+fn handle_message(our: &Address) -> anyhow::Result<()> {
     let message = await_message().unwrap();
 
     if !message.is_request() {
@@ -38,15 +42,15 @@ fn handle_message (our: &Address) -> anyhow::Result<()> {
 
     // Send
     print_to_terminal(0, "{package_name}_test: b");
-    let message: String = "hello".into();
     let response = Request::new()
         .target(our_echo_address)
         .body(serde_json::to_vec("test")?)
-        .send_and_await_response(15)?.unwrap();
-    if response.is_request() { fail!("{package_name}_test"); };
-    if serde_json::json!("Ack") != serde_json::from_slice::<serde_json::Value>(
-        response.body()
-    )? {
+        .send_and_await_response(15)?
+        .unwrap();
+    if response.is_request() {
+        fail!("{package_name}_test");
+    };
+    if serde_json::json!("Ack") != serde_json::from_slice::<serde_json::Value>(response.body())? {
         fail!("{package_name}_test");
     };
 
@@ -64,12 +68,12 @@ fn init(our: Address) {
 
     loop {
         match handle_message(&our) {
-            Ok(()) => {},
+            Ok(()) => {}
             Err(e) => {
                 print_to_terminal(0, format!("{package_name}_test: error: {e:?}").as_str());
 
                 fail!("{package_name}_test");
-            },
+            }
         };
     }
 }

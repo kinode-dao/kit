@@ -46,6 +46,43 @@ struct CargoPackage {
 }
 
 #[instrument(level = "trace", skip_all)]
+pub fn has_feature(cargo_toml_path: &str, feature: &str) -> Result<bool> {
+    let cargo_toml_content = fs::read_to_string(cargo_toml_path)?;
+    let cargo_toml: toml::Value = cargo_toml_content.parse()?;
+
+    if let Some(features) = cargo_toml.get("features").and_then(|f| f.as_table()) {
+        Ok(features.contains_key(feature))
+    } else {
+        Ok(false)
+    }
+}
+
+#[instrument(level = "trace", skip_all)]
+pub fn remove_missing_features(
+    cargo_toml_path: &Path,
+    features: Vec<&str>,
+) -> Result<Vec<String>> {
+    let cargo_toml_content = fs::read_to_string(cargo_toml_path)?;
+    let cargo_toml: toml::Value = cargo_toml_content.parse()?;
+    let Some(cargo_features) = cargo_toml.get("features").and_then(|f| f.as_table()) else {
+        return Ok(vec![]);
+    };
+
+    Ok(features
+        .iter()
+        .filter_map(|f| {
+            let f = f.to_string();
+            if cargo_features.contains_key(&f) {
+                Some(f)
+            } else {
+                None
+            }
+        })
+        .collect()
+    )
+}
+
+#[instrument(level = "trace", skip_all)]
 pub fn run_command(cmd: &mut Command, verbose: bool) -> Result<Option<(String, String)>> {
     if verbose {
         let mut child = cmd.spawn()?;
@@ -60,12 +97,12 @@ pub fn run_command(cmd: &mut Command, verbose: bool) -> Result<Option<(String, S
         )))
     } else {
         Err(eyre!(
-            "Command `{} {:?}` failed with exit code {}\nstdout: {}\nstderr: {}",
+            "Command `{} {:?}` failed with exit code {:?}\nstdout: {}\nstderr: {}",
             cmd.get_program().to_str().unwrap(),
             cmd.get_args()
                 .map(|a| a.to_str().unwrap())
                 .collect::<Vec<_>>(),
-            output.status.code().unwrap(),
+            output.status.code(),
             String::from_utf8_lossy(&output.stdout),
             String::from_utf8_lossy(&output.stderr),
         ))
@@ -324,6 +361,17 @@ async fn compile_rust_wasm_process(
         "target",
         "--color=always",
     ];
+    let test_only = features == "test";
+    let features: Vec<&str> = features.split(',').collect();
+    let original_length = features.len();
+    let features = remove_missing_features(
+        &process_dir.join("Cargo.toml"),
+        features,
+    )?;
+    if !test_only && original_length != features.len() {
+        info!("process {:?} missing features; using {:?}", process_dir, features);
+    };
+    let features = features.join(",");
     if !features.is_empty() {
         args.push("--features");
         args.push(&features);
@@ -492,17 +540,6 @@ async fn build_wit_dir(
     for (file_name, contents) in apis {
         fs::write(wit_dir.join(file_name), contents)?;
     }
-
-    //let src_dir = process_dir.join("src");
-    //for entry in src_dir.read_dir()? {
-    //    let entry = entry?;
-    //    let path = entry.path();
-    //    if Some("wit") == path.extension().and_then(|s| s.to_str()) {
-    //        if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
-    //            fs::copy(&path, wit_dir.join(file_name))?;
-    //        }
-    //    }
-    //}
     Ok(())
 }
 

@@ -1,12 +1,15 @@
+use std::process::Command;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use color_eyre::{eyre::eyre, Result};
+use color_eyre::{eyre::{eyre, WrapErr}, Result};
 use dirs::home_dir;
 use fs_err as fs;
 use tokio::sync::Mutex;
 use tokio::time::{sleep, Duration};
 use tracing::{debug, info, instrument};
+
+use kinode_process_lib::kernel_types::PackageManifestEntry;
 
 use crate::boot_fake_node::{compile_runtime, get_runtime_binary, run_runtime};
 use crate::build;
@@ -75,13 +78,10 @@ impl Config {
             }
         };
         for test in self.tests.iter_mut() {
-            test.test_packages = test
-                .test_packages
+            test.test_package_paths = test
+                .test_package_paths
                 .iter()
-                .map(|tp| TestPackage {
-                    path: expand_home_path(&tp.path).unwrap_or_else(|| tp.path.clone()),
-                    grant_capabilities: tp.grant_capabilities.clone(),
-                })
+                .map(|p| expand_home_path(&p).unwrap_or_else(|| p.clone()))
                 .collect();
             for node in test.nodes.iter_mut() {
                 node.home = expand_home_path(&node.home).unwrap_or_else(|| node.home.clone());
@@ -140,11 +140,17 @@ async fn wait_until_booted(
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> Result<()> {
+async fn load_setups(setup_paths: &Vec<SetupPackage>, port: u16) -> Result<()> {
     info!("Loading setup packages...");
 
     for setup_path in setup_paths {
-        start_package::execute(&setup_path, &format!("http://localhost:{}", port)).await?;
+        if setup_path.run {
+            start_package::execute(
+                &setup_path.path,
+                &format!("http://localhost:{}", port),
+            ).await?;
+        }
+        load_process(&setup_path.path, "setup", &port).await?;
     }
 
     info!("Done loading setup packages.");
@@ -152,55 +158,63 @@ async fn load_setups(setup_paths: &Vec<PathBuf>, port: u16) -> Result<()> {
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> Result<()> {
-    info!("Loading tests...");
+async fn load_process(path: &Path, drive: &str, port: &u16) -> Result<()> {
+    let basename = get_basename(path).unwrap();
+    let request = inject_message::make_message(
+        "vfs:distro:sys",
+        Some(15),
+        &serde_json::to_string(&serde_json::json!({
+            "path": format!("/tester:sys/{drive}/{basename}.wasm"),
+            "action": "Write",
+        }))
+        .unwrap(),
+        None,
+        None,
+        path.join("pkg").join(format!("{basename}.wasm")).to_str(),
+    )?;
 
-    for TestPackage { ref path, .. } in test_packages {
-        let basename = get_basename(path).unwrap();
-        let request = inject_message::make_message(
-            "vfs:distro:sys",
-            Some(15),
-            &serde_json::to_string(&serde_json::json!({
-                "path": format!("/tester:sys/tests/{basename}.wasm"),
-                "action": "Write",
-            }))
-            .unwrap(),
-            None,
-            None,
-            path.join("pkg").join(format!("{basename}.wasm")).to_str(),
-        )?;
-
-        let response =
-            inject_message::send_request(&format!("http://localhost:{}", port), request).await?;
-        match inject_message::parse_response(response).await {
-            Ok(_) => {}
-            Err(e) => return Err(eyre!("Failed to load tests: {}", e)),
-        }
+    let response =
+        inject_message::send_request(&format!("http://localhost:{}", port), request).await?;
+    match inject_message::parse_response(response).await {
+        Ok(_) => {}
+        Err(e) => return Err(eyre!("Failed to load test {path:?}: {}", e)),
     }
+    Ok(())
+}
 
-    let mut grant_caps = std::collections::HashMap::new();
-    for TestPackage {
-        ref path,
-        ref grant_capabilities,
-    } in test_packages
-    {
-        grant_caps.insert(
-            path.file_name().map(|f| f.to_str()).unwrap(),
-            grant_capabilities,
+#[instrument(level = "trace", skip_all)]
+async fn load_caps(test_package_paths: &Vec<PathBuf>, port: u16) -> Result<()> {
+    let mut caps = std::collections::HashMap::new();
+    for test_package_path in test_package_paths {
+        let manifest_path = test_package_path.join("pkg").join("manifest.json");
+        let manifest: Vec<PackageManifestEntry> =
+            serde_json::from_reader(fs::File::open(manifest_path)
+                .wrap_err_with(|| "Missing required manifest.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson")?
+            )?;
+        if manifest.len() != 1 {
+            return Err(eyre!(""));
+        }
+        let manifest = manifest.iter().next().unwrap();
+        caps.insert(
+            test_package_path.file_name().map(|f| f.to_str()).unwrap(),
+            serde_json::json!({
+                "request_capabilities": manifest.request_capabilities,
+                "grant_capabilities": manifest.grant_capabilities,
+            })
         );
     }
-    let grant_caps = serde_json::to_vec(&grant_caps)?;
+    let caps = serde_json::to_vec(&caps)?;
 
     let request = inject_message::make_message(
         "vfs:distro:sys",
         Some(15),
         &serde_json::to_string(&serde_json::json!({
-            "path": format!("/tester:sys/tests/grant_capabilities.json"),
+            "path": format!("/tester:sys/tests/capabilities.json"),
             "action": "Write",
         }))
         .unwrap(),
         None,
-        Some(&grant_caps),
+        Some(&caps),
         None,
     )?;
 
@@ -211,13 +225,27 @@ async fn load_tests(test_packages: &Vec<TestPackage>, port: u16) -> Result<()> {
         Err(e) => return Err(eyre!("Failed to load tests capabilities: {}", e)),
     }
 
+    Ok(())
+}
+
+
+#[instrument(level = "trace", skip_all)]
+async fn load_tests(test_package_paths: &Vec<PathBuf>, port: u16) -> Result<()> {
+    info!("Loading tests...");
+
+    for test_package_path in test_package_paths {
+        load_process(&test_package_path, "tests", &port).await?;
+    }
+
+    load_caps(test_package_paths, port).await?;
+
     info!("Done loading tests.");
     Ok(())
 }
 
 #[instrument(level = "trace", skip_all)]
 async fn run_tests(
-    test_packages: &Vec<TestPackage>,
+    test_package_paths: &Vec<PathBuf>,
     mut ports: Vec<u16>,
     node_names: Vec<String>,
     test_timeout: u64,
@@ -232,9 +260,9 @@ async fn run_tests(
             &serde_json::to_string(&serde_json::json!({
                 "Run": {
                     "input_node_names": node_names,
-                    "test_names": test_packages
+                    "test_names": test_package_paths
                         .iter()
-                        .map(|tp| tp.path.to_str().unwrap())
+                        .map(|p| p.to_str().unwrap())
                         .collect::<Vec<&str>>(),
                     "test_timeout": test_timeout,
                 }
@@ -260,9 +288,9 @@ async fn run_tests(
         &serde_json::to_string(&serde_json::json!({
             "Run": {
                 "input_node_names": node_names,
-                "test_names": test_packages
+                "test_names": test_package_paths
                     .iter()
-                    .map(|tp| tp.path.to_str().unwrap())
+                    .map(|p| p.to_str().unwrap())
                     .collect::<Vec<&str>>(),
                 "test_timeout": test_timeout,
             }
@@ -279,7 +307,7 @@ async fn run_tests(
         Ok(inject_message::Response { ref body, .. }) => {
             let TesterResponse::Run(result) = serde_json::from_str(body)?;
             match result {
-                Ok(()) => info!("PASS"),
+                Ok(()) => {}
                 Err(FailResponse {
                     test,
                     file,
@@ -304,32 +332,49 @@ async fn handle_test(
     runtime_path: &Path,
     test: Test,
     test_dir_path: &Path,
+    persist_home: bool,
 ) -> Result<()> {
-    let setup_package_paths: Vec<PathBuf> = test
-        .setup_package_paths
+    let setup_packages: Vec<SetupPackage> = test
+        .setup_packages
+        .iter()
+        .cloned()
+        .map(|s| {
+            SetupPackage {
+                path: test_dir_path.join(s.path).canonicalize().unwrap(),
+                run: s.run,
+            }
+        })
+        .collect();
+    let test_package_paths: Vec<PathBuf> = test
+        .test_package_paths
         .iter()
         .cloned()
         .map(|p| test_dir_path.join(p).canonicalize().unwrap())
         .collect();
-    let test_packages: Vec<TestPackage> = test
-        .test_packages
-        .iter()
-        .cloned()
-        .map(|tp| TestPackage {
-            path: test_dir_path.join(tp.path).canonicalize().unwrap(),
-            grant_capabilities: tp.grant_capabilities,
-        })
-        .collect();
-    //for setup_package_path in &test.setup_package_paths {
-    //    let path = test_dir_path.join(setup_package_path).canonicalize()?;
-    for path in &setup_package_paths {
-        build::execute(&path, false, false, false, "", None, None, false).await?;
-        // TODO
+    for setup_package in &setup_packages {
+        build::execute(
+            &setup_package.path,
+            false,
+            false,
+            false,
+            "test",
+            None,
+            None,
+            false,
+        ).await?; // TODO
     }
-    for TestPackage { ref path, .. } in &test_packages {
-        let path = test_dir_path.join(path).canonicalize()?;
-        build::execute(&path, false, false, false, "", None, None, false).await?;
-        // TODO
+    for test_package_path in &test_package_paths {
+        let path = test_dir_path.join(&test_package_path).canonicalize()?;
+        build::execute(
+            &path,
+            false,
+            false,
+            false,
+            "test",
+            None,
+            None,
+            false,
+        ).await?; // TODO
     }
 
     // Initialize variables for master node and nodes list
@@ -351,7 +396,7 @@ async fn handle_test(
         node_cleanup_infos_for_cleanup,
         Some(node_handles_for_cleanup),
         detached,
-        true,
+        !persist_home,
     ));
     task_handles.push(handle);
     let send_to_cleanup_for_signal = send_to_cleanup.clone();
@@ -361,6 +406,19 @@ async fn handle_test(
     ));
     task_handles.push(handle);
     let _cleanup_context = CleanupContext::new(send_to_cleanup.clone());
+
+    let setup_scripts: Vec<i32> = test.setup_scripts
+        .iter()
+        .map(|s| {
+            let p = test_dir_path.join(&s.path).canonicalize().unwrap();
+            let p = p.to_str().unwrap();
+            Command::new("bash")
+                .args(["-c", &format!("{} {}", p, &s.args)])
+                .spawn()
+                .expect("")
+                .id() as i32
+        })
+        .collect();
 
     // boot fakechain
     let recv_kill_in_start_chain = send_to_kill.subscribe();
@@ -414,19 +472,24 @@ async fn handle_test(
         )?;
 
         let mut anvil_cleanup: Option<i32> = None;
+        let mut other_processes = vec![];
 
         if master_node_port.is_none() {
             anvil_cleanup = anvil_process.as_ref().map(|ap| ap.id() as i32);
             master_node_port = Some(node.port);
+            other_processes.extend_from_slice(&setup_scripts);
         };
 
-        let mut node_cleanup_infos = node_cleanup_infos.lock().await;
-        node_cleanup_infos.push(NodeCleanupInfo {
-            master_fd,
-            process_id: runtime_process.id().unwrap() as i32,
-            home: node_home.clone(),
-            anvil_process: anvil_cleanup,
-        });
+        {
+            let mut node_cleanup_infos = node_cleanup_infos.lock().await;
+            node_cleanup_infos.push(NodeCleanupInfo {
+                master_fd,
+                process_id: runtime_process.id().unwrap() as i32,
+                home: node_home.clone(),
+                anvil_process: anvil_cleanup,
+                other_processes,
+            });
+        }
 
         let recv_kill_in_dpr = send_to_kill.subscribe();
         tokio::spawn(drain_print_runtime(
@@ -435,28 +498,48 @@ async fn handle_test(
             recv_kill_in_dpr,
         ));
 
-        let mut node_handles = node_handles.lock().await;
-        node_handles.push(runtime_process);
+        {
+            let mut node_handles = node_handles.lock().await;
+            node_handles.push(runtime_process);
+        }
 
         let recv_kill_in_wait = send_to_kill.subscribe();
         wait_until_booted(&node.home, node.port, 10, recv_kill_in_wait).await?;
     }
 
     for node in &test.nodes {
-        load_setups(&setup_package_paths, node.port.clone()).await?;
+        load_setups(&setup_packages, node.port.clone()).await?;
     }
 
-    load_tests(&test_packages, master_node_port.unwrap().clone()).await?;
+    load_tests(&test_package_paths, master_node_port.unwrap().clone()).await?;
 
     let ports = test.nodes.iter().map(|n| n.port).collect();
 
     let tests_result = run_tests(
-        &test.test_packages,
+        &test.test_package_paths,
         ports,
         make_node_names(test.nodes)?,
         test.timeout_secs,
     )
     .await;
+
+    for script in test.test_scripts {
+        let p = test_dir_path.join(&script.path).canonicalize().unwrap();
+        let p = p.to_str().unwrap();
+        let command = if script.args.is_empty() {
+            p.to_string()
+        } else {
+            format!("{} {}", p, script.args)
+        };
+        build::run_command(
+            Command::new("bash").args(["-c", &command]),
+            false,
+        )?;
+    }
+
+    if tests_result.is_ok() {
+        info!("PASS");
+    }
 
     let _ = send_to_cleanup.send(tests_result.is_err());
     for handle in task_handles {
@@ -524,7 +607,13 @@ pub async fn execute(config_path: &str) -> Result<()> {
     let test_dir_path = PathBuf::from(config_path).canonicalize()?;
     let test_dir_path = test_dir_path.parent().unwrap();
     for test in config.tests {
-        handle_test(detached, &runtime_path, test, &test_dir_path).await?;
+        handle_test(
+            detached,
+            &runtime_path,
+            test,
+            &test_dir_path,
+            config.persist_home,
+        ).await?;
     }
 
     Ok(())
