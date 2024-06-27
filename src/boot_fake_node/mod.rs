@@ -187,6 +187,8 @@ pub async fn get_runtime_binary(version: &str, is_simulation_mode: bool) -> Resu
 
     if !runtime_dir.exists() {
         fs::create_dir_all(&runtime_dir)?;
+    }
+    if !runtime_path.exists() {
         get_runtime_binary_inner(&version, &zip_name, &runtime_dir).await?;
     }
 
