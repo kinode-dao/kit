@@ -340,13 +340,13 @@ async fn execute(
 
             if !config_path.exists() {
                 let error = format!(
-                    "Configuration file not found: {:?}\nUsage:\n{}",
+                    "Configuration path does not exist: {:?}\nUsage:\n{}",
                     config_path, usage,
                 );
                 return Err(eyre!(error));
             }
 
-            run_tests::execute(config_path.to_str().unwrap()).await
+            run_tests::execute(config_path).await
         }
         Some(("setup", setup_matches)) => {
             let verbose = setup_matches.get_one::<bool>("VERBOSE").unwrap();
@@ -923,8 +923,8 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
             .visible_alias("t")
             .arg(Arg::new("PATH")
                 .action(ArgAction::Set)
-                .help("Path to tests configuration file")
-                .default_value("tests.toml")
+                .help("Path to tests configuration file (or test dir)")
+                .default_value(current_dir)
             )
         )
         .subcommand(Command::new("setup")

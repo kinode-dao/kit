@@ -551,24 +551,34 @@ async fn handle_test(
 }
 
 #[instrument(level = "trace", skip_all)]
-pub async fn execute(config_path: &str) -> Result<()> {
+pub async fn execute(config_path: PathBuf) -> Result<()> {
     let detached = true; // TODO: to arg?
 
-    let config_path = PathBuf::from(config_path);
-    if !config_path.exists() {
-        return Err(eyre!("given config path {config_path:?} does not exist"));
-    }
+    // existence of path has already been checked in src/main.rs
+
+    // cases:
+    // 1. given `.toml` file
+    // 2. given dir in which `tests.toml` exists
+    // 3. given dir in which `test/tests.toml` exists
     let config_path = if config_path.is_file() {
+        // case 1
         config_path
     } else {
-        let config_path = config_path.join("test").join("tests.toml");
-        if !config_path.exists() {
-            return Err(eyre!("given config path {config_path:?} does not exist"));
-        }
-        if config_path.is_file() {
-            config_path
+        let possible_config_path = config_path.join("tests.toml");
+        if possible_config_path.exists() {
+            // case 2
+            possible_config_path
         } else {
-            return Err(eyre!("given config path {config_path:?} is not a file"));
+            let possible_config_path = config_path.join("test").join("tests.toml");
+            if !possible_config_path.exists() {
+                return Err(eyre!("Could not find `tests.toml within given path {config_path:?}"));
+            }
+            if possible_config_path.is_file() {
+                // case 3
+                possible_config_path
+            } else {
+                return Err(eyre!("Could not find `tests.toml within given path {config_path:?}"));
+            }
         }
     };
 
