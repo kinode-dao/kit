@@ -21,14 +21,14 @@ fn visit_dirs(dir: &Path, output_buffer: &mut Vec<u8>) -> io::Result<()> {
                 let path_str = relative_path.to_str().unwrap().replace("\\", "/");
 
                 let relative_path_from_includes = path.strip_prefix(NEW_DIR).unwrap();
-                let path_str_from_includes = relative_path_from_includes.to_str()
+                let path_str_from_includes = relative_path_from_includes
+                    .to_str()
                     .unwrap()
                     .replace("\\", "/");
                 writeln!(
                     output_buffer,
                     "    (\"{}\", include_str!(\"{}\")),",
-                    path_str,
-                    path_str_from_includes,
+                    path_str, path_str_from_includes,
                 )?;
             }
         }
@@ -37,7 +37,8 @@ fn visit_dirs(dir: &Path, output_buffer: &mut Vec<u8>) -> io::Result<()> {
 }
 
 fn add_commit_hash(repo: &git2::Repository) -> anyhow::Result<()> {
-    let sha = repo.head()?
+    let sha = repo
+        .head()?
         .target()
         .ok_or(anyhow::anyhow!("couldn't get commit hash"))?;
 
@@ -59,12 +60,14 @@ fn add_branch_name(repo: &git2::Repository) -> anyhow::Result<()> {
 
 fn main() -> anyhow::Result<()> {
     let mut output_buffer = Vec::new();
-    writeln!(&mut output_buffer, "const PATH_TO_CONTENT: &[(&str, &str)] = &[")?;
+    writeln!(
+        &mut output_buffer,
+        "const PATH_TO_CONTENT: &[(&str, &str)] = &["
+    )?;
     writeln!(
         output_buffer,
         "    (\"{}\", include_str!(\"{}\")),",
-        "componentize.mjs",
-        "componentize.mjs",
+        "componentize.mjs", "componentize.mjs",
     )?;
 
     visit_dirs(Path::new(TEMPLATES_DIR), &mut output_buffer)?;

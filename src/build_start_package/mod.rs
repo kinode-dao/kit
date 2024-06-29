@@ -26,7 +26,8 @@ pub async fn execute(
         Some(url.into()),
         default_world,
         verbose,
-    ).await?;
+    )
+    .await?;
     start_package::execute(package_dir, url).await?;
     Ok(())
 }

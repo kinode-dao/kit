@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::process;
 
-use color_eyre::{Result, eyre::WrapErr};
+use color_eyre::{eyre::WrapErr, Result};
 use fs_err as fs;
 use tracing::{info, instrument};
 
@@ -28,25 +28,20 @@ pub async fn execute(
             let package_name = metadata.properties.package_name.as_str();
             let publisher = metadata.properties.publisher.as_str();
             (package_name.into(), publisher.into())
-        },
+        }
     };
 
     // Create and send uninstall request
-    let uninstall_request = interact_with_package(
-        "Uninstall",
-        None,
-        &package_name,
-        &publisher,
-    )?;
-    let response = inject_message::send_request(
-        url,
-        uninstall_request,
-    ).await?;
+    let uninstall_request = interact_with_package("Uninstall", None, &package_name, &publisher)?;
+    let response = inject_message::send_request(url, uninstall_request).await?;
     if response.status() != 200 {
         process::exit(1);
     }
 
-    info!("Successfully removed package {}:{} on node at {}", package_name, publisher, url);
+    info!(
+        "Successfully removed package {}:{} on node at {}",
+        package_name, publisher, url
+    );
 
     Ok(())
 }

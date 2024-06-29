@@ -4,7 +4,9 @@
         "process_wasm_path": "/{package_name}_test.wasm",
         "on_exit": "Restart",
         "request_networking": false,
-        "request_capabilities": [],
+        "request_capabilities": [
+            "{package_name}:{package_name}:{publisher}"
+        ],
         "grant_capabilities": [
             "{package_name}:{package_name}:{publisher}"
         ],

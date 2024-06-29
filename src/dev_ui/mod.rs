@@ -8,12 +8,7 @@ use crate::build::run_command;
 use crate::setup::{check_js_deps, get_deps, get_newest_valid_node_version};
 
 #[instrument(level = "trace", skip_all)]
-pub fn execute(
-    package_dir: &Path,
-    url: &str,
-    skip_deps_check: bool,
-    release: bool,
-) -> Result<()> {
+pub fn execute(package_dir: &Path, url: &str, skip_deps_check: bool, release: bool) -> Result<()> {
     if !skip_deps_check {
         let deps = check_js_deps()?;
         get_deps(deps, false)?;
@@ -33,10 +28,15 @@ pub fn execute(
             "npm run dev".to_string()
         };
         let (install_command, dev_command) = valid_node
-            .map(|valid_node| {(
-                format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, install),
-                format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, dev),
-            )})
+            .map(|valid_node| {
+                (
+                    format!(
+                        "source ~/.nvm/nvm.sh && nvm use {} && {}",
+                        valid_node, install
+                    ),
+                    format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, dev),
+                )
+            })
             .unwrap_or_else(|| (install, dev.clone()));
 
         run_command(
@@ -56,7 +56,9 @@ pub fn execute(
             false,
         )?;
     } else {
-        return Err(eyre!("'ui' directory not found or 'ui/package.json' does not exist"));
+        return Err(eyre!(
+            "'ui' directory not found or 'ui/package.json' does not exist"
+        ));
     }
 
     Ok(())

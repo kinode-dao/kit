@@ -4,20 +4,23 @@ use color_eyre::Result;
 use fs_err as fs;
 use tracing::instrument;
 
-use crate::KIT_CACHE;
 use crate::build::run_command;
+use crate::KIT_CACHE;
 
 #[instrument(level = "trace", skip_all)]
 pub fn execute(mut user_args: Vec<String>, branch: &str) -> Result<()> {
-    let mut args: Vec<String> = vec!["install",
-        "--git", "https://github.com/kinode-dao/kit",
+    let mut args: Vec<String> = vec![
+        "install",
+        "--git",
+        "https://github.com/kinode-dao/kit",
         "--locked",
-        "--branch", branch,
+        "--branch",
+        branch,
         "--color=always",
     ]
-        .iter()
-        .map(|v| v.to_string())
-        .collect();
+    .iter()
+    .map(|v| v.to_string())
+    .collect();
     args.append(&mut user_args);
 
     run_command(Command::new("cargo").args(&args[..]), true)?;

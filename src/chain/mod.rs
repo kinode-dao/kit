@@ -1,16 +1,19 @@
 use std::process::{Child, Command, Stdio};
 
-use color_eyre::{eyre::{eyre, Result}, Section};
+use color_eyre::{
+    eyre::{eyre, Result},
+    Section,
+};
 use fs_err as fs;
 use reqwest::Client;
 use sha2::{Digest, Sha256};
 use tokio::time::{sleep, Duration};
 use tracing::{info, instrument};
 
-use crate::KIT_CACHE;
 use crate::run_tests::cleanup::{clean_process_by_pid, cleanup_on_signal};
 use crate::run_tests::types::BroadcastRecvBool;
 use crate::setup::{check_foundry_deps, get_deps};
+use crate::KIT_CACHE;
 
 const KINOSTATE_JSON: &str = include_str!("./kinostate.json");
 const DEFAULT_MAX_ATTEMPTS: u16 = 16;
@@ -56,7 +59,11 @@ pub async fn start_chain(
         .arg("--load-state")
         .arg(&state_path)
         .current_dir(KIT_CACHE)
-        .stdout(if piped { Stdio::piped() } else { Stdio::inherit() })
+        .stdout(if piped {
+            Stdio::piped()
+        } else {
+            Stdio::inherit()
+        })
         .spawn()?;
 
     info!("Waiting for Anvil to be ready on port {}...", port);
@@ -116,8 +123,8 @@ async fn wait_for_anvil(
         "Failed to connect to Anvil on port {} after {} attempts",
         port,
         max_attempts
-    ).with_suggestion(|| "Is port already occupied?")
     )
+    .with_suggestion(|| "Is port already occupied?"))
 }
 
 /// kit chain, alias to anvil
@@ -132,7 +139,10 @@ pub async fn execute(port: u16, verbose: bool) -> Result<()> {
     let recv_kill_in_start_chain = send_to_kill.subscribe();
     let child = start_chain(port, false, recv_kill_in_start_chain, verbose).await?;
     let Some(mut child) = child else {
-        return Err(eyre!("Port {} is already in use by another anvil process", port));
+        return Err(eyre!(
+            "Port {} is already in use by another anvil process",
+            port
+        ));
     };
     let child_id = child.id() as i32;
 

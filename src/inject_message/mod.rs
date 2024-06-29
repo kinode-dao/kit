@@ -4,7 +4,7 @@ use std::io::Read;
 use base64::{decode, encode};
 use color_eyre::{eyre::eyre, Result};
 use fs_err as fs;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 use tracing::{debug, info, instrument};
 
 pub struct Response {
@@ -18,18 +18,12 @@ const ENDPOINT: &str = "/rpc:distro:sys/message";
 impl std::fmt::Display for Response {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if let Some(Some(ref s)) = self.lazy_load_blob_utf8 {
-            write!(
-                f,
-                "Response:\nbody: {}\nblob: {}",
-                self.body,
-                s,
-            )
+            write!(f, "Response:\nbody: {}\nblob: {}", self.body, s,)
         } else {
             write!(
                 f,
                 "Response:\nbody: {}\nblob: {:?}",
-                self.body,
-                self.lazy_load_blob,
+                self.body, self.lazy_load_blob,
             )
         }
     }
@@ -52,7 +46,7 @@ pub fn make_message(
             let mut buffer = Vec::new();
             file.read_to_end(&mut buffer)?;
             Some(encode(&buffer))
-        },
+        }
         (None, None) => None,
         _ => {
             return Err(eyre!("Cannot accept both raw_bytes and bytes_path"));
@@ -75,35 +69,25 @@ pub fn make_message(
 }
 
 #[instrument(level = "trace", skip_all)]
-pub async fn send_request(
-    url: &str,
-    json_data: Value,
-) -> Result<reqwest::Response> {
+pub async fn send_request(url: &str, json_data: Value) -> Result<reqwest::Response> {
     send_request_inner(url, json_data).await
 }
 
 /// send_request_inner() allows failure without logging;
 ///  used for run_tests where nodes are pinged until they
 ///  respond with a 200 to determine when they are online
-pub async fn send_request_inner(
-    url: &str,
-    json_data: Value,
-) -> Result<reqwest::Response> {
+pub async fn send_request_inner(url: &str, json_data: Value) -> Result<reqwest::Response> {
     let mut url = url.to_string();
-    let url =
-        if url.ends_with(ENDPOINT) {
-            url
-        } else {
-            if url.ends_with('/') {
-                url.pop();
-            }
-            format!("{}{}", url, ENDPOINT)
-        };
+    let url = if url.ends_with(ENDPOINT) {
+        url
+    } else {
+        if url.ends_with('/') {
+            url.pop();
+        }
+        format!("{}{}", url, ENDPOINT)
+    };
     let client = reqwest::Client::new();
-    let response = client.post(&url)
-        .json(&json_data)
-        .send()
-        .await?;
+    let response = client.post(&url).json(&json_data).send().await?;
 
     Ok(response)
 }
@@ -116,10 +100,9 @@ pub async fn parse_response(response: reqwest::Response) -> Result<Response> {
 
         debug!(
             "Failed with status code: {}\nResponse: {}",
-            response_status,
-            response_text,
+            response_status, response_text,
         );
-        return Err(eyre!("Failed with status code: {}", response_status))
+        return Err(eyre!("Failed with status code: {}", response_status));
     } else {
         let content: String = response.text().await?;
         let data: Value = serde_json::from_str(&content)?;
@@ -135,7 +118,7 @@ pub async fn parse_response(response: reqwest::Response) -> Result<Response> {
                     let body_string: String = String::from_utf8(body_bytes)?;
                     Ok(body_string)
                 } else {
-                    return Err(eyre!("Response `body` was not bytes."))
+                    return Err(eyre!("Response `body` was not bytes."));
                 }
             })
             .ok_or_else(|| eyre!("Response did not contain `body` field."))??;
@@ -143,36 +126,29 @@ pub async fn parse_response(response: reqwest::Response) -> Result<Response> {
         #[allow(deprecated)]
         let blob = data
             .get("lazy_load_blob")
-            .and_then(|b| {
-                match b {
-                    serde_json::Value::Null => None,
-                    serde_json::Value::Array(blob_bytes_val) => {
-                        let blob_bytes: Vec<u8> = blob_bytes_val
-                            .iter()
-                            .map(|n| n.as_u64().unwrap() as u8)
-                            .collect();
-                        Some(Ok(blob_bytes))
-                    },
-                    serde_json::Value::Object(blob_object) => {
-                        blob_object
-                            .get("bytes")
-                            .and_then(|bb| {
-                                let serde_json::Value::Array(blob_bytes_val) = bb else {
-                                    return Some(Err(eyre!(
-                                        "Unexpected `lazy_load_blob` format: {:?}.",
-                                        b,
-                                    )));
-                                };
-                                let blob_bytes: Vec<u8> = blob_bytes_val
-                                    .iter()
-                                    .map(|n| n.as_u64().unwrap() as u8)
-                                    .collect();
-                                Some(Ok(blob_bytes))
-                            })
-                    },
-                    _ => return Some(Err(eyre!(
+            .and_then(|b| match b {
+                serde_json::Value::Null => None,
+                serde_json::Value::Array(blob_bytes_val) => {
+                    let blob_bytes: Vec<u8> = blob_bytes_val
+                        .iter()
+                        .map(|n| n.as_u64().unwrap() as u8)
+                        .collect();
+                    Some(Ok(blob_bytes))
+                }
+                serde_json::Value::Object(blob_object) => blob_object.get("bytes").and_then(|bb| {
+                    let serde_json::Value::Array(blob_bytes_val) = bb else {
+                        return Some(Err(eyre!("Unexpected `lazy_load_blob` format: {:?}.", b,)));
+                    };
+                    let blob_bytes: Vec<u8> = blob_bytes_val
+                        .iter()
+                        .map(|n| n.as_u64().unwrap() as u8)
+                        .collect();
+                    Some(Ok(blob_bytes))
+                }),
+                _ => {
+                    return Some(Err(eyre!(
                         "Response did not contain `lazy_load_blob` bytes field.",
-                    ))),
+                    )))
                 }
             })
             .transpose()?
@@ -202,7 +178,7 @@ pub async fn execute(
         info!("{}", response);
     } else {
         if response.status() != 200 {
-            return Err(eyre!("Failed with status code: {}", response.status()))
+            return Err(eyre!("Failed with status code: {}", response.status()));
         } else {
             info!("{}", response.status());
         }
