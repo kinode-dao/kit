@@ -397,7 +397,9 @@ async fn compile_rust_wasm_process(
 
     let wasm_file_prefix = Path::new("target/wasm32-wasi/release");
     let wasm_file = wasm_file_prefix.join(&format!("{}.wasm", wasm_file_name));
-    let adapted_wasm_file = wasm_file_prefix.join(&format!("{}_adapted.wasm", wasm_file_name));
+
+    let wasm_path = format!("../pkg/{}.wasm", wasm_file_name);
+    let wasm_path = Path::new(&wasm_path);
 
     let wasi_snapshot_file = Path::new("wasi_snapshot_preview1.wasm");
 
@@ -408,29 +410,9 @@ async fn compile_rust_wasm_process(
                 "new",
                 wasm_file.to_str().unwrap(),
                 "-o",
-                adapted_wasm_file.to_str().unwrap(),
+                wasm_path.to_str().unwrap(),
                 "--adapt",
                 wasi_snapshot_file.to_str().unwrap(),
-            ])
-            .current_dir(process_dir),
-        verbose,
-    )?;
-
-    let wasm_path = format!("../pkg/{}.wasm", wasm_file_name);
-    let wasm_path = Path::new(&wasm_path);
-
-    // Embed wit into the component and place it in the expected location
-    run_command(
-        Command::new("wasm-tools")
-            .args(&[
-                "component",
-                "embed",
-                wit_dir.strip_prefix(process_dir).unwrap().to_str().unwrap(),
-                "--world",
-                &world,
-                adapted_wasm_file.to_str().unwrap(),
-                "-o",
-                wasm_path.to_str().unwrap(),
             ])
             .current_dir(process_dir),
         verbose,
