@@ -316,7 +316,9 @@ async fn compile_rust_wasm_process(
     fs::create_dir_all(&bindings_dir)?;
 
     // Check and download wasi_snapshot_preview1.wasm if it does not exist
-    let wasi_snapshot_file = process_dir.join("wasi_snapshot_preview1.wasm");
+    let wasi_snapshot_file = process_dir
+        .join("target")
+        .join("wasi_snapshot_preview1.wasm");
     let wasi_snapshot_url = format!(
         "https://github.com/bytecodealliance/wasmtime/releases/download/v{}/wasi_snapshot_preview1.reactor.wasm",
         WASI_VERSION,
@@ -401,7 +403,7 @@ async fn compile_rust_wasm_process(
     let wasm_path = format!("../pkg/{}.wasm", wasm_file_name);
     let wasm_path = Path::new(&wasm_path);
 
-    let wasi_snapshot_file = Path::new("wasi_snapshot_preview1.wasm");
+    let wasi_snapshot_file = Path::new("target/wasi_snapshot_preview1.wasm");
 
     run_command(
         Command::new("wasm-tools")
