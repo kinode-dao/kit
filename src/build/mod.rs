@@ -302,7 +302,6 @@ async fn compile_python_wasm_process(
 async fn compile_rust_wasm_process(
     process_dir: &Path,
     features: &str,
-    world: String,
     verbose: bool,
 ) -> Result<()> {
     info!("Compiling Rust Kinode process in {:?}...", process_dir);
@@ -325,19 +324,6 @@ async fn compile_rust_wasm_process(
     );
     download_file(&wasi_snapshot_url, &wasi_snapshot_file).await?;
 
-    // Create target.wasm (compiled .wit) & world
-    run_command(
-        Command::new("wasm-tools").args(&[
-            "component",
-            "wit",
-            wit_dir.to_str().unwrap(),
-            "-o",
-            &bindings_dir.join("target.wasm").to_str().unwrap(),
-            "--wasm",
-        ]),
-        verbose,
-    )?;
-
     // Copy wit directory to bindings
     fs::create_dir_all(&bindings_dir.join("wit"))?;
     for entry in fs::read_dir(&wit_dir)? {
@@ -347,9 +333,6 @@ async fn compile_rust_wasm_process(
             bindings_dir.join("wit").join(entry.file_name()),
         )?;
     }
-
-    // Create an empty world file
-    fs::File::create(bindings_dir.join("world"))?;
 
     // Build the module using Cargo
     let mut args = vec![
@@ -547,7 +530,7 @@ async fn compile_package_item(
         }
 
         if is_rust_process {
-            compile_rust_wasm_process(&path, &features, world, verbose).await?;
+            compile_rust_wasm_process(&path, &features, verbose).await?;
         } else if is_py_process {
             let python = get_python_version(None, None)?
                 .ok_or_else(|| eyre!("kit requires Python 3.10 or newer"))?;
