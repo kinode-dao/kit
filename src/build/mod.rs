@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use color_eyre::{
@@ -570,6 +570,64 @@ async fn fetch_dependencies(
     Ok(())
 }
 
+fn extract_imports_exports(input: &str) -> (Vec<String>, Vec<String>) {
+    let import_re = regex::Regex::new(r"import\s+([^\s;]+)").unwrap();
+    let export_re = regex::Regex::new(r"export\s+([^\s;]+)").unwrap();
+    let imports: Vec<String> = import_re.captures_iter(input)
+        .map(|cap| cap[1].to_string())
+        .filter(|s| !(s.contains("wasi") || s.contains("kinode:process/standard")))
+        .collect();
+
+    let exports: Vec<String> = export_re.captures_iter(input)
+        .map(|cap| cap[1].to_string())
+        .filter(|s| !s.contains("init"))
+        .collect();
+
+    (imports, exports)
+}
+
+fn find_non_standard(
+    package_dir: &Path,
+) -> Result<(HashMap<String, Vec<PathBuf>>, HashMap<String, PathBuf>)> {
+    let mut imports = HashMap::new();
+    let mut exports = HashMap::new();
+
+    for entry in package_dir.join("pkg").read_dir()? {
+        let entry = entry?;
+        let path = entry.path();
+        if !(path.is_file() && path.extension().and_then(|e| e.to_str()) == Some("wasm")) {
+            continue;
+        }
+        let wit = run_command(
+            Command::new("wasm-tools")
+                .args(["component", "wit", path.to_str().unwrap()]),
+            false,
+        )?;
+        let Some((ref wit, _)) = wit else {
+            continue;
+        };
+        let (wit_imports, wit_exports) = extract_imports_exports(wit);
+        for wit_import in wit_imports {
+            imports
+                .entry(wit_import)
+                .or_insert_with(Vec::new)
+                .push(path.clone());
+        }
+        for wit_export in wit_exports {
+            if exports.contains_key(&wit_export) {
+                return Err(eyre!(
+                    "found multiple exporters of {wit_export}: {path:?} & {exports:?}",
+                ));
+            }
+            let new_path = PathBuf::from(path.to_str().unwrap().replace("_", "-"));
+            fs::rename(&path, &new_path)?;
+            exports.insert(wit_export, new_path);
+        }
+    }
+
+    Ok((imports, exports))
+}
+
 /// package dir looks like:
 /// ```
 /// metadata.json
@@ -690,6 +748,34 @@ async fn compile_package(
     }
     while let Some(res) = tasks.join_next().await {
         res??;
+    }
+
+    // find non-standard imports/exports -> compositions
+    let (importers, exporters) = find_non_standard(package_dir)?;
+
+    // compose
+    for (import, import_paths) in importers {
+        let Some(export_path) = exporters.get(&import) else {
+            return Err(eyre!(
+                "Processes {import_paths:?} required export {import} not found in `pkg/`.",
+            ));
+        };
+        let export_path = export_path.to_str().unwrap();
+        for import_path in import_paths {
+            let import_path_str = import_path.to_str().unwrap();
+            run_command(
+                Command::new("wasm-tools")
+                    .args([
+                        "compose",
+                        import_path_str,
+                        "-d",
+                        export_path,
+                        "-o",
+                        import_path_str,
+                    ]),
+                false,
+            )?;
+        }
     }
 
     Ok(())
