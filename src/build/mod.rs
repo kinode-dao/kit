@@ -1,5 +1,5 @@
-use std::collections::HashMap;
-use std::path::Path;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use color_eyre::{
@@ -13,7 +13,7 @@ use fs_err as fs;
 use serde::{Deserialize, Serialize};
 use tracing::{info, instrument, warn};
 
-use kinode_process_lib::kernel_types::Erc721Metadata;
+use kinode_process_lib::{PackageId, kernel_types::Erc721Metadata};
 
 use crate::setup::{
     check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version,
@@ -546,10 +546,21 @@ async fn compile_package_item(
 async fn fetch_dependencies(
     dependencies: &Vec<String>,
     apis: &mut HashMap<String, Vec<u8>>,
+    wasm_paths: &mut HashSet<PathBuf>,
     url: String,
 ) -> Result<()> {
     for dependency in dependencies {
-        let Some(zip_dir) = view_api::execute(None, Some(dependency), &url, false).await? else {
+        if dependency.parse::<PackageId>().is_err() {
+            return Err(eyre!(
+                "Dependencies must be PackageIds (e.g. `package:publisher.os`); given {dependency}.",
+            ));
+        };
+        let Some(zip_dir) = view_api::execute(
+            None,
+            Some(dependency),
+            &url,
+            false,
+        ).await? else {
             return Err(eyre!(
                 "Got unexpected result from fetching API for {dependency}"
             ));
@@ -557,17 +568,107 @@ async fn fetch_dependencies(
         for entry in zip_dir.read_dir()? {
             let entry = entry?;
             let path = entry.path();
-            if Some("wit") == path.extension().and_then(|s| s.to_str()) {
+            let maybe_ext = path.extension().and_then(|s| s.to_str());
+            if Some("wit") == maybe_ext {
                 let file_name = path
                     .file_name()
                     .and_then(|s| s.to_str())
                     .unwrap_or_default();
                 let wit_contents = fs::read(&path)?;
                 apis.insert(file_name.into(), wit_contents);
+            } else if Some("wasm") == maybe_ext {
+                wasm_paths.insert(path);
             }
         }
     }
     Ok(())
+}
+
+fn extract_imports_exports_from_wit(input: &str) -> (Vec<String>, Vec<String>) {
+    let import_re = regex::Regex::new(r"import\s+([^\s;]+)").unwrap();
+    let export_re = regex::Regex::new(r"export\s+([^\s;]+)").unwrap();
+    let imports: Vec<String> = import_re.captures_iter(input)
+        .map(|cap| cap[1].to_string())
+        .filter(|s| !(s.contains("wasi") || s.contains("kinode:process/standard")))
+        .collect();
+
+    let exports: Vec<String> = export_re.captures_iter(input)
+        .map(|cap| cap[1].to_string())
+        .filter(|s| !s.contains("init"))
+        .collect();
+
+    (imports, exports)
+}
+
+fn get_imports_exports_from_wasm(
+    path: &PathBuf,
+    imports: &mut HashMap<String, Vec<PathBuf>>,
+    exports: &mut HashMap<String, PathBuf>,
+    should_move_export: bool,
+) -> Result<()> {
+    let wit = run_command(
+        Command::new("wasm-tools")
+            .args(["component", "wit", path.to_str().unwrap()]),
+        false,
+    )?;
+    let Some((ref wit, _)) = wit else {
+        return Ok(());
+    };
+    let (wit_imports, wit_exports) = extract_imports_exports_from_wit(wit);
+    for wit_import in wit_imports {
+        imports
+            .entry(wit_import)
+            .or_insert_with(Vec::new)
+            .push(path.clone());
+    }
+    for wit_export in wit_exports {
+        if exports.contains_key(&wit_export) {
+            return Err(eyre!(
+                "found multiple exporters of {wit_export}: {path:?} & {exports:?}",
+            ));
+        }
+        let path = if should_move_export {
+            let file_name = path
+                .file_name()
+                .and_then(|f| f.to_str())
+                .unwrap()
+                .replace("_", "-");
+            let new_path = path
+                .parent()
+                .and_then(|p| p.parent())
+                .unwrap()
+                .join("api")
+                .join(file_name);
+            fs::rename(&path, &new_path)?;
+            new_path
+        } else {
+            path.clone()
+        };
+        exports.insert(wit_export, path);
+    }
+    Ok(())
+}
+
+fn find_non_standard(
+    package_dir: &Path,
+    wasm_paths: HashSet<PathBuf>,
+) -> Result<(HashMap<String, Vec<PathBuf>>, HashMap<String, PathBuf>)> {
+    let mut imports = HashMap::new();
+    let mut exports = HashMap::new();
+
+    for entry in package_dir.join("pkg").read_dir()? {
+        let entry = entry?;
+        let path = entry.path();
+        if !(path.is_file() && Some("wasm") == path.extension().and_then(|e| e.to_str())) {
+            continue;
+        }
+        get_imports_exports_from_wasm(&path, &mut imports, &mut exports, true)?;
+    }
+    for wasm_path in wasm_paths {
+        get_imports_exports_from_wasm(&wasm_path, &mut imports, &mut exports, false)?;
+    }
+
+    Ok((imports, exports))
 }
 
 /// package dir looks like:
@@ -607,6 +708,7 @@ async fn compile_package(
     let mut checked_py = false;
     let mut checked_js = false;
     let mut apis = HashMap::new();
+    let mut wasm_paths = HashSet::new();
     for entry in package_dir.read_dir()? {
         let entry = entry?;
         let path = entry.path();
@@ -623,21 +725,13 @@ async fn compile_package(
                 get_deps(deps, verbose)?;
                 checked_js = true;
             } else if Some("api") == path.file_name().and_then(|s| s.to_str()) {
-                // zip & place in pkg/: publish API inside Kinode
-                let zip_path = package_dir.join("pkg").join("api.zip");
-                let zip_path = zip_path.to_str().unwrap();
-                zip_directory(&path, zip_path)?;
-
                 // read api files: to be used in build
                 for entry in path.read_dir()? {
                     let entry = entry?;
                     let path = entry.path();
-                    let Some(ext) = path.extension().and_then(|e| e.to_str()) else {
+                    if Some("wit") != path.extension().and_then(|e| e.to_str()) {
                         continue;
                     };
-                    if ext != "wit" {
-                        continue;
-                    }
                     let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
                         continue;
                     };
@@ -665,7 +759,12 @@ async fn compile_package(
                         // TODO: can we use kit-cached deps?
                         return Err(eyre!("Need a node to be able to fetch dependencies"));
                     };
-                    fetch_dependencies(dependencies, &mut apis, url.clone()).await?;
+                    fetch_dependencies(
+                        dependencies,
+                        &mut apis,
+                        &mut wasm_paths,
+                        url.clone(),
+                    ).await?;
                 }
             }
         }
@@ -690,6 +789,46 @@ async fn compile_package(
     }
     while let Some(res) = tasks.join_next().await {
         res??;
+    }
+
+    // find non-standard imports/exports -> compositions
+    let (importers, exporters) = find_non_standard(package_dir, wasm_paths)?;
+
+    // compose
+    for (import, import_paths) in importers {
+        let Some(export_path) = exporters.get(&import) else {
+            return Err(eyre!(
+                "Processes {import_paths:?} required export {import} not found in `pkg/`.",
+            ));
+        };
+        let export_path = export_path.to_str().unwrap();
+        for import_path in import_paths {
+            let import_path_str = import_path.to_str().unwrap();
+            run_command(
+                Command::new("wasm-tools")
+                    .args([
+                        "compose",
+                        import_path_str,
+                        "-d",
+                        export_path,
+                        "-o",
+                        import_path_str,
+                    ]),
+                false,
+            )?;
+        }
+    }
+
+    for entry in package_dir.read_dir()? {
+        // zip & place in pkg/: publish API inside Kinode
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() && Some("api") == path.file_name().and_then(|s| s.to_str()) {
+            // zip & place in pkg/: publish API inside Kinode
+            let zip_path = package_dir.join("pkg").join("api.zip");
+            let zip_path = zip_path.to_str().unwrap();
+            zip_directory(&path, zip_path)?;
+        }
     }
 
     Ok(())
