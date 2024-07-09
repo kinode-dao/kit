@@ -82,6 +82,13 @@ pub fn remove_missing_features(
     )
 }
 
+/// Check if the first element is empty and there are no more elements
+#[instrument(level = "trace", skip_all)]
+fn is_only_empty_string(splitted: &Vec<&str>) -> bool {
+    let mut parts = splitted.iter();
+    parts.next() == Some(&"") && parts.next().is_none()
+}
+
 #[instrument(level = "trace", skip_all)]
 pub fn run_command(cmd: &mut Command, verbose: bool) -> Result<Option<(String, String)>> {
     if verbose {
@@ -348,7 +355,11 @@ async fn compile_rust_wasm_process(
     ];
     let test_only = features == "test";
     let features: Vec<&str> = features.split(',').collect();
-    let original_length = features.len();
+    let original_length = if is_only_empty_string(&features) {
+        0
+    } else {
+        features.len()
+    };
     let features = remove_missing_features(
         &process_dir.join("Cargo.toml"),
         features,

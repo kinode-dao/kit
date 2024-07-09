@@ -43,7 +43,7 @@ fn get_port(host: &str) -> Result<u16> {
     let stdout = String::from_utf8(output.stdout)?;
     let ports = extract_port(&stdout);
     if ports.len() != 1 {
-        println!("{stdout}");
+        info!("{stdout}");
         return Err(eyre!(
             "couldn't find specific port for ssh amongst: {ports:?}"
         ));

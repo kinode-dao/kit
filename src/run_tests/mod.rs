@@ -107,7 +107,7 @@ async fn wait_until_booted(
             "vfs:distro:sys",
             Some(15),
             &serde_json::to_string(&serde_json::json!({
-                "path": "/tester:sys/pkg",
+                "path": "/tester:sys/tests",
                 "action": "ReadDir",
             }))
             .unwrap(),
