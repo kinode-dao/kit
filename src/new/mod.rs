@@ -1,4 +1,7 @@
-use std::{path::{PathBuf, Path}, collections::HashMap};
+use std::{
+    collections::{HashMap, HashSet},
+    path::{Path, PathBuf},
+};
 
 use color_eyre::{eyre::eyre, Result};
 use fs_err as fs;
@@ -27,7 +30,8 @@ impl Language {
             Language::Rust => "rust",
             Language::Python => "python",
             Language::Javascript => "javascript",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 
@@ -38,7 +42,8 @@ impl Template {
             Template::Echo => "echo",
             Template::Fibonacci => "fibonacci",
             Template::FileTransfer => "file_transfer",
-        }.to_string()
+        }
+        .to_string()
     }
 }
 
@@ -83,23 +88,20 @@ fn replace_dots(input: &str) -> (String, String) {
     if dotted.clone().count() == 1 {
         (input.to_string(), input.to_string())
     } else {
-        let dotted_snake = dotted
-            .clone()
-            .fold(String::new(), |mut d, item| {
-                if !d.is_empty() {
-                    d.push_str("_dot_");
-                }
-                d.push_str(item);
-                d
-            });
-        let dotted_kebab = dotted
-            .fold(String::new(), |mut d, item| {
-                if !d.is_empty() {
-                    d.push_str("-dot-");
-                }
-                d.push_str(item);
-                d
-            });
+        let dotted_snake = dotted.clone().fold(String::new(), |mut d, item| {
+            if !d.is_empty() {
+                d.push_str("_dot_");
+            }
+            d.push_str(item);
+            d
+        });
+        let dotted_kebab = dotted.fold(String::new(), |mut d, item| {
+            if !d.is_empty() {
+                d.push_str("-dot-");
+            }
+            d.push_str(item);
+            d
+        });
         (dotted_snake, dotted_kebab)
     }
 }
@@ -116,7 +118,10 @@ fn replace_vars(input: &str, package_name: &str, publisher: &str) -> String {
         .replace("{publisher}", publisher)
         .replace("{publisher_dotted_snake}", &publisher_dotted_snake)
         .replace("{publisher_dotted_kebab}", &publisher_dotted_kebab)
-        .replace("{publisher_dotted_upper_camel}", &publisher_dotted_upper_camel)
+        .replace(
+            "{publisher_dotted_upper_camel}",
+            &publisher_dotted_upper_camel,
+        )
         .replace("Cargo.toml_", "Cargo.toml")
         .to_string()
 }
@@ -146,20 +151,31 @@ pub fn execute(
 
     let (package_name, is_from_dir) = match package_name {
         Some(pn) => (pn, false),
-        None => (new_dir.file_name().unwrap().to_str().unwrap().to_string(), true),
+        None => (
+            new_dir.file_name().unwrap().to_str().unwrap().to_string(),
+            true,
+        ),
     };
 
+    let disallowed_package_names = HashSet::from(["api", "test"]);
+    if disallowed_package_names.contains(package_name.as_str()) {
+        return Err(eyre!(
+            "Package name {} not allowed; cannot be in {:?}.",
+            package_name,
+            disallowed_package_names,
+        ));
+    }
+
     if !is_url_safe(&package_name) {
-        let error =
-            if !is_from_dir {
-                eyre!("`package_name` '{}' must be URL safe.", package_name)
-            } else {
-                eyre!(
-                    "`package_name` (derived from given directory {:?}) '{}' must be URL safe.",
-                    new_dir,
-                    package_name,
-                )
-            };
+        let error = if !is_from_dir {
+            eyre!("`package_name` '{}' must be URL safe.", package_name)
+        } else {
+            eyre!(
+                "`package_name` (derived from given directory {:?}) '{}' must be URL safe.",
+                new_dir,
+                package_name,
+            )
+        };
         return Err(error);
     }
     if !is_url_safe(&publisher) {
@@ -169,41 +185,37 @@ pub fn execute(
     match language {
         Language::Rust => {
             if package_name.contains('-') {
-                let error =
-                    if !is_from_dir {
-                        eyre!(
-                            "rust `package_name`s cannot contain `-`s (given '{}')",
-                            package_name,
-                        )
-                    } else {
-                        eyre!(
+                let error = if !is_from_dir {
+                    eyre!(
+                        "rust `package_name`s cannot contain `-`s (given '{}')",
+                        package_name,
+                    )
+                } else {
+                    eyre!(
                             "rust `package_name` (derived from given directory {:?}) cannot contain `-`s (given '{}')",
                             new_dir,
                             package_name,
                         )
-                    };
+                };
                 return Err(error);
             }
-        },
-        _ => {},
+        }
+        _ => {}
     }
 
-    let ui_infix = if ui { "ui".to_string() } else { "no-ui".to_string() };
+    let ui_infix = if ui {
+        "ui".to_string()
+    } else {
+        "no-ui".to_string()
+    };
     let template_prefix = format!(
         "{}/{}/{}/",
         language.to_string(),
         ui_infix,
         template.to_string(),
     );
-    let ui_prefix = format!(
-        "{}/{}/",
-        ui_infix,
-        template.to_string(),
-    );
-    let test_prefix = format!(
-        "test/{}/",
-        template.to_string(),
-    );
+    let ui_prefix = format!("{}/{}/", ui_infix, template.to_string(),);
+    let test_prefix = format!("test/{}/", template.to_string(),);
     let mut path_to_content: HashMap<String, String> = PATH_TO_CONTENT
         .iter()
         .filter_map(|(path, content)| {
@@ -236,7 +248,13 @@ pub fn execute(
         ));
     }
 
-    if ui && path_to_content.keys().filter(|p| !p.starts_with("ui")).count() == 0 {
+    if ui
+        && path_to_content
+            .keys()
+            .filter(|p| !p.starts_with("ui"))
+            .count()
+            == 0
+    {
         // Only `ui/` exists
         return Err(eyre!(
             "kit new: cannot use `--ui` for {} {}; template does not exist",
@@ -250,8 +268,8 @@ pub fn execute(
                 format!("{}/{}", package_name, PATH_TO_CONTENT[0].0),
                 replace_vars(PATH_TO_CONTENT[0].1, &package_name, &publisher),
             );
-        },
-        _ => {},
+        }
+        _ => {}
     }
 
     // Create the template directory and subdirectories

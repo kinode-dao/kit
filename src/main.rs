@@ -3,7 +3,10 @@ use std::env;
 use std::path::PathBuf;
 use std::str::FromStr;
 
-use color_eyre::{eyre::{eyre, Result}, Section};
+use color_eyre::{
+    eyre::{eyre, Result},
+    Section,
+};
 use fs_err as fs;
 use serde::Deserialize;
 use tracing::{error, warn, Level};
@@ -13,23 +16,9 @@ use tracing_subscriber::{
 };
 
 use kit::{
-    boot_fake_node,
-    boot_real_node,
-    build,
-    build_start_package,
-    chain,
-    connect,
-    dev_ui,
-    inject_message,
-    new,
-    remove_package,
-    reset_cache,
-    run_tests,
-    setup,
-    start_package,
-    update,
-    view_api,
-    KIT_LOG_PATH_DEFAULT,
+    boot_fake_node, boot_real_node, build, build_start_package, chain, connect, dev_ui,
+    inject_message, new, remove_package, reset_cache, run_tests, setup, start_package, update,
+    view_api, KIT_LOG_PATH_DEFAULT,
 };
 
 const MAX_REMOTE_VALUES: usize = 3;
@@ -61,13 +50,8 @@ async fn get_latest_commit_sha_from_branch(
 
 fn init_tracing(log_path: PathBuf) -> tracing_appender::non_blocking::WorkerGuard {
     // Define a fixed log file name with rolling based on size or execution instance.
-    let log_parent_path = log_path
-        .parent()
-        .unwrap();
-    let log_file_name = log_path
-        .file_name()
-        .and_then(|f| f.to_str())
-        .unwrap();
+    let log_parent_path = log_path.parent().unwrap();
+    let log_file_name = log_path.file_name().and_then(|f| f.to_str()).unwrap();
     if !log_parent_path.exists() {
         fs::create_dir_all(log_parent_path).unwrap();
     }
@@ -205,10 +189,9 @@ async fn execute(
             };
             let url: Option<String> = match build_matches.get_one::<String>("URL") {
                 Some(url) => Some(url.clone()),
-                None => {
-                    build_matches.get_one::<u16>("NODE_PORT")
-                        .map(|p| format!("http://localhost:{}", p))
-                }
+                None => build_matches
+                    .get_one::<u16>("NODE_PORT")
+                    .map(|p| format!("http://localhost:{}", p)),
             };
             let default_world = build_matches.get_one::<String>("WORLD");
             let verbose = build_matches.get_one::<bool>("VERBOSE").unwrap();
@@ -222,7 +205,8 @@ async fn execute(
                 url,
                 default_world.cloned(),
                 *verbose,
-            ).await
+            )
+            .await
         }
         Some(("build-start-package", build_start_matches)) => {
             let package_dir = PathBuf::from(build_start_matches.get_one::<String>("DIR").unwrap());
@@ -267,9 +251,11 @@ async fn execute(
         Some(("connect", connect_matches)) => {
             let local_port = connect_matches.get_one::<u16>("LOCAL_PORT").unwrap();
             let disconnect = connect_matches.get_one::<bool>("IS_DISCONNECT").unwrap();
-            let host = connect_matches.get_one::<String>("HOST")
+            let host = connect_matches
+                .get_one::<String>("HOST")
                 .map(|s| s.as_ref());
-            let host_port = connect_matches.get_one::<u16>("HOST_PORT")
+            let host_port = connect_matches
+                .get_one::<u16>("HOST_PORT")
                 .map(|hp| hp.clone());
             connect::execute(*local_port, *disconnect, host, host_port)
         }
@@ -354,13 +340,13 @@ async fn execute(
 
             if !config_path.exists() {
                 let error = format!(
-                    "Configuration file not found: {:?}\nUsage:\n{}",
+                    "Configuration path does not exist: {:?}\nUsage:\n{}",
                     config_path, usage,
                 );
                 return Err(eyre!(error));
             }
 
-            run_tests::execute(config_path.to_str().unwrap()).await
+            run_tests::execute(config_path).await
         }
         Some(("setup", setup_matches)) => {
             let verbose = setup_matches.get_one::<bool>("VERBOSE").unwrap();
@@ -937,8 +923,8 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
             .visible_alias("t")
             .arg(Arg::new("PATH")
                 .action(ArgAction::Set)
-                .help("Path to tests configuration file")
-                .default_value("tests.toml")
+                .help("Path to tests configuration file (or test dir)")
+                .default_value(current_dir)
             )
         )
         .subcommand(Command::new("setup")
@@ -1054,7 +1040,9 @@ async fn main() -> Result<()> {
                 boot_fake_node::KINODE_OWNER,
                 KIT_REPO,
                 KIT_MASTER_BRANCH,
-            ).await? {
+            )
+            .await?
+            {
                 if GIT_COMMIT_HASH != latest.sha {
                     warn!("kit is out of date! Run:\n```\nkit update\n```\nto update to the latest version.");
                 }

@@ -5,7 +5,10 @@ use tokio::io::AsyncBufReadExt;
 use tokio::signal::unix::{signal, SignalKind};
 use tracing::{error, info, instrument};
 
-use crate::run_tests::types::{BroadcastRecvBool, BroadcastSendBool, NodeCleanupInfo, NodeCleanupInfos, NodeHandles, RecvBool, SendBool};
+use crate::run_tests::types::{
+    BroadcastRecvBool, BroadcastSendBool, NodeCleanupInfo, NodeCleanupInfos, NodeHandles, RecvBool,
+    SendBool,
+};
 
 fn remove_repeated_newlines(input: &str) -> String {
     let re = regex::Regex::new(r"\n\n+").unwrap();
@@ -17,9 +20,9 @@ fn remove_repeated_newlines(input: &str) -> String {
 pub fn clean_process_by_pid(process_id: i32) {
     let pid = nix::unistd::Pid::from_raw(process_id);
     match nix::sys::wait::waitpid(pid, Some(nix::sys::wait::WaitPidFlag::WNOHANG)) {
-        Ok(nix::sys::wait::WaitStatus::StillAlive) |
-        Ok(nix::sys::wait::WaitStatus::Stopped(_, _)) |
-        Ok(nix::sys::wait::WaitStatus::Continued(_)) => {
+        Ok(nix::sys::wait::WaitStatus::StillAlive)
+        | Ok(nix::sys::wait::WaitStatus::Stopped(_, _))
+        | Ok(nix::sys::wait::WaitStatus::Continued(_)) => {
             if let Err(e) = nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGINT) {
                 error!("failed to send SIGINT to process: {:?}", e);
             }
@@ -30,22 +33,19 @@ pub fn clean_process_by_pid(process_id: i32) {
 
 /// trigger cleanup if receive signal to kill process
 #[instrument(level = "trace", skip_all)]
-pub async fn cleanup_on_signal(
-    send_to_cleanup: SendBool,
-    mut recv_kill_in_cos: BroadcastRecvBool,
-) {
-    let mut sigalrm = signal(SignalKind::alarm())
-        .expect("kit run-tests: failed to set up SIGALRM handler");
-    let mut sighup = signal(SignalKind::hangup())
-        .expect("kit run-tests: failed to set up SIGHUP handler");
-    let mut sigint = signal(SignalKind::interrupt())
-        .expect("kit run-tests: failed to set up SIGINT handler");
-    let mut sigpipe = signal(SignalKind::pipe())
-        .expect("kit run-tests: failed to set up SIGPIPE handler");
-    let mut sigquit = signal(SignalKind::quit())
-        .expect("kit run-tests: failed to set up SIGQUIT handler");
-    let mut sigterm = signal(SignalKind::terminate())
-        .expect("kit run-tests: failed to set up SIGTERM handler");
+pub async fn cleanup_on_signal(send_to_cleanup: SendBool, mut recv_kill_in_cos: BroadcastRecvBool) {
+    let mut sigalrm =
+        signal(SignalKind::alarm()).expect("kit run-tests: failed to set up SIGALRM handler");
+    let mut sighup =
+        signal(SignalKind::hangup()).expect("kit run-tests: failed to set up SIGHUP handler");
+    let mut sigint =
+        signal(SignalKind::interrupt()).expect("kit run-tests: failed to set up SIGINT handler");
+    let mut sigpipe =
+        signal(SignalKind::pipe()).expect("kit run-tests: failed to set up SIGPIPE handler");
+    let mut sigquit =
+        signal(SignalKind::quit()).expect("kit run-tests: failed to set up SIGQUIT handler");
+    let mut sigterm =
+        signal(SignalKind::terminate()).expect("kit run-tests: failed to set up SIGTERM handler");
     let mut sigusr1 = signal(SignalKind::user_defined1())
         .expect("kit run-tests: failed to set up SIGUSR1 handler");
     let mut sigusr2 = signal(SignalKind::user_defined2())
@@ -85,15 +85,21 @@ pub async fn cleanup(
             let mut nh = nh.lock().await;
             let nh_vec = std::mem::replace(&mut *nh, Vec::new());
             Some(nh_vec.into_iter().rev())
-        },
+        }
     };
+
+    let _ = send_to_kill.send(
+        should_print_std.is_none() || should_print_std.is_some_and(|b| b)
+    );
 
     for NodeCleanupInfo {
         master_fd,
         process_id,
         home,
         anvil_process,
-    } in node_cleanup_infos.iter_mut().rev() {
+        other_processes,
+    } in node_cleanup_infos.iter_mut().rev()
+    {
         // Send Ctrl-C to the process
         info!("Cleaning up {:?}...\r", home);
 
@@ -113,8 +119,12 @@ pub async fn cleanup(
         if let Some(anvil) = anvil_process {
             info!("Cleaning up anvil fakechain...\r");
             clean_process_by_pid(*anvil);
-            info!("Cleaned up anvil fakechain.");
+            info!("Done cleaning up anvil fakechain.\r");
         }
+
+        other_processes
+            .iter()
+            .for_each(|pid| clean_process_by_pid(*pid));
 
         if let Some(ref mut nh) = node_handles {
             if let Some(mut node_handle) = nh.next() {
@@ -127,7 +137,6 @@ pub async fn cleanup(
         }
         info!("Done cleaning up {:?}.\r", home);
     }
-    let _ = send_to_kill.send(should_print_std.is_some_and(|b| b));
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -155,7 +164,7 @@ pub async fn drain_print_runtime(
                 if should_print_std {
                     let stdout = remove_repeated_newlines(&stdout_buffer);
                     let stderr = remove_repeated_newlines(&stderr_buffer);
-                    println!("stdout:\n{}\nstderr:\n{}", stdout, stderr);
+                    info!("stdout:\n{}\nstderr:\n{}", stdout, stderr);
                 }
                 return;
             }

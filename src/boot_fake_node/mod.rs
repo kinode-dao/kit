@@ -8,19 +8,22 @@ use std::sync::Arc;
 use std::time::Duration;
 use zip::read::ZipArchive;
 
-use color_eyre::{eyre::{eyre, Result, WrapErr}, Section};
+use color_eyre::{
+    eyre::{eyre, Result, WrapErr},
+    Section,
+};
 use fs_err as fs;
 use semver::Version;
 use serde::Deserialize;
 use tokio::process::{Child, Command as TCommand};
 use tokio::sync::Mutex;
-use tracing::{info, warn, instrument};
+use tracing::{info, instrument, warn};
 
-use crate::KIT_CACHE;
 use crate::build;
 use crate::chain;
 use crate::run_tests::cleanup::{cleanup, cleanup_on_signal};
 use crate::run_tests::types::*;
+use crate::KIT_CACHE;
 
 const KINODE_RELEASE_BASE_URL: &str = "https://github.com/kinode-dao/kinode/releases/download";
 pub const KINODE_OWNER: &str = "kinode-dao";
@@ -76,13 +79,7 @@ pub fn extract_zip(archive_path: &Path) -> Result<()> {
 pub fn compile_runtime(path: &Path, release: bool, is_simulation_mode: bool) -> Result<()> {
     info!("Compiling Kinode runtime...");
 
-    let mut args = vec![
-        "+nightly",
-        "build",
-        "-p",
-        "kinode",
-        "--color=always",
-    ];
+    let mut args = vec!["+nightly", "build", "-p", "kinode", "--color=always"];
     if release {
         args.push("--release");
     }
@@ -90,11 +87,7 @@ pub fn compile_runtime(path: &Path, release: bool, is_simulation_mode: bool) -> 
         args.extend_from_slice(&["--features", "simulation-mode"]);
     }
 
-    build::run_command(Command::new("cargo")
-        .args(&args)
-        .current_dir(path),
-        false,
-    )?;
+    build::run_command(Command::new("cargo").args(&args).current_dir(path), false)?;
 
     info!("Done compiling Kinode runtime.");
     Ok(())
@@ -154,7 +147,11 @@ pub fn get_platform_runtime_name(is_simulation_mode: bool) -> Result<String> {
     Ok(format!(
         "kinode-{}{}.zip",
         zip_name_midfix,
-        if is_simulation_mode { "-simulation-mode" } else { "" },
+        if is_simulation_mode {
+            "-simulation-mode"
+        } else {
+            ""
+        },
     ))
 }
 
@@ -162,32 +159,36 @@ pub fn get_platform_runtime_name(is_simulation_mode: bool) -> Result<String> {
 pub async fn get_runtime_binary(version: &str, is_simulation_mode: bool) -> Result<PathBuf> {
     let zip_name = get_platform_runtime_name(is_simulation_mode)?;
 
-    let version =
-        if version != "latest" {
-            version.to_string()
-        } else {
-            find_releases_with_asset_if_online(
-                Some(KINODE_OWNER),
-                Some(KINODE_REPO),
-                &get_platform_runtime_name(is_simulation_mode)?,
-            )
-            .await?
-            .first()
-            .ok_or_else(|| eyre!("No releases found"))?
-            .clone()
-        };
+    let version = if version != "latest" {
+        version.to_string()
+    } else {
+        find_releases_with_asset_if_online(
+            Some(KINODE_OWNER),
+            Some(KINODE_REPO),
+            &get_platform_runtime_name(is_simulation_mode)?,
+        )
+        .await?
+        .first()
+        .ok_or_else(|| eyre!("No releases found"))?
+        .clone()
+    };
 
-    let runtime_dir = PathBuf::from(KIT_CACHE)
-        .join(format!(
-            "{}{}{}",
-            LOCAL_PREFIX,
-            version,
-            if is_simulation_mode { "-simulation-mode" } else { "" },
-        ));
+    let runtime_dir = PathBuf::from(KIT_CACHE).join(format!(
+        "{}{}{}",
+        LOCAL_PREFIX,
+        version,
+        if is_simulation_mode {
+            "-simulation-mode"
+        } else {
+            ""
+        },
+    ));
     let runtime_path = runtime_dir.join("kinode");
 
     if !runtime_dir.exists() {
         fs::create_dir_all(&runtime_dir)?;
+    }
+    if !runtime_path.exists() {
         get_runtime_binary_inner(&version, &zip_name, &runtime_dir).await?;
     }
 
@@ -199,7 +200,8 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> Result<
     let cache_path = format!("{}/{}-{}-{}.bin", KIT_CACHE, owner, repo, endpoint);
     let cache_path = Path::new(&cache_path);
     if cache_path.exists() {
-        if let Some(local_bytes) = fs::metadata(&cache_path).ok()
+        if let Some(local_bytes) = fs::metadata(&cache_path)
+            .ok()
             .and_then(|m| m.modified().ok())
             .and_then(|m| m.elapsed().ok())
             .and_then(|since_modified| {
@@ -208,19 +210,22 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> Result<
                 } else {
                     None
                 }
-            }) {
+            })
+        {
             return Ok(local_bytes);
         }
     }
 
     let url = format!("https://api.github.com/repos/{owner}/{repo}/{endpoint}");
     let client = reqwest::Client::new();
-    match client.get(url)
+    match client
+        .get(url)
         .header("User-Agent", "request")
         .send()
         .await?
         .bytes()
-        .await {
+        .await
+    {
         Ok(v) => {
             let v = v.to_vec();
             if let Ok(s) = String::from_utf8(v.clone()) {
@@ -234,15 +239,17 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> Result<
                 }
             }
             fs::create_dir_all(
-                cache_path.parent().ok_or_else(|| eyre!("path doesn't have parent"))?
+                cache_path
+                    .parent()
+                    .ok_or_else(|| eyre!("path doesn't have parent"))?,
             )?;
             fs::write(&cache_path, &v)?;
             return Ok(v);
-        },
+        }
         Err(_) => {
             warn!("GitHub throttled: can't fetch {owner}/{repo}/{endpoint}");
             return Ok(vec![]);
-        },
+        }
     };
 }
 
@@ -264,7 +271,8 @@ pub async fn find_releases_with_asset(
     let owner = owner.unwrap_or(KINODE_OWNER);
     let repo = repo.unwrap_or(KINODE_REPO);
     let releases = fetch_releases(owner, repo).await?;
-    let filtered_releases: Vec<String> = releases.into_iter()
+    let filtered_releases: Vec<String> = releases
+        .into_iter()
         .filter(|release| release.assets.iter().any(|asset| asset.name == asset_name))
         .map(|release| release.tag_name)
         .collect();
@@ -278,19 +286,17 @@ pub async fn find_releases_with_asset_if_online(
 ) -> Result<Vec<String>> {
     let remote_values = match find_releases_with_asset(owner, repo, asset_name).await {
         Ok(v) => v,
-        Err(e) => {
-            match e.downcast_ref::<reqwest::Error>() {
-                None => return Err(e),
-                Some(ee) => {
-                    if ee.is_connect() {
-                        get_local_versions_with_prefix(&format!("{}v", LOCAL_PREFIX))?
-                            .iter()
-                            .map(|v| format!("v{}", v))
-                            .collect()
-                    } else {
-                        return Err(e);
-                    }
-                },
+        Err(e) => match e.downcast_ref::<reqwest::Error>() {
+            None => return Err(e),
+            Some(ee) => {
+                if ee.is_connect() {
+                    get_local_versions_with_prefix(&format!("{}v", LOCAL_PREFIX))?
+                        .iter()
+                        .map(|v| format!("v{}", v))
+                        .collect()
+                } else {
+                    return Err(e);
+                }
             }
         },
     };
@@ -339,8 +345,10 @@ pub fn run_runtime(
 ) -> Result<(Child, OwnedFd)> {
     let mut full_args = vec![
         home.to_str().unwrap().into(),
-        "--port".into(), format!("{port}"),
-        "--verbosity".into(), format!("{verbosity}"),
+        "--port".into(),
+        format!("{port}"),
+        "--verbosity".into(),
+        format!("{verbosity}"),
     ];
 
     if !args.is_empty() {
@@ -351,9 +359,21 @@ pub fn run_runtime(
 
     let process = TCommand::new(path)
         .args(&full_args)
-        .stdin(if !detached { Stdio::inherit() } else { unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) } })
-        .stdout(if verbose { Stdio::inherit() } else { Stdio::piped() })
-        .stderr(if verbose { Stdio::inherit() } else { Stdio::piped() })
+        .stdin(if !detached {
+            Stdio::inherit()
+        } else {
+            unsafe { Stdio::from_raw_fd(fds.slave.as_raw_fd()) }
+        })
+        .stdout(if verbose {
+            Stdio::inherit()
+        } else {
+            Stdio::piped()
+        })
+        .stderr(if verbose {
+            Stdio::inherit()
+        } else {
+            Stdio::piped()
+        })
         .spawn()
         .wrap_err_with(|| format!("Couldn't open binary at path {:?}", path))?;
 
@@ -375,8 +395,8 @@ pub async fn execute(
     verbosity: u8,
     mut args: Vec<String>,
 ) -> Result<()> {
-    let detached = false;  // TODO: to argument?
-    // TODO: factor out with run_tests?
+    let detached = false; // TODO: to argument?
+                          // TODO: factor out with run_tests?
     let runtime_path = match runtime_path {
         None => get_runtime_binary(&version, true).await?,
         Some(runtime_path) => {
@@ -386,7 +406,8 @@ pub async fn execute(
             if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(&runtime_path, release, true)?;
-                runtime_path.join("target")
+                runtime_path
+                    .join("target")
                     .join(if release { "release" } else { "debug" })
                     .join("kinode")
             } else {
@@ -395,7 +416,7 @@ pub async fn execute(
                     runtime_path,
                 ));
             }
-        },
+        }
     };
 
     let mut task_handles = Vec::new();
@@ -418,7 +439,10 @@ pub async fn execute(
     ));
     task_handles.push(handle);
     let send_to_cleanup_for_signal = send_to_cleanup.clone();
-    let handle = tokio::spawn(cleanup_on_signal(send_to_cleanup_for_signal, recv_kill_in_cos));
+    let handle = tokio::spawn(cleanup_on_signal(
+        send_to_cleanup_for_signal,
+        recv_kill_in_cos,
+    ));
     task_handles.push(handle);
     let send_to_cleanup_for_cleanup = send_to_cleanup.clone();
     let _cleanup_context = CleanupContext::new(send_to_cleanup_for_cleanup);
@@ -433,21 +457,20 @@ pub async fn execute(
     }
 
     // boot fakechain
-    let anvil_process = chain::start_chain(
-        fakechain_port,
-        true,
-        recv_kill_in_start_chain,
-        false,
-    ).await?;
+    let anvil_process =
+        chain::start_chain(fakechain_port, true, recv_kill_in_start_chain, false).await?;
 
     if let Some(rpc) = rpc {
         args.extend_from_slice(&["--rpc".into(), rpc.into()]);
     };
 
     args.extend_from_slice(&[
-        "--password".into(), password.into(),
-        "--fake-node-name".into(), fake_node_name,
-        "--fakechain-port".into(), format!("{fakechain_port}"),
+        "--password".into(),
+        password.into(),
+        "--fake-node-name".into(),
+        fake_node_name,
+        "--fakechain-port".into(),
+        format!("{fakechain_port}"),
     ]);
 
     let (mut runtime_process, master_fd) = run_runtime(
@@ -466,6 +489,7 @@ pub async fn execute(
         process_id: runtime_process.id().unwrap() as i32,
         home: node_home.clone(),
         anvil_process: anvil_process.map(|ap| ap.id() as i32),
+        other_processes: vec![],
     });
     drop(node_cleanup_infos);
 
