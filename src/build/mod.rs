@@ -169,14 +169,12 @@ pub fn read_metadata(package_dir: &Path) -> Result<Erc721Metadata> {
 }
 
 /// Regex to dynamically capture the world name after 'world'
-#[instrument(level = "trace", skip_all)]
 fn extract_world(data: &str) -> Option<String> {
     let re = regex::Regex::new(r"world\s+([^\s\{]+)").unwrap();
     re.captures(data)
         .and_then(|caps| caps.get(1).map(|match_| match_.as_str().to_string()))
 }
 
-#[instrument(level = "trace", skip_all)]
 fn extract_worlds_from_files(directory: &Path) -> Vec<String> {
     let mut worlds = vec![];
 
@@ -203,7 +201,6 @@ fn extract_worlds_from_files(directory: &Path) -> Vec<String> {
     worlds
 }
 
-#[instrument(level = "trace", skip_all)]
 fn get_world_or_default(directory: &Path, default_world: String) -> String {
     let worlds = extract_worlds_from_files(directory);
     if worlds.len() == 1 {
@@ -214,6 +211,28 @@ fn get_world_or_default(directory: &Path, default_world: String) -> String {
         worlds.len()
     );
     default_world
+}
+
+#[instrument(level = "trace", skip_all)]
+fn copy_dir(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<()> {
+    let src = src.as_ref();
+    let dst = dst.as_ref();
+    if !dst.exists() {
+        fs::create_dir_all(dst)?;
+    }
+
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if src_path.is_dir() {
+            copy_dir(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -554,6 +573,7 @@ async fn compile_package_item(
     Ok(())
 }
 
+#[instrument(level = "trace", skip_all)]
 async fn fetch_dependencies(
     dependencies: &Vec<String>,
     apis: &mut HashMap<String, Vec<u8>>,
@@ -611,6 +631,7 @@ fn extract_imports_exports_from_wit(input: &str) -> (Vec<String>, Vec<String>) {
     (imports, exports)
 }
 
+#[instrument(level = "trace", skip_all)]
 fn get_imports_exports_from_wasm(
     path: &PathBuf,
     imports: &mut HashMap<String, Vec<PathBuf>>,
@@ -648,6 +669,7 @@ fn get_imports_exports_from_wasm(
                 .parent()
                 .and_then(|p| p.parent())
                 .unwrap()
+                .join("target")
                 .join("api")
                 .join(file_name);
             fs::rename(&path, &new_path)?;
@@ -655,11 +677,13 @@ fn get_imports_exports_from_wasm(
         } else {
             path.clone()
         };
+
         exports.insert(wit_export, path);
     }
     Ok(())
 }
 
+#[instrument(level = "trace", skip_all)]
 fn find_non_standard(
     package_dir: &Path,
     wasm_paths: HashSet<PathBuf>,
@@ -704,7 +728,6 @@ fn find_non_standard(
 ///     api/
 ///     wit/
 /// ```
-
 #[instrument(level = "trace", skip_all)]
 async fn compile_package(
     package_dir: &Path,
@@ -802,6 +825,10 @@ async fn compile_package(
         res??;
     }
 
+    // create a target/api/ dir: this will be zipped & published in pkg/
+    //  In addition, exporters, below, will be placed here to complete the API
+    copy_dir(package_dir.join("api"), package_dir.join("target").join("api"))?;
+
     // find non-standard imports/exports -> compositions
     let (importers, exporters) = find_non_standard(package_dir, wasm_paths)?;
 
@@ -830,17 +857,10 @@ async fn compile_package(
         }
     }
 
-    for entry in package_dir.read_dir()? {
-        // zip & place in pkg/: publish API inside Kinode
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() && Some("api") == path.file_name().and_then(|s| s.to_str()) {
-            // zip & place in pkg/: publish API inside Kinode
-            let zip_path = package_dir.join("pkg").join("api.zip");
-            let zip_path = zip_path.to_str().unwrap();
-            zip_directory(&path, zip_path)?;
-        }
-    }
+    // zip & place API inside of pkg/ to publish API
+    let zip_path = package_dir.join("pkg").join("api.zip");
+    let zip_path = zip_path.to_str().unwrap();
+    zip_directory(&package_dir.join("target").join("api"), zip_path)?;
 
     Ok(())
 }
