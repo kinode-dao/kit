@@ -2,7 +2,7 @@ use std::process::Command;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use color_eyre::{eyre::{eyre, WrapErr}, Result};
+use color_eyre::{eyre::eyre, Result, Section};
 use dirs::home_dir;
 use fs_err as fs;
 use tokio::sync::Mutex;
@@ -187,10 +187,11 @@ async fn load_caps(test_package_paths: &Vec<PathBuf>, port: u16) -> Result<()> {
     let mut caps = std::collections::HashMap::new();
     for test_package_path in test_package_paths {
         let manifest_path = test_package_path.join("pkg").join("manifest.json");
-        let manifest: Vec<PackageManifestEntry> =
-            serde_json::from_reader(fs::File::open(manifest_path)
-                .wrap_err_with(|| "Missing required manifest.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson")?
-            )?;
+
+        let manifest = fs::File::open(manifest_path)
+            .with_suggestion(|| "Missing required manifest.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson")?;
+        let manifest: Vec<PackageManifestEntry> = serde_json::from_reader(manifest)
+            .with_suggestion(|| "Failed to parse required manifest.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson")?;
         if manifest.len() != 1 {
             return Err(eyre!(""));
         }
