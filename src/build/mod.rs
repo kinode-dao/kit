@@ -827,7 +827,11 @@ async fn compile_package(
 
     // create a target/api/ dir: this will be zipped & published in pkg/
     //  In addition, exporters, below, will be placed here to complete the API
-    copy_dir(package_dir.join("api"), package_dir.join("target").join("api"))?;
+    let api_dir = package_dir.join("api");
+    let target_api_dir = package_dir.join("target").join("api");
+    if api_dir.exists() {
+        copy_dir(&api_dir, &target_api_dir)?;
+    }
 
     // find non-standard imports/exports -> compositions
     let (importers, exporters) = find_non_standard(package_dir, wasm_paths)?;
@@ -858,9 +862,11 @@ async fn compile_package(
     }
 
     // zip & place API inside of pkg/ to publish API
-    let zip_path = package_dir.join("pkg").join("api.zip");
-    let zip_path = zip_path.to_str().unwrap();
-    zip_directory(&package_dir.join("target").join("api"), zip_path)?;
+    if target_api_dir.exists() {
+        let zip_path = package_dir.join("pkg").join("api.zip");
+        let zip_path = zip_path.to_str().unwrap();
+        zip_directory(&target_api_dir, zip_path)?;
+    }
 
     Ok(())
 }
