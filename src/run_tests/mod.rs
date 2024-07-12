@@ -264,6 +264,122 @@ async fn boot_nodes(
 }
 
 #[instrument(level = "trace", skip_all)]
+async fn build_packages(
+    test: &Test,
+    test_dir_path: &Path,
+    detached: &bool,
+    persist_home: &bool,
+    runtime_path: &Path,
+) -> Result<(Vec<SetupPackage>, Vec<PathBuf>)> {
+    let setup_packages: Vec<SetupPackage> = test
+        .setup_packages
+        .iter()
+        .cloned()
+        .map(|s| {
+            SetupPackage {
+                path: test_dir_path.join(s.path).canonicalize().unwrap(),
+                run: s.run,
+            }
+        })
+        .collect();
+    let test_package_paths: Vec<PathBuf> = test
+        .test_package_paths
+        .iter()
+        .cloned()
+        .map(|p| test_dir_path.join(p).canonicalize().unwrap())
+        .collect();
+
+    info!("Starting node to host dependencies...");
+    let port = test.nodes[0].port.clone();
+    let home = PathBuf::from("/tmp/kinode-fake-node");
+    let nodes = vec![Node {
+        port: port.clone(),
+        home,
+        fake_node_name: "fake.dev".into(),
+        password: None,
+        rpc: None,
+        runtime_verbosity: Some(2),
+    }];
+
+    let SetupCleanupReturn {
+        send_to_cleanup,
+        send_to_kill,
+        task_handles: _,
+        cleanup_context: _cleanup_context,
+        mut master_node_port,
+        node_cleanup_infos,
+        node_handles,
+    } = setup_cleanup(detached, persist_home).await?;
+
+    // boot fakechain
+    let recv_kill_in_start_chain = send_to_kill.subscribe();
+    let anvil_process =
+        chain::start_chain(test.fakechain_router, true, recv_kill_in_start_chain, false).await?;
+
+    // Process each node
+    boot_nodes(
+        &nodes,
+        &test.fakechain_router,
+        &runtime_path,
+        &detached,
+        &mut master_node_port,
+        &anvil_process.as_ref().map(|ap| ap.id() as i32),
+        &vec![],
+        Arc::clone(&node_cleanup_infos),
+        &send_to_kill,
+        Arc::clone(&node_handles),
+    ).await?;
+    info!("Done starting node to host dependencies.");
+
+    let url = format!("http://localhost:{port}");
+
+    for dependency_package_path in &test.dependency_package_paths {
+        let path = test_dir_path.join(&dependency_package_path).canonicalize()?;
+        build::execute(
+            &path,
+            false,
+            false,
+            false,
+            "test",
+            Some(url.clone()),
+            None,
+            false,
+        ).await?;
+        start_package::execute(&path, &url).await?;
+    }
+
+    for setup_package in &setup_packages {
+        build::execute(
+            &setup_package.path,
+            false,
+            false,
+            false,
+            "test",
+            Some(url.clone()),
+            None,
+            false,
+        ).await?;
+    }
+    for test_package_path in &test_package_paths {
+        build::execute(
+            &test_package_path,
+            false,
+            false,
+            false,
+            "test",
+            Some(url.clone()),
+            None,
+            false,
+        ).await?;
+    }
+
+    info!("Cleaning up node to host dependencies.");
+    let _ = send_to_cleanup.send(false);
+
+    Ok((setup_packages, test_package_paths))
+}
+
+#[instrument(level = "trace", skip_all)]
 async fn wait_until_booted(
     node: &PathBuf,
     port: u16,
@@ -507,47 +623,13 @@ async fn handle_test(
     test_dir_path: &Path,
     persist_home: bool,
 ) -> Result<()> {
-    let setup_packages: Vec<SetupPackage> = test
-        .setup_packages
-        .iter()
-        .cloned()
-        .map(|s| {
-            SetupPackage {
-                path: test_dir_path.join(s.path).canonicalize().unwrap(),
-                run: s.run,
-            }
-        })
-        .collect();
-    let test_package_paths: Vec<PathBuf> = test
-        .test_package_paths
-        .iter()
-        .cloned()
-        .map(|p| test_dir_path.join(p).canonicalize().unwrap())
-        .collect();
-    for setup_package in &setup_packages {
-        build::execute(
-            &setup_package.path,
-            false,
-            false,
-            false,
-            "test",
-            None,
-            None,
-            false,
-        ).await?; // TODO
-    }
-    for test_package_path in &test_package_paths {
-        build::execute(
-            &test_package_path,
-            false,
-            false,
-            false,
-            "test",
-            None,
-            None,
-            false,
-        ).await?; // TODO
-    }
+    let (setup_packages, test_package_paths) = build_packages(
+        &test,
+        test_dir_path,
+        &detached,
+        &persist_home,
+        runtime_path,
+    ).await?;
 
     let SetupCleanupReturn {
         send_to_cleanup,
