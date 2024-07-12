@@ -1,13 +1,11 @@
-use kinode_process_lib::{await_message, call_init, println, Address, Response};
+use kinode_process_lib::{await_message, call_init, println, Address, Message, Response};
 
 wit_bindgen::generate!({
     path: "target/wit",
     world: "process-v0",
 });
 
-fn handle_message(_our: &Address) -> anyhow::Result<()> {
-    let message = await_message()?;
-
+fn handle_message(message: &Message) -> anyhow::Result<()> {
     if !message.is_request() {
         return Err(anyhow::anyhow!("unexpected Response: {:?}", message));
     }
@@ -22,15 +20,16 @@ fn handle_message(_our: &Address) -> anyhow::Result<()> {
 }
 
 call_init!(init);
-fn init(our: Address) {
+fn init(_our: Address) {
     println!("begin");
 
     loop {
-        match handle_message(&our) {
-            Ok(()) => {}
-            Err(e) => {
-                println!("error: {:?}", e);
-            }
-        };
+        match await_message() {
+            Err(send_error) => println!("got SendError: {send_error}"),
+            Ok(ref message) => match handle_message(message) {
+                Ok(_) => {}
+                Err(e) => println!("got error while handling message: {e:?}"),
+            },
+        }
     }
 }

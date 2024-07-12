@@ -8,7 +8,8 @@
         ],
         "grant_capabilities": [
             "{package_name}:{package_name}:{publisher}"
-        ]
+        ],
+        "wit_version": 0
     },
     "list_files.wasm": {
         "root": false,
@@ -19,6 +20,7 @@
         ],
         "grant_capabilities": [
             "{package_name}:{package_name}:{publisher}"
-        ]
+        ],
+        "wit_version": 0
     }
 }
