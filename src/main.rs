@@ -193,6 +193,9 @@ async fn execute(
                     .get_one::<u16>("NODE_PORT")
                     .map(|p| format!("http://localhost:{}", p)),
             };
+            let download_from = build_matches
+                .get_one::<String>("NODE")
+                .and_then(|s: &String| Some(s.as_str()));
             let default_world = build_matches.get_one::<String>("WORLD");
             let verbose = build_matches.get_one::<bool>("VERBOSE").unwrap();
 
@@ -203,6 +206,7 @@ async fn execute(
                 *skip_deps_check,
                 &features,
                 url,
+                download_from,
                 default_world.cloned(),
                 *verbose,
             )
@@ -228,6 +232,9 @@ async fn execute(
                 Some(f) => f.clone(),
                 None => "".into(),
             };
+            let download_from = build_start_matches
+                .get_one::<String>("NODE")
+                .and_then(|s: &String| Some(s.as_str()));
             let default_world = build_start_matches.get_one::<String>("WORLD");
             let verbose = build_start_matches.get_one::<bool>("VERBOSE").unwrap();
 
@@ -238,6 +245,7 @@ async fn execute(
                 &url,
                 *skip_deps_check,
                 &features,
+                download_from,
                 default_world.cloned(),
                 *verbose,
             )
@@ -386,8 +394,11 @@ async fn execute(
                     format!("http://localhost:{}", port)
                 }
             };
+            let download_from = view_api_matches
+                .get_one::<String>("NODE")
+                .and_then(|s: &String| Some(s.as_str()));
 
-            view_api::execute(None, package_id, &url, true).await?;
+            view_api::execute(None, package_id, &url, download_from, true).await?;
             Ok(())
         }
         _ => {
@@ -622,6 +633,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("Node URL (overrides NODE_PORT)")
                 .required(false)
             )
+            .arg(Arg::new("NODE")
+                .action(ArgAction::Set)
+                .short('d')
+                .long("download-from")
+                .help("Download API from this node if not found")
+                .required(false)
+            )
             .arg(Arg::new("WORLD")
                 .action(ArgAction::Set)
                 .short('w')
@@ -657,6 +675,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('u')
                 .long("url")
                 .help("Node URL (overrides NODE_PORT)")
+                .required(false)
+            )
+            .arg(Arg::new("NODE")
+                .action(ArgAction::Set)
+                .short('d')
+                .long("download-from")
+                .help("Download API from this node if not found")
                 .required(false)
             )
             .arg(Arg::new("WORLD")
@@ -996,6 +1021,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('u')
                 .long("url")
                 .help("Node URL (overrides NODE_PORT)")
+                .required(false)
+            )
+            .arg(Arg::new("NODE")
+                .action(ArgAction::Set)
+                .short('d')
+                .long("download-from")
+                .help("Download API from this node if not found")
                 .required(false)
             )
         )

@@ -191,6 +191,7 @@ async fn get_api(
     node: Option<&str>,
     url: &str,
     package_id: &str,
+    download_from: Option<&str>,
     verbose: bool,
     is_first_call: bool,
 ) -> Result<PathBuf> {
@@ -224,8 +225,8 @@ async fn get_api(
     } else {
         if is_first_call && body.contains("Failure") {
             // try to download the package & try again
-            download(node, url, package_id, None, None).await?;
-            Box::pin(get_api(node, url, package_id, verbose, false)).await?
+            download(node, url, package_id, download_from, None).await?;
+            Box::pin(get_api(node, url, package_id, download_from, verbose, false)).await?
         } else {
             // unexpected case
             let body = serde_json::from_str::<serde_json::Value>(&body)?;
@@ -241,10 +242,11 @@ pub async fn execute(
     node: Option<&str>,
     package_id: Option<&str>,
     url: &str,
+    download_from: Option<&str>,
     verbose: bool,
 ) -> Result<Option<PathBuf>> {
     if let Some(package_id) = package_id {
-        Ok(Some(get_api(node, url, &package_id, verbose, true).await?))
+        Ok(Some(get_api(node, url, &package_id, download_from, verbose, true).await?))
     } else {
         list_apis(node, url, verbose).await?;
         Ok(None)
