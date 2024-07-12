@@ -11,7 +11,7 @@ use tracing::{debug, info, instrument};
 
 use kinode_process_lib::kernel_types::PackageManifestEntry;
 
-use crate::boot_fake_node::{compile_runtime, get_runtime_binary, run_runtime};
+use crate::boot_fake_node;
 use crate::build;
 use crate::chain;
 use crate::inject_message;
@@ -23,6 +23,62 @@ pub mod cleanup;
 use cleanup::{cleanup, cleanup_on_signal, drain_print_runtime};
 pub mod types;
 use types::*;
+
+impl Config {
+    fn expand_home_paths(mut self: Config) -> Config {
+        self.runtime = match self.runtime {
+            Runtime::FetchVersion(version) => Runtime::FetchVersion(version),
+            Runtime::RepoPath(runtime_path) => {
+                Runtime::RepoPath(expand_home_path(&runtime_path).unwrap_or(runtime_path))
+            }
+        };
+        for test in self.tests.iter_mut() {
+            test.test_package_paths = test
+                .test_package_paths
+                .iter()
+                .map(|p| expand_home_path(&p).unwrap_or_else(|| p.clone()))
+                .collect();
+            for node in test.nodes.iter_mut() {
+                node.home = expand_home_path(&node.home).unwrap_or_else(|| node.home.clone());
+            }
+        }
+        self
+    }
+}
+
+#[instrument(level = "trace", skip_all)]
+fn load_config(config_path: &Path) -> Result<(PathBuf, Config)> {
+    // existence of path has already been checked in src/main.rs
+
+    // cases:
+    // 1. given `.toml` file
+    // 2. given dir in which `tests.toml` exists
+    // 3. given dir in which `test/tests.toml` exists
+    let config_path = if config_path.is_file() {
+        // case 1
+        config_path.into()
+    } else {
+        let possible_config_path = config_path.join("tests.toml");
+        if possible_config_path.exists() {
+            // case 2
+            possible_config_path
+        } else {
+            let possible_config_path = config_path.join("test").join("tests.toml");
+            if !possible_config_path.exists() {
+                return Err(eyre!("Could not find `tests.toml within given path {config_path:?}"));
+            }
+            if possible_config_path.is_file() {
+                // case 3
+                possible_config_path
+            } else {
+                return Err(eyre!("Could not find `tests.toml within given path {config_path:?}"));
+            }
+        }
+    };
+
+    let content = fs::read_to_string(&config_path)?;
+    Ok((config_path, toml::from_str::<Config>(&content)?.expand_home_paths()))
+}
 
 fn get_basename(file_path: &Path) -> Option<&str> {
     file_path
@@ -69,26 +125,142 @@ fn make_node_names(nodes: Vec<Node>) -> Result<Vec<String>> {
         .collect()
 }
 
-impl Config {
-    fn expand_home_paths(mut self: Config) -> Config {
-        self.runtime = match self.runtime {
-            Runtime::FetchVersion(version) => Runtime::FetchVersion(version),
-            Runtime::RepoPath(runtime_path) => {
-                Runtime::RepoPath(expand_home_path(&runtime_path).unwrap_or(runtime_path))
-            }
-        };
-        for test in self.tests.iter_mut() {
-            test.test_package_paths = test
-                .test_package_paths
-                .iter()
-                .map(|p| expand_home_path(&p).unwrap_or_else(|| p.clone()))
-                .collect();
-            for node in test.nodes.iter_mut() {
-                node.home = expand_home_path(&node.home).unwrap_or_else(|| node.home.clone());
+#[instrument(level = "trace", skip_all)]
+async fn setup_cleanup(detached: &bool, persist_home: &bool) -> Result<SetupCleanupReturn> {
+    // Initialize variables for master node and nodes list
+    let master_node_port = None;
+    let mut task_handles = Vec::new();
+    let node_handles = Arc::new(Mutex::new(Vec::new()));
+    let node_cleanup_infos = Arc::new(Mutex::new(Vec::new()));
+
+    // Cleanup, boot check, test loading, and running
+    let (send_to_cleanup, recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
+    let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
+    let recv_kill_in_cos = send_to_kill.subscribe();
+    let node_cleanup_infos_for_cleanup = Arc::clone(&node_cleanup_infos);
+    let node_handles_for_cleanup = Arc::clone(&node_handles);
+    let send_to_kill_for_cleanup = send_to_kill.clone();
+    let handle = tokio::spawn(cleanup(
+        recv_in_cleanup,
+        send_to_kill_for_cleanup,
+        node_cleanup_infos_for_cleanup,
+        Some(node_handles_for_cleanup),
+        detached.clone(),
+        !persist_home,
+    ));
+    task_handles.push(handle);
+    let send_to_cleanup_for_signal = send_to_cleanup.clone();
+    let handle = tokio::spawn(cleanup_on_signal(
+        send_to_cleanup_for_signal,
+        recv_kill_in_cos,
+    ));
+    task_handles.push(handle);
+    let cleanup_context = CleanupContext::new(send_to_cleanup.clone());
+    Ok(SetupCleanupReturn {
+        send_to_cleanup,
+        send_to_kill,
+        task_handles,
+        cleanup_context,
+        master_node_port,
+        node_cleanup_infos,
+        node_handles,
+    })
+}
+
+#[instrument(level = "trace", skip_all)]
+async fn boot_nodes(
+    nodes: &Vec<Node>,
+    fakechain_router: &u16,
+    runtime_path: &Path,
+    detached: &bool,
+    master_node_port: &mut Option<u16>,
+    anvil_process: &Option<i32>,
+    setup_scripts: &Vec<i32>,
+    node_cleanup_infos: NodeCleanupInfos,
+    send_to_kill: &BroadcastSendBool,
+    node_handles: NodeHandles,
+) -> Result<()> {
+    for node in nodes {
+        fs::create_dir_all(&node.home)?;
+        let node_home = fs::canonicalize(&node.home)?;
+        for dir in &["kernel", "kv", "sqlite", "vfs"] {
+            let dir = node_home.join(dir);
+            if dir.exists() {
+                fs::remove_dir_all(&node_home.join(dir)).unwrap();
             }
         }
-        self
+
+        let mut args = vec![];
+        if let Some(ref rpc) = node.rpc {
+            args.extend_from_slice(&["--rpc".into(), rpc.clone()]);
+        };
+        if let Some(ref password) = node.password {
+            args.extend_from_slice(&["--password".into(), password.clone()]);
+        };
+
+        // TODO: change this to be less restrictive; currently leads to weirdness
+        //  like an input of `fake.os` -> `fake.os.dev`.
+        //  The reason we need it for now is that non-`.dev` nodes are not currently
+        //  addressable.
+        //  Once they are addressable, change this to, perhaps, `!name.contains(".")
+        let mut name = node.fake_node_name.clone();
+        if !name.ends_with(".dev") {
+            name.push_str(".dev");
+        }
+
+        args.extend_from_slice(&[
+            "--fake-node-name".into(),
+            name,
+            "--fakechain-port".into(),
+            format!("{}", fakechain_router),
+        ]);
+
+        let (mut runtime_process, master_fd) = boot_fake_node::run_runtime(
+            runtime_path,
+            &node_home,
+            node.port,
+            &args[..],
+            false,
+            detached.clone(),
+            node.runtime_verbosity.unwrap_or_else(|| 0u8),
+        )?;
+
+        let mut anvil_cleanup: Option<i32> = None;
+        let mut other_processes = vec![];
+
+        if master_node_port.is_none() {
+            anvil_cleanup = anvil_process.clone();
+            *master_node_port = Some(node.port);
+            other_processes.extend_from_slice(setup_scripts);
+        };
+
+        {
+            let mut node_cleanup_infos = node_cleanup_infos.lock().await;
+            node_cleanup_infos.push(NodeCleanupInfo {
+                master_fd,
+                process_id: runtime_process.id().unwrap() as i32,
+                home: node_home.clone(),
+                anvil_process: anvil_cleanup,
+                other_processes,
+            });
+        }
+
+        let recv_kill_in_dpr = send_to_kill.subscribe();
+        tokio::spawn(drain_print_runtime(
+            runtime_process.stdout.take().unwrap(),
+            runtime_process.stderr.take().unwrap(),
+            recv_kill_in_dpr,
+        ));
+
+        {
+            let mut node_handles = node_handles.lock().await;
+            node_handles.push(runtime_process);
+        }
+
+        let recv_kill_in_wait = send_to_kill.subscribe();
+        wait_until_booted(&node.home, node.port, 10, recv_kill_in_wait).await?;
     }
+    Ok(())
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -365,9 +537,8 @@ async fn handle_test(
         ).await?; // TODO
     }
     for test_package_path in &test_package_paths {
-        let path = test_dir_path.join(&test_package_path).canonicalize()?;
         build::execute(
-            &path,
+            &test_package_path,
             false,
             false,
             false,
@@ -378,35 +549,15 @@ async fn handle_test(
         ).await?; // TODO
     }
 
-    // Initialize variables for master node and nodes list
-    let mut master_node_port = None;
-    let mut task_handles = Vec::new();
-    let node_handles = Arc::new(Mutex::new(Vec::new()));
-    let node_cleanup_infos = Arc::new(Mutex::new(Vec::new()));
-
-    // Cleanup, boot check, test loading, and running
-    let (send_to_cleanup, recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
-    let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
-    let recv_kill_in_cos = send_to_kill.subscribe();
-    let node_cleanup_infos_for_cleanup = Arc::clone(&node_cleanup_infos);
-    let node_handles_for_cleanup = Arc::clone(&node_handles);
-    let send_to_kill_for_cleanup = send_to_kill.clone();
-    let handle = tokio::spawn(cleanup(
-        recv_in_cleanup,
-        send_to_kill_for_cleanup,
-        node_cleanup_infos_for_cleanup,
-        Some(node_handles_for_cleanup),
-        detached,
-        !persist_home,
-    ));
-    task_handles.push(handle);
-    let send_to_cleanup_for_signal = send_to_cleanup.clone();
-    let handle = tokio::spawn(cleanup_on_signal(
-        send_to_cleanup_for_signal,
-        recv_kill_in_cos,
-    ));
-    task_handles.push(handle);
-    let _cleanup_context = CleanupContext::new(send_to_cleanup.clone());
+    let SetupCleanupReturn {
+        send_to_cleanup,
+        send_to_kill,
+        task_handles,
+        cleanup_context: _cleanup_context,
+        mut master_node_port,
+        node_cleanup_infos,
+        node_handles,
+    } = setup_cleanup(&detached, &persist_home).await?;
 
     let setup_scripts: Vec<i32> = test.setup_scripts
         .iter()
@@ -427,86 +578,18 @@ async fn handle_test(
         chain::start_chain(test.fakechain_router, true, recv_kill_in_start_chain, false).await?;
 
     // Process each node
-    for node in &test.nodes {
-        fs::create_dir_all(&node.home)?;
-        let node_home = fs::canonicalize(&node.home)?;
-        for dir in &["kernel", "kv", "sqlite", "vfs"] {
-            let dir = node_home.join(dir);
-            if dir.exists() {
-                fs::remove_dir_all(&node_home.join(dir)).unwrap();
-            }
-        }
-
-        let mut args = vec![];
-        if let Some(ref rpc) = node.rpc {
-            args.extend_from_slice(&["--rpc".into(), rpc.clone()]);
-        };
-        if let Some(ref password) = node.password {
-            args.extend_from_slice(&["--password".into(), password.clone()]);
-        };
-
-        // TODO: change this to be less restrictive; currently leads to weirdness
-        //  like an input of `fake.os` -> `fake.os.dev`.
-        //  The reason we need it for now is that non-`.dev` nodes are not currently
-        //  addressable.
-        //  Once they are addressable, change this to, perhaps, `!name.contains(".")
-        let mut name = node.fake_node_name.clone();
-        if !name.ends_with(".dev") {
-            name.push_str(".dev");
-        }
-
-        args.extend_from_slice(&[
-            "--fake-node-name".into(),
-            name,
-            "--fakechain-port".into(),
-            format!("{}", test.fakechain_router),
-        ]);
-
-        let (mut runtime_process, master_fd) = run_runtime(
-            &runtime_path,
-            &node_home,
-            node.port,
-            &args[..],
-            false,
-            detached,
-            node.runtime_verbosity.unwrap_or_else(|| 0u8),
-        )?;
-
-        let mut anvil_cleanup: Option<i32> = None;
-        let mut other_processes = vec![];
-
-        if master_node_port.is_none() {
-            anvil_cleanup = anvil_process.as_ref().map(|ap| ap.id() as i32);
-            master_node_port = Some(node.port);
-            other_processes.extend_from_slice(&setup_scripts);
-        };
-
-        {
-            let mut node_cleanup_infos = node_cleanup_infos.lock().await;
-            node_cleanup_infos.push(NodeCleanupInfo {
-                master_fd,
-                process_id: runtime_process.id().unwrap() as i32,
-                home: node_home.clone(),
-                anvil_process: anvil_cleanup,
-                other_processes,
-            });
-        }
-
-        let recv_kill_in_dpr = send_to_kill.subscribe();
-        tokio::spawn(drain_print_runtime(
-            runtime_process.stdout.take().unwrap(),
-            runtime_process.stderr.take().unwrap(),
-            recv_kill_in_dpr,
-        ));
-
-        {
-            let mut node_handles = node_handles.lock().await;
-            node_handles.push(runtime_process);
-        }
-
-        let recv_kill_in_wait = send_to_kill.subscribe();
-        wait_until_booted(&node.home, node.port, 10, recv_kill_in_wait).await?;
-    }
+    boot_nodes(
+        &test.nodes,
+        &test.fakechain_router,
+        &runtime_path,
+        &detached,
+        &mut master_node_port,
+        &anvil_process.as_ref().map(|ap| ap.id() as i32),
+        &setup_scripts,
+        Arc::clone(&node_cleanup_infos),
+        &send_to_kill,
+        Arc::clone(&node_handles),
+    ).await?;
 
     for node in &test.nodes {
         load_setups(&setup_packages, node.port.clone()).await?;
@@ -555,49 +638,24 @@ async fn handle_test(
 pub async fn execute(config_path: PathBuf) -> Result<()> {
     let detached = true; // TODO: to arg?
 
-    // existence of path has already been checked in src/main.rs
-
-    // cases:
-    // 1. given `.toml` file
-    // 2. given dir in which `tests.toml` exists
-    // 3. given dir in which `test/tests.toml` exists
-    let config_path = if config_path.is_file() {
-        // case 1
-        config_path
-    } else {
-        let possible_config_path = config_path.join("tests.toml");
-        if possible_config_path.exists() {
-            // case 2
-            possible_config_path
-        } else {
-            let possible_config_path = config_path.join("test").join("tests.toml");
-            if !possible_config_path.exists() {
-                return Err(eyre!("Could not find `tests.toml within given path {config_path:?}"));
-            }
-            if possible_config_path.is_file() {
-                // case 3
-                possible_config_path
-            } else {
-                return Err(eyre!("Could not find `tests.toml within given path {config_path:?}"));
-            }
-        }
-    };
-
-    let content = fs::read_to_string(&config_path)?;
-    let config = toml::from_str::<Config>(&content)?.expand_home_paths();
+    let (config_path, config) = load_config(&config_path)?;
 
     debug!("{:?}", config);
 
     // TODO: factor out with boot_fake_node?
     let runtime_path = match config.runtime {
-        Runtime::FetchVersion(ref version) => get_runtime_binary(version, true).await?,
+        Runtime::FetchVersion(ref version) => boot_fake_node::get_runtime_binary(version, true).await?,
         Runtime::RepoPath(runtime_path) => {
             if !runtime_path.exists() {
                 return Err(eyre!("RepoPath {:?} does not exist.", runtime_path));
             }
             if runtime_path.is_dir() {
                 // Compile the runtime binary
-                compile_runtime(&runtime_path, config.runtime_build_release, true)?;
+                boot_fake_node::compile_runtime(
+                    &runtime_path,
+                    config.runtime_build_release,
+                    true,
+                )?;
                 runtime_path
                     .join("target")
                     .join(if config.runtime_build_release {
