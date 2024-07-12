@@ -187,12 +187,8 @@ async fn execute(
                 Some(f) => f.clone(),
                 None => "".into(),
             };
-            let url: Option<String> = match matches.get_one::<String>("URL") {
-                Some(url) => Some(url.clone()),
-                None => matches
-                    .get_one::<u16>("NODE_PORT")
-                    .map(|p| format!("http://localhost:{}", p)),
-            };
+            let url = matches.get_one::<u16>("NODE_PORT")
+                .map(|p| format!("http://localhost:{p}"));
             let download_from = matches
                 .get_one::<String>("NODE")
                 .and_then(|s: &String| Some(s.as_str()));
@@ -218,13 +214,10 @@ async fn execute(
             let ui_only = matches
                 .get_one::<bool>("UI_ONLY")
                 .unwrap_or(&false);
-            let url: String = match matches.get_one::<String>("URL") {
-                Some(url) => url.clone(),
-                None => {
-                    let port = matches.get_one::<u16>("NODE_PORT").unwrap();
-                    format!("http://localhost:{}", port)
-                }
-            };
+            let url = format!(
+                "http://localhost:{}",
+                matches.get_one::<u16>("NODE_PORT").unwrap(),
+            );
             let skip_deps_check = matches
                 .get_one::<bool>("SKIP_DEPS_CHECK")
                 .unwrap();
@@ -269,26 +262,20 @@ async fn execute(
         }
         Some(("dev-ui", matches)) => {
             let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
-            let url: String = match matches.get_one::<String>("URL") {
-                Some(url) => url.clone(),
-                None => {
-                    let port = matches.get_one::<u16>("NODE_PORT").unwrap();
-                    format!("http://localhost:{}", port)
-                }
-            };
+            let url = format!(
+                "http://localhost:{}",
+                matches.get_one::<u16>("NODE_PORT").unwrap(),
+            );
             let skip_deps_check = matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
             let release = matches.get_one::<bool>("RELEASE").unwrap();
 
             dev_ui::execute(&package_dir, &url, *skip_deps_check, *release)
         }
         Some(("inject-message", matches)) => {
-            let url: String = match matches.get_one::<String>("URL") {
-                Some(url) => url.clone(),
-                None => {
-                    let port = matches.get_one::<u16>("NODE_PORT").unwrap();
-                    format!("http://localhost:{}", port)
-                }
-            };
+            let url = format!(
+                "http://localhost:{}",
+                matches.get_one::<u16>("NODE_PORT").unwrap(),
+            );
             let process: &String = matches.get_one("PROCESS").unwrap();
             let non_block: &bool = matches.get_one("NONBLOCK").unwrap();
             let body: &String = matches.get_one("BODY_JSON").unwrap();
@@ -330,13 +317,10 @@ async fn execute(
                 .and_then(|s: &String| Some(s.as_str()));
             let package_dir =
                 PathBuf::from(matches.get_one::<String>("DIR").unwrap());
-            let url: String = match matches.get_one::<String>("URL") {
-                Some(url) => url.clone(),
-                None => {
-                    let port = matches.get_one::<u16>("NODE_PORT").unwrap();
-                    format!("http://localhost:{}", port)
-                }
-            };
+            let url = format!(
+                "http://localhost:{}",
+                matches.get_one::<u16>("NODE_PORT").unwrap(),
+            );
             remove_package::execute(&package_dir, &url, package_name, publisher).await
         }
         Some(("reset-cache", _matches)) => reset_cache::execute(),
@@ -364,13 +348,10 @@ async fn execute(
         Some(("start-package", matches)) => {
             let package_dir =
                 PathBuf::from(matches.get_one::<String>("DIR").unwrap());
-            let url: String = match matches.get_one::<String>("URL") {
-                Some(url) => url.clone(),
-                None => {
-                    let port = matches.get_one::<u16>("NODE_PORT").unwrap();
-                    format!("http://localhost:{}", port)
-                }
-            };
+            let url = format!(
+                "http://localhost:{}",
+                matches.get_one::<u16>("NODE_PORT").unwrap(),
+            );
             start_package::execute(&package_dir, &url).await
         }
         Some(("update", matches)) => {
@@ -387,13 +368,10 @@ async fn execute(
             let package_id = matches
                 .get_one::<String>("PACKAGE_ID")
                 .and_then(|s: &String| Some(s.as_str()));
-            let url: String = match matches.get_one::<String>("URL") {
-                Some(url) => url.clone(),
-                None => {
-                    let port = matches.get_one::<u16>("NODE_PORT").unwrap();
-                    format!("http://localhost:{}", port)
-                }
-            };
+            let url = format!(
+                "http://localhost:{}",
+                matches.get_one::<u16>("NODE_PORT").unwrap(),
+            );
             let download_from = matches
                 .get_one::<String>("NODE")
                 .and_then(|s: &String| Some(s.as_str()));
@@ -622,16 +600,9 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .short('p')
                 .long("port")
-                .help("Node port: for use on localhost (overridden by URL)")
+                .help("localhost node port; for remote see https://book.kinode.org/hosted-nodes.html#using-kit-with-your-hosted-node")
+                .default_value("8080")
                 .value_parser(value_parser!(u16))
-                .required(false)
-            )
-            .arg(Arg::new("URL")
-                .action(ArgAction::Set)
-                .short('u')
-                .long("url")
-                .help("Node URL (overrides NODE_PORT)")
-                .required(false)
             )
             .arg(Arg::new("NODE")
                 .action(ArgAction::Set)
@@ -666,16 +637,9 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .short('p')
                 .long("port")
-                .help("Node port: for use on localhost (overridden by URL)")
+                .help("localhost node port; for remote see https://book.kinode.org/hosted-nodes.html#using-kit-with-your-hosted-node")
                 .default_value("8080")
                 .value_parser(value_parser!(u16))
-            )
-            .arg(Arg::new("URL")
-                .action(ArgAction::Set)
-                .short('u')
-                .long("url")
-                .help("Node URL (overrides NODE_PORT)")
-                .required(false)
             )
             .arg(Arg::new("NODE")
                 .action(ArgAction::Set)
@@ -786,16 +750,9 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .short('p')
                 .long("port")
-                .help("Node port: for use on localhost (overridden by URL)")
+                .help("localhost node port; for remote see https://book.kinode.org/hosted-nodes.html#using-kit-with-your-hosted-node")
                 .default_value("8080")
                 .value_parser(value_parser!(u16))
-            )
-            .arg(Arg::new("URL")
-                .action(ArgAction::Set)
-                .short('u')
-                .long("url")
-                .help("Node URL (overrides NODE_PORT)")
-                .required(false)
             )
             .arg(Arg::new("RELEASE")
                 .action(ArgAction::SetTrue)
@@ -827,16 +784,9 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .short('p')
                 .long("port")
-                .help("Node port: for use on localhost (overridden by URL)")
+                .help("localhost node port; for remote see https://book.kinode.org/hosted-nodes.html#using-kit-with-your-hosted-node")
                 .default_value("8080")
                 .value_parser(value_parser!(u16))
-            )
-            .arg(Arg::new("URL")
-                .action(ArgAction::Set)
-                .short('u')
-                .long("url")
-                .help("Node URL (overrides NODE_PORT)")
-                .required(false)
             )
             .arg(Arg::new("NODE_NAME")
                 .action(ArgAction::Set)
@@ -928,16 +878,9 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .short('p')
                 .long("port")
-                .help("Node port: for use on localhost (overridden by URL)")
+                .help("localhost node port; for remote see https://book.kinode.org/hosted-nodes.html#using-kit-with-your-hosted-node")
                 .default_value("8080")
                 .value_parser(value_parser!(u16))
-            )
-            .arg(Arg::new("URL")
-                .action(ArgAction::Set)
-                .short('u')
-                .long("url")
-                .help("Node URL (overrides NODE_PORT)")
-                .required(false)
             )
         )
         .subcommand(Command::new("reset-cache")
@@ -974,16 +917,9 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .short('p')
                 .long("port")
-                .help("Node port: for use on localhost (overridden by URL)")
+                .help("localhost node port; for remote see https://book.kinode.org/hosted-nodes.html#using-kit-with-your-hosted-node")
                 .default_value("8080")
                 .value_parser(value_parser!(u16))
-            )
-            .arg(Arg::new("URL")
-                .action(ArgAction::Set)
-                .short('u')
-                .long("url")
-                .help("Node URL (overrides NODE_PORT)")
-                .required(false)
             )
         )
         .subcommand(Command::new("update")
@@ -1012,16 +948,9 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .short('p')
                 .long("port")
-                .help("Node port: for use on localhost (overridden by URL)")
+                .help("localhost node port; for remote see https://book.kinode.org/hosted-nodes.html#using-kit-with-your-hosted-node")
                 .default_value("8080")
                 .value_parser(value_parser!(u16))
-            )
-            .arg(Arg::new("URL")
-                .action(ArgAction::Set)
-                .short('u')
-                .long("url")
-                .help("Node URL (overrides NODE_PORT)")
-                .required(false)
             )
             .arg(Arg::new("NODE")
                 .action(ArgAction::Set)
