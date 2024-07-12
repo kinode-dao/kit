@@ -2,10 +2,7 @@ use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
 use std::path::Path;
 
-use color_eyre::{
-    eyre::{eyre, WrapErr},
-    Result, Section,
-};
+use color_eyre::{eyre::eyre, Result, Section};
 use fs_err as fs;
 use serde_json::json;
 use tracing::{info, instrument};
@@ -131,10 +128,10 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     let publisher = metadata.properties.publisher.as_str();
     let pkg_publisher = format!("{}:{}", package_name, publisher);
 
-    let manifest: Vec<PackageManifestEntry> =
-        serde_json::from_reader(fs::File::open(pkg_dir.join("manifest.json"))
-            .wrap_err_with(|| "Missing required manifest.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson")?
-        )?;
+    let manifest = fs::File::open(pkg_dir.join("manifest.json"))
+        .with_suggestion(|| "Missing required manifest.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson")?;
+    let manifest: Vec<PackageManifestEntry> = serde_json::from_reader(manifest)
+        .with_suggestion(|| "Failed to parse required manifest.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson")?;
     let has_all_entries = manifest.iter().fold(true, |has_all_entries, entry| {
         let file_path = entry
             .process_wasm_path
