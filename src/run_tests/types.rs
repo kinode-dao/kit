@@ -23,10 +23,10 @@ pub enum Runtime {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Test {
+    pub dependency_package_paths: Vec<PathBuf>,
     pub setup_packages: Vec<SetupPackage>,
     pub setup_scripts: Vec<Script>,
     pub test_package_paths: Vec<PathBuf>,
-    //pub test_packages: Vec<TestPackage>,
     pub test_scripts: Vec<Script>,
     pub timeout_secs: u64,
     pub fakechain_router: u16,
@@ -53,6 +53,16 @@ pub struct Node {
     pub password: Option<String>,
     pub rpc: Option<String>,
     pub runtime_verbosity: Option<u8>,
+}
+
+pub struct SetupCleanupReturn {
+    pub send_to_cleanup: tokio::sync::mpsc::UnboundedSender<bool>,
+    pub send_to_kill: BroadcastSendBool,
+    pub task_handles: Vec<tokio::task::JoinHandle<()>>,
+    pub cleanup_context: CleanupContext,
+    pub master_node_port: Option<u16>,
+    pub node_cleanup_infos: NodeCleanupInfos,
+    pub node_handles: NodeHandles,
 }
 
 pub type NodeHandles = Arc<Mutex<Vec<Child>>>;
