@@ -1,7 +1,7 @@
 use crate::kinode::process::standard::{ProcessId as WitProcessId};
 use crate::kinode::process::{package_name}::{Address as WitAddress, Request as TransferRequest, DownloadRequest};
 use kinode_process_lib::{
-    await_next_message_body, call_init, println, Address, Message, ProcessId, Request,
+    await_next_message_body, call_init, println, Address, ProcessId, Request,
 };
 
 wit_bindgen::generate!({
@@ -50,10 +50,14 @@ fn init(our: Address) {
         .parse()
         .unwrap();
 
-    let Ok(_) = Request::to(our)
+    match Request::to(our)
         .body(TransferRequest::Download(DownloadRequest {
             name: name.into(),
             target: target.clone().into(),
         }))
-        .send();
+        .send()
+    {
+        Ok(_) => {}
+        Err(e) => println!("download failed: {e:?}"),
+    }
 }
