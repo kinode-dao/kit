@@ -507,6 +507,7 @@ async fn compile_package_and_ui(
     features: &str,
     url: Option<String>,
     default_world: Option<String>,
+    download_from: Option<&str>,
     verbose: bool,
 ) -> Result<()> {
     compile_and_copy_ui(package_dir, valid_node, verbose).await?;
@@ -516,6 +517,7 @@ async fn compile_package_and_ui(
         features,
         url,
         default_world,
+        download_from,
         verbose,
     )
     .await?;
@@ -535,7 +537,15 @@ async fn build_wit_dir(
     };
     download_file(wit_url, &wit_dir.join("kinode.wit")).await?;
     for (file_name, contents) in apis {
-        fs::write(wit_dir.join(file_name), contents)?;
+        let destination = wit_dir.join(file_name);
+        if destination.exists() {
+            // check if contents have not changed -> no-op
+            let old_contents = fs::read(&destination)?;
+            if &old_contents == contents {
+                continue;
+            }
+        }
+        fs::write(&destination, contents)?;
     }
     Ok(())
 }
@@ -579,6 +589,7 @@ async fn fetch_dependencies(
     apis: &mut HashMap<String, Vec<u8>>,
     wasm_paths: &mut HashSet<PathBuf>,
     url: String,
+    download_from: Option<&str>,
 ) -> Result<()> {
     for dependency in dependencies {
         if dependency.parse::<PackageId>().is_err() {
@@ -590,6 +601,7 @@ async fn fetch_dependencies(
             None,
             Some(dependency),
             &url,
+            download_from,
             false,
         ).await? else {
             return Err(eyre!(
@@ -735,6 +747,7 @@ async fn compile_package(
     features: &str,
     url: Option<String>,
     default_world: Option<String>,
+    download_from: Option<&str>,
     verbose: bool,
 ) -> Result<()> {
     let metadata = read_metadata(package_dir)?;
@@ -798,6 +811,7 @@ async fn compile_package(
                         &mut apis,
                         &mut wasm_paths,
                         url.clone(),
+                        download_from,
                     ).await?;
                 }
             }
@@ -879,6 +893,7 @@ pub async fn execute(
     skip_deps_check: bool,
     features: &str,
     url: Option<String>,
+    download_from: Option<&str>,
     default_world: Option<String>,
     verbose: bool,
 ) -> Result<()> {
@@ -905,6 +920,7 @@ pub async fn execute(
                 features,
                 url,
                 default_world,
+                download_from,
                 verbose,
             )
             .await
@@ -917,6 +933,7 @@ pub async fn execute(
                 features,
                 url,
                 default_world,
+                download_from,
                 verbose,
             )
             .await;
@@ -936,6 +953,7 @@ pub async fn execute(
                 features,
                 url,
                 default_world,
+                download_from,
                 verbose,
             )
             .await

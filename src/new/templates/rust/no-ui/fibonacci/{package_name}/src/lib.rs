@@ -1,11 +1,11 @@
 use crate::kinode::process::{package_name}::{Request as FibonacciRequest, Response as FibonacciResponse};
-use kinode_process_lib::{await_message, call_init, println, Address, Response};
+use kinode_process_lib::{await_message, call_init, println, Address, Message, Response};
 
 wit_bindgen::generate!({
     path: "target/wit",
     world: "{package_name_kebab}-{publisher_dotted_kebab}-v0",
     generate_unused_types: true,
-    additional_derives: [serde::Deserialize, serde::Serialize],
+    additional_derives: [serde::Deserialize, serde::Serialize, process_macros::SerdeJsonInto],
 });
 
 /// calculate the nth Fibonacci number
@@ -26,14 +26,12 @@ fn fibonacci(n: u32) -> u64 {
     b
 }
 
-fn handle_message() -> anyhow::Result<()> {
-    let message = await_message()?;
-
+fn handle_message(message: &Message) -> anyhow::Result<()> {
     if !message.is_request() {
         return Err(anyhow::anyhow!("expected a request"));
     }
 
-    match serde_json::from_slice(message.body())? {
+    match message.body().try_into()? {
         FibonacciRequest::Number(number) => {
             let start = std::time::Instant::now();
             let result = fibonacci(number);
@@ -45,7 +43,7 @@ fn handle_message() -> anyhow::Result<()> {
                 duration.as_nanos(),
             );
             Response::new()
-                .body(serde_json::to_vec(&FibonacciResponse::Number(result)).unwrap())
+                .body(FibonacciResponse::Number(result))
                 .send()
                 .unwrap();
         }
@@ -73,10 +71,7 @@ fn handle_message() -> anyhow::Result<()> {
                 number, result, mean, absolute_deviation, number_trials,
             );
             Response::new()
-                .body(
-                    serde_json::to_vec(&FibonacciResponse::Numbers((result, number_trials)))
-                        .unwrap(),
-                )
+                .body(FibonacciResponse::Numbers((result, number_trials)))
                 .send()
                 .unwrap();
         }
@@ -89,11 +84,12 @@ fn init(_our: Address) {
     println!("begin");
 
     loop {
-        match handle_message() {
-            Ok(()) => {}
-            Err(e) => {
-                println!("error: {:?}", e);
+        match await_message() {
+            Err(send_error) => println!("got SendError: {send_error}"),
+            Ok(ref message) => match handle_message(message) {
+                Ok(_) => {}
+                Err(e) => println!("got error while handling message: {e:?}"),
             }
-        };
+        }
     }
 }

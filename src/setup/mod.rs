@@ -162,13 +162,7 @@ pub fn get_newest_valid_node_version(
     let required_major = required_major.unwrap_or(REQUIRED_NODE_MAJOR);
     let minimum_minor = minimum_minor.unwrap_or(MINIMUM_NODE_MINOR);
 
-    let output = Command::new("bash")
-        .arg("-c")
-        .arg("source ~/.nvm/nvm.sh && nvm ls --no-alias")
-        .output()?
-        .stdout;
-
-    let nvm_ls = String::from_utf8_lossy(&output);
+    let nvm_ls = call_with_nvm_output("nvm ls --no-alias")?;
     let mut versions = Vec::new();
 
     for line in nvm_ls.lines() {

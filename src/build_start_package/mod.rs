@@ -14,6 +14,7 @@ pub async fn execute(
     url: &str,
     skip_deps_check: bool,
     features: &str,
+    download_from: Option<&str>,
     default_world: Option<String>,
     verbose: bool,
 ) -> Result<()> {
@@ -24,6 +25,7 @@ pub async fn execute(
         skip_deps_check,
         features,
         Some(url.into()),
+        download_from,
         default_world,
         verbose,
     )

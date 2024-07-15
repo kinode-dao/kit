@@ -1,14 +1,14 @@
 use crate::kinode::process::standard::{ProcessId as WitProcessId};
 use crate::kinode::process::{package_name}::{Address as WitAddress, Request as TransferRequest, DownloadRequest};
 use kinode_process_lib::{
-    await_next_message_body, call_init, println, Address, Message, ProcessId, Request,
+    await_next_message_body, call_init, println, Address, ProcessId, Request,
 };
 
 wit_bindgen::generate!({
     path: "target/wit",
     world: "{package_name_kebab}-{publisher_dotted_kebab}-v0",
     generate_unused_types: true,
-    additional_derives: [serde::Deserialize, serde::Serialize],
+    additional_derives: [serde::Deserialize, serde::Serialize, process_macros::SerdeJsonInto],
 });
 
 impl From<Address> for WitAddress {
@@ -50,15 +50,14 @@ fn init(our: Address) {
         .parse()
         .unwrap();
 
-    let Ok(Ok(Message::Response { .. })) =
-        Request::to(our)
-            .body(serde_json::to_vec(&TransferRequest::Download(DownloadRequest {
-                name: name.into(),
-                target: target.clone().into(),
-            })).unwrap())
-            .send_and_await_response(5)
-    else {
-        println!("download: did not receive expected Response from {target:?}");
-        return;
-    };
+    match Request::to(our)
+        .body(TransferRequest::Download(DownloadRequest {
+            name: name.into(),
+            target: target.clone().into(),
+        }))
+        .send()
+    {
+        Ok(_) => {}
+        Err(e) => println!("download failed: {e:?}"),
+    }
 }
