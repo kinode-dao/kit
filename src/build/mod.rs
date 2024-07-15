@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::SystemTime;
 
 use color_eyre::{
     Section,
@@ -233,6 +234,70 @@ fn copy_dir(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<()> {
         }
     }
     Ok(())
+}
+
+#[instrument(level = "trace", skip_all)]
+fn get_most_recent_modified_time(
+    dir: &Path,
+    exclude_files: &HashSet<&str>,
+    exclude_extensions: &HashSet<&str>,
+    exclude_dirs: &HashSet<&str>,
+) -> Result<(Option<SystemTime>, Option<SystemTime>)> {
+    let mut most_recent: Option<SystemTime> = None;
+    let mut most_recent_excluded: Option<SystemTime> = None;
+
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+
+        let file_name = path.file_name().unwrap_or_default().to_str().unwrap_or_default();
+
+        if exclude_files.contains(file_name) {
+            let file_time = get_file_modified_time(&path)?;
+            most_recent_excluded = Some(most_recent_excluded.map_or(file_time, |t| t.max(file_time)));
+            continue;
+        }
+
+        if path.is_dir() {
+            let dir_name = path.file_name().unwrap_or_default().to_str().unwrap_or_default();
+            if exclude_dirs.contains(dir_name) {
+                continue;
+            }
+
+            let (sub_time, sub_time_excluded) = get_most_recent_modified_time(
+                &path,
+                exclude_files,
+                exclude_extensions,
+                exclude_dirs,
+            )?;
+
+            if let Some(st) = sub_time {
+                most_recent = Some(most_recent.map_or(st, |t| t.max(st)));
+            }
+            if let Some(ste) = sub_time_excluded {
+                most_recent_excluded = Some(most_recent_excluded.map_or(ste, |t| t.max(ste)));
+            }
+        } else {
+            if let Some(extension) = path.extension() {
+                if exclude_extensions.contains(&extension.to_str().unwrap_or_default()) {
+                    let file_time = get_file_modified_time(&path)?;
+                    most_recent_excluded = Some(most_recent_excluded.map_or(file_time, |t| t.max(file_time)));
+                    continue;
+                }
+            }
+
+            let file_time = get_file_modified_time(&path)?;
+            most_recent = Some(most_recent.map_or(file_time, |t| t.max(file_time)));
+        }
+    }
+
+    Ok((most_recent, most_recent_excluded))
+}
+
+#[instrument(level = "trace", skip_all)]
+fn get_file_modified_time(file_path: &Path) -> Result<SystemTime> {
+    let metadata = fs::metadata(file_path)?;
+    Ok(metadata.modified()?)
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -907,6 +972,22 @@ pub async fn execute(
             package_dir,
         )
         .with_suggestion(|| "Please re-run targeting a package."));
+    }
+    let (source_time, build_time) = get_most_recent_modified_time(
+        package_dir,
+        &HashSet::from(["Cargo.lock", "api.zip"]),
+        &HashSet::from(["wasm"]),
+        &HashSet::from(["target"]),
+    )?;
+    if let Some(source_time) = source_time {
+        if let Some(build_time) = build_time {
+            if build_time.duration_since(source_time).is_ok() {
+                // build_time - source_time >= 0
+                //  -> current build is up-to-date: don't rebuild
+                info!("Build up-to-date.");
+                return Ok(());
+            }
+        }
     }
 
     let ui_dir = package_dir.join("ui");
