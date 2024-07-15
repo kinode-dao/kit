@@ -537,7 +537,15 @@ async fn build_wit_dir(
     };
     download_file(wit_url, &wit_dir.join("kinode.wit")).await?;
     for (file_name, contents) in apis {
-        fs::write(wit_dir.join(file_name), contents)?;
+        let destination = wit_dir.join(file_name);
+        if destination.exists() {
+            // check if contents have not changed -> no-op
+            let old_contents = fs::read(&destination)?;
+            if &old_contents == contents {
+                continue;
+            }
+        }
+        fs::write(&destination, contents)?;
     }
     Ok(())
 }
