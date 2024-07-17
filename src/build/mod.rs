@@ -236,6 +236,18 @@ fn copy_dir(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<()> {
     Ok(())
 }
 
+fn file_with_extension_exists(dir: &Path, extension: &str) -> bool {
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if path.is_file() && path.extension().and_then(|ext| ext.to_str()) == Some(extension) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
 #[instrument(level = "trace", skip_all)]
 fn get_most_recent_modified_time(
     dir: &Path,
@@ -973,19 +985,25 @@ pub async fn execute(
         )
         .with_suggestion(|| "Please re-run targeting a package."));
     }
-    let (source_time, build_time) = get_most_recent_modified_time(
-        package_dir,
-        &HashSet::from(["Cargo.lock", "api.zip"]),
-        &HashSet::from(["wasm"]),
-        &HashSet::from(["target"]),
-    )?;
-    if let Some(source_time) = source_time {
-        if let Some(build_time) = build_time {
-            if build_time.duration_since(source_time).is_ok() {
-                // build_time - source_time >= 0
-                //  -> current build is up-to-date: don't rebuild
-                info!("Build up-to-date.");
-                return Ok(());
+    if package_dir.join("Cargo.lock").exists()
+        && package_dir.join("target").exists()
+        && package_dir.join("target").join("api.zip").exists()
+        && file_with_extension_exists(&package_dir.join("target"), "wasm")
+    {
+        let (source_time, build_time) = get_most_recent_modified_time(
+            package_dir,
+            &HashSet::from(["Cargo.lock", "api.zip"]),
+            &HashSet::from(["wasm"]),
+            &HashSet::from(["target"]),
+        )?;
+        if let Some(source_time) = source_time {
+            if let Some(build_time) = build_time {
+                if build_time.duration_since(source_time).is_ok() {
+                    // build_time - source_time >= 0
+                    //  -> current build is up-to-date: don't rebuild
+                    info!("Build up-to-date.");
+                    return Ok(());
+                }
             }
         }
     }
