@@ -985,10 +985,13 @@ pub async fn execute(
         )
         .with_suggestion(|| "Please re-run targeting a package."));
     }
-    if package_dir.join("Cargo.lock").exists()
-        && package_dir.join("target").exists()
-        && package_dir.join("target").join("api.zip").exists()
-        && file_with_extension_exists(&package_dir.join("target"), "wasm")
+    let build_with_features_path = package_dir.join("target").join("build_with_features.txt");
+    let old_features = fs::read_to_string(&build_with_features_path).ok();
+    if old_features == Some(features.to_string())
+        && package_dir.join("Cargo.lock").exists()
+        && package_dir.join("pkg").exists()
+        && package_dir.join("pkg").join("api.zip").exists()
+        && file_with_extension_exists(&package_dir.join("pkg"), "wasm")
     {
         let (source_time, build_time) = get_most_recent_modified_time(
             package_dir,
@@ -1007,6 +1010,8 @@ pub async fn execute(
             }
         }
     }
+    fs::create_dir_all(package_dir.join("target"))?;
+    fs::write(&build_with_features_path, features)?;
 
     let ui_dir = package_dir.join("ui");
     if !ui_dir.exists() {
