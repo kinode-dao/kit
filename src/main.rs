@@ -972,7 +972,9 @@ async fn main() -> Result<()> {
     color_eyre::config::HookBuilder::default()
         .display_env_section(false)
         .install()?;
-    let current_dir = env::current_dir()?.into_os_string();
+    let current_dir = env::current_dir()
+        .with_suggestion(|| "Could not fetch CWD. Does CWD exist?")?
+        .into_os_string();
     let mut app = make_app(&current_dir).await?;
 
     let usage = app.render_usage();
