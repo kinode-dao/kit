@@ -193,6 +193,12 @@ async fn execute(
                 .get_one::<String>("NODE")
                 .and_then(|s: &String| Some(s.as_str()));
             let default_world = matches.get_one::<String>("WORLD");
+            let local_dependencies: Vec<PathBuf> = matches
+                .get_many::<String>("PATH")
+                .unwrap_or_default()
+                .map(|s| PathBuf::from(s))
+                .collect();
+            let force = matches.get_one::<bool>("FORCE").unwrap();
             let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
 
             build::execute(
@@ -203,7 +209,9 @@ async fn execute(
                 &features,
                 url,
                 download_from,
-                default_world.cloned(),
+                default_world.map(|w| w.as_str()),
+                local_dependencies,
+                *force,
                 *verbose,
             )
             .await
@@ -229,6 +237,12 @@ async fn execute(
                 .get_one::<String>("NODE")
                 .and_then(|s: &String| Some(s.as_str()));
             let default_world = matches.get_one::<String>("WORLD");
+            let local_dependencies: Vec<PathBuf> = matches
+                .get_many::<String>("PATH")
+                .unwrap_or_default()
+                .map(|s| PathBuf::from(s))
+                .collect();
+            let force = matches.get_one::<bool>("FORCE").unwrap();
             let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
 
             build_start_package::execute(
@@ -239,7 +253,9 @@ async fn execute(
                 *skip_deps_check,
                 &features,
                 download_from,
-                default_world.cloned(),
+                default_world.map(|w| w.as_str()),
+                local_dependencies,
+                *force,
                 *verbose,
             )
             .await
@@ -617,6 +633,19 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .long("world")
                 .help("Fallback WIT world name")
             )
+            .arg(Arg::new("PATH")
+                .action(ArgAction::Append)
+                .short('l')
+                .long("local-dependency")
+                .help("Path to local dependency package (can specify multiple times)")
+            )
+            .arg(Arg::new("FORCE")
+                .action(ArgAction::SetTrue)
+                .short('f')
+                .long("force")
+                .help("Force a rebuild")
+                .required(false)
+            )
             .arg(Arg::new("VERBOSE")
                 .action(ArgAction::SetTrue)
                 .short('v')
@@ -655,6 +684,12 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("Fallback WIT world name")
                 .required(false)
             )
+            .arg(Arg::new("PATH")
+                .action(ArgAction::Append)
+                .short('l')
+                .long("local-dependency")
+                .help("Path to local dependency package (can specify multiple times)")
+            )
             .arg(Arg::new("NO_UI")
                 .action(ArgAction::SetTrue)
                 .long("no-ui")
@@ -678,6 +713,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .long("features")
                 .help("Pass these comma-delimited feature flags to Rust cargo builds")
+                .required(false)
+            )
+            .arg(Arg::new("FORCE")
+                .action(ArgAction::SetTrue)
+                .short('f')
+                .long("force")
+                .help("Force a rebuild")
                 .required(false)
             )
             .arg(Arg::new("VERBOSE")
