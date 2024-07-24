@@ -1,9 +1,9 @@
 use crate::kinode::process::standard::{ProcessId as WitProcessId};
-use crate::kinode::process::{package_name}::{Address as WitAddress, Request as TransferRequest, Response as TransferResponse, WorkerRequest, DownloadRequest, ProgressRequest, FileInfo, InitializeRequest};
+use crate::kinode::process::{package_name}::{start_download, Address as WitAddress, Request as TransferRequest, Response as TransferResponse, DownloadRequest, ProgressRequest, FileInfo};
 use kinode_process_lib::{
-    await_message, call_init, our_capabilities, println, spawn,
+    await_message, call_init, println,
     vfs::{create_drive, metadata, open_dir, Directory, FileType},
-    Address, Message, OnExit, ProcessId, Request, Response,
+    Address, Message, ProcessId, Response,
 };
 
 wit_bindgen::generate!({
@@ -25,24 +25,6 @@ impl From<Address> for WitAddress {
 impl From<ProcessId> for WitProcessId {
     fn from(process: ProcessId) -> Self {
         WitProcessId {
-            process_name: process.process_name,
-            package_name: process.package_name,
-            publisher_node: process.publisher_node,
-        }
-    }
-}
-impl From<WitAddress> for Address {
-    fn from(address: WitAddress) -> Self {
-        Address {
-            node: address.node,
-            process: address.process.into(),
-        }
-    }
-}
-
-impl From<WitProcessId> for ProcessId {
-    fn from(process: WitProcessId) -> Self {
-        ProcessId {
             process_name: process.process_name,
             package_name: process.package_name,
             publisher_node: process.publisher_node,
@@ -77,58 +59,52 @@ fn handle_transfer_request(
     match message.body().try_into()? {
         TransferRequest::ListFiles => {
             let files = ls_files(files_dir)?;
-
             Response::new()
                 .body(TransferResponse::ListFiles(files))
                 .send()?;
         }
-        TransferRequest::Download(DownloadRequest { name, target }) => {
-            // spin up a worker, initialize based on whether it's a downloader or a sender.
-            let our_worker = spawn(
-                None,
-                &format!("{}/pkg/worker.wasm", our.package_id()),
-                OnExit::None,
-                our_capabilities(),
-                vec![],
-                false,
-            )?;
-
-            let our_worker_address = Address {
-                node: our.node.clone(),
-                process: our_worker,
-            };
-
-            if message.source().node == our.node {
-                // we want to download a file
-                let _resp = Request::new()
-                    .body(WorkerRequest::Initialize(InitializeRequest {
-                        name: name.clone(),
-                        target_worker: None,
-                    }))
-                    .target(&our_worker_address)
-                    .send_and_await_response(5)??;
-
-                // send our initialized worker address to the other node
-                Request::new()
-                    .body(TransferRequest::Download(DownloadRequest {
-                        name: name.clone(),
-                        target: our_worker_address.into(),
-                    }))
-                    .target::<Address>(target.clone().into())
-                    .send()?;
-            } else {
-                // they want to download a file
-                Request::new()
-                    .body(WorkerRequest::Initialize(InitializeRequest {
-                        name: name.clone(),
-                        target_worker: Some(target),
-                    }))
-                    .target(&our_worker_address)
-                    .send()?;
+        TransferRequest::Download(DownloadRequest { ref name, ref target, is_requestor }) => {
+            match start_download(
+                &our.clone().into(),
+                &message.source().clone().into(),
+                name,
+                target,
+                is_requestor,
+            ) {
+                Ok(_) => {}
+                Err(e) => return Err(anyhow::anyhow!("{e}")),
             }
         }
         TransferRequest::Progress(ProgressRequest { name, progress }) => {
             println!("{} progress: {}%", name, progress);
+            Response::new()
+                .body(TransferResponse::Progress(Ok(())))
+                .send()?;
+        }
+    }
+
+    Ok(())
+}
+
+fn handle_transfer_response(message: &Message) -> anyhow::Result<()> {
+    match message.body().try_into()? {
+        TransferResponse::ListFiles(ref files) => {
+            println!(
+                "{}",
+                files.iter().
+                    fold(format!("{} available files:\nFile\t\tSize (bytes)\n", message.source()), |mut msg, file| {
+                        msg.push_str(&format!(
+                            "{}\t\t{}", file.name.split('/').last().unwrap(),
+                            file.size,
+                        ));
+                        msg
+                    })
+            );
+        }
+        TransferResponse::Download(result) | TransferResponse::Progress(result) => {
+            if result.is_err() {
+                return Err(anyhow::anyhow!("{}", result.unwrap_err()));
+            }
         }
     }
 
@@ -140,7 +116,11 @@ fn handle_message(
     message: &Message,
     files_dir: &Directory,
 ) -> anyhow::Result<()> {
-    handle_transfer_request(our, message, files_dir)
+    if message.is_request() {
+        handle_transfer_request(our, message, files_dir)
+    } else {
+        handle_transfer_response(message)
+    }
 }
 
 call_init!(init);

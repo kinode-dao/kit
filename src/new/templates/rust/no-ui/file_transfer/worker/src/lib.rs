@@ -1,5 +1,5 @@
 use crate::kinode::process::standard::{ProcessId as WitProcessId};
-use crate::kinode::process::{package_name}::{Address as WitAddress, Request as TransferRequest, Response as TransferResponse, WorkerRequest, ProgressRequest, InitializeRequest, ChunkRequest};
+use crate::kinode::process::{package_name}::{Address as WitAddress, Request as TransferRequest, Response as TransferResponse, WorkerRequest, DownloadRequest, ProgressRequest, ChunkRequest};
 use kinode_process_lib::{
     await_message, call_init, get_blob, println,
     vfs::{open_dir, open_file, Directory, File, SeekFrom},
@@ -13,24 +13,13 @@ wit_bindgen::generate!({
     additional_derives: [serde::Deserialize, serde::Serialize, process_macros::SerdeJsonInto],
 });
 
-impl From<Address> for WitAddress {
-    fn from(address: Address) -> Self {
-        WitAddress {
-            node: address.node,
-            process: address.process.into(),
-        }
-    }
+#[derive(Debug, serde::Deserialize, serde::Serialize, process_macros::SerdeJsonInto)]
+#[serde(untagged)] // untagged as a meta-type for all incoming responses
+enum Req {
+    TransferRequest(TransferRequest),
+    WorkerRequest(WorkerRequest),
 }
 
-impl From<ProcessId> for WitProcessId {
-    fn from(process: ProcessId) -> Self {
-        WitProcessId {
-            process_name: process.process_name,
-            package_name: process.package_name,
-            publisher_node: process.publisher_node,
-        }
-    }
-}
 impl From<WitAddress> for Address {
     fn from(address: WitAddress) -> Self {
         Address {
@@ -52,77 +41,89 @@ impl From<WitProcessId> for ProcessId {
 
 const CHUNK_SIZE: u64 = 1048576; // 1MB
 
-fn handle_message(
-    our: &Address,
-    message: &Message,
+fn handle_transfer_request(
+    request: &TransferRequest,
     file: &mut Option<File>,
     files_dir: &Directory,
-    size: &mut Option<u64>,
 ) -> anyhow::Result<bool> {
-    if !message.is_request() {
-        return Err(anyhow::anyhow!("unexpected Response: {:?}", message));
-    }
-
-    match message.body().try_into()? {
-        WorkerRequest::Initialize(InitializeRequest {
+    match request {
+        TransferRequest::Download(DownloadRequest {
             name,
-            target_worker,
+            target,
+            is_requestor,
         }) => {
-            // initialize command from main process,
-            // sets up worker, matches on if it's a sender or receiver.
-            // target_worker = None, we are receiver, else sender.
+            Response::new()
+                .body(TransferResponse::Download(Ok(())))
+                .send()?;
 
             // open/create empty file in both cases.
             let mut active_file =
                 open_file(&format!("{}/{}", files_dir.path, &name), true, None)?;
 
-            match target_worker {
-                Some(target_worker) => {
-                    let target_worker: Address = target_worker.into();
-                    // we have a target, chunk the data, and send it.
-                    let size = active_file.metadata()?.len;
-                    let num_chunks = (size as f64 / CHUNK_SIZE as f64).ceil() as u64;
+            if *is_requestor {
+                *file = Some(active_file);
+                Request::new()
+                    .expects_response(5)
+                    .body(TransferRequest::Download(DownloadRequest {
+                        name: name.to_string(),
+                        target: target.clone(),
+                        is_requestor: false,
+                    }))
+                    .target::<Address>(target.clone().into())
+                    .send()?;
+            } else {
+                // we are sender: chunk the data, and send it.
+                let size = active_file.metadata()?.len;
+                let num_chunks = (size as f64 / CHUNK_SIZE as f64).ceil() as u64;
 
-                    // give the receiving worker a size request so it can track it's progress!
+                // give receiving worker file size so it can track download progress
+                Request::new()
+                    .body(WorkerRequest::Size(size))
+                    .target(target.clone())
+                    .send()?;
+
+                active_file.seek(SeekFrom::Start(0))?;
+
+                for i in 0..num_chunks {
+                    let offset = i * CHUNK_SIZE;
+                    let length = CHUNK_SIZE.min(size - offset);
+
+                    let mut buffer = vec![0; length as usize];
+                    active_file.read_at(&mut buffer)?;
+
                     Request::new()
-                        .body(WorkerRequest::Size(size))
-                        .target(target_worker.clone())
+                        .body(WorkerRequest::Chunk(ChunkRequest {
+                            name: name.clone(),
+                            offset,
+                            length,
+                        }))
+                        .target(target.clone())
+                        .blob_bytes(buffer)
                         .send()?;
-
-                    active_file.seek(SeekFrom::Start(0))?;
-
-                    for i in 0..num_chunks {
-                        let offset = i * CHUNK_SIZE;
-                        let length = CHUNK_SIZE.min(size - offset);
-
-                        let mut buffer = vec![0; length as usize];
-                        active_file.read_at(&mut buffer)?;
-
-                        Request::new()
-                            .body(WorkerRequest::Chunk(ChunkRequest {
-                                name: name.clone(),
-                                offset,
-                                length,
-                            }))
-                            .target(target_worker.clone())
-                            .blob_bytes(buffer)
-                            .send()?;
-                    }
-                    return Ok(true);
                 }
-                None => {
-                    // waiting for response, store created empty file.
-                    *file = Some(active_file);
-                    Response::new().body(TransferResponse::Started).send()?;
-                }
+                return Ok(true);
             }
         }
-        // someone sending a chunk to us!
+        TransferRequest::ListFiles | TransferRequest::Progress(_) => {
+            return Err(anyhow::anyhow!("worker: unexpected TransferRequest: {request:?}"));
+        }
+    }
+    Ok(false)
+}
+
+fn handle_worker_request(
+    our: &Address,
+    request: &WorkerRequest,
+    file: &mut Option<File>,
+    size: &mut Option<u64>,
+) -> anyhow::Result<bool> {
+    match request {
         WorkerRequest::Chunk(ChunkRequest {
             name,
             offset,
             length,
         }) => {
+            // someone sending a chunk to us
             let file = match file {
                 Some(file) => file,
                 None => {
@@ -139,9 +140,8 @@ fn handle_message(
                 }
             };
 
-            // file.seek(SeekFrom::Start(offset))?; seek not necessary if the sends come in order.
             file.write_all(&bytes)?;
-            // if sender has sent us a size, give a progress update to main transfer!
+            // if sender has sent us a size, give a progress update to main transfer
             if let Some(size) = size {
                 let progress = ((offset + length) as f64 / *size as f64 * 100.0) as u64;
 
@@ -152,8 +152,9 @@ fn handle_message(
                 };
 
                 Request::new()
+                    .expects_response(5)
                     .body(TransferRequest::Progress(ProgressRequest {
-                        name,
+                        name: name.to_string(),
                         progress,
                     }))
                     .target(&main_app)
@@ -165,11 +166,49 @@ fn handle_message(
             }
         }
         WorkerRequest::Size(incoming_size) => {
-            *size = Some(incoming_size);
+            *size = Some(*incoming_size);
         }
     }
-
     Ok(false)
+}
+
+fn handle_transfer_response(
+    message: &Message,
+) -> anyhow::Result<bool> {
+    match message.body().try_into()? {
+        TransferResponse::ListFiles(_) => {}
+        TransferResponse::Download(result) | TransferResponse::Progress(result) => {
+            if result.is_err() {
+                return Err(anyhow::anyhow!("{}", result.unwrap_err()));
+            }
+        }
+    }
+    Ok(false)
+}
+
+fn handle_message(
+    our: &Address,
+    message: &Message,
+    file: &mut Option<File>,
+    files_dir: &Directory,
+    size: &mut Option<u64>,
+) -> anyhow::Result<bool> {
+    if !message.is_request() {
+        return handle_transfer_response(message);
+    }
+    return Ok(match message.body().try_into()? {
+        Req::TransferRequest(ref tr) => handle_transfer_request(
+            tr,
+            file,
+            files_dir,
+        )?,
+        Req::WorkerRequest(ref wr) => handle_worker_request(
+            our,
+            wr,
+            file,
+            size,
+        )?,
+    });
 }
 
 call_init!(init);

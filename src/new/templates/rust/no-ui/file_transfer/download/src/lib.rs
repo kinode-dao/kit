@@ -54,10 +54,12 @@ fn init(our: Address) {
         .body(TransferRequest::Download(DownloadRequest {
             name: name.into(),
             target: target.clone().into(),
+            is_requestor: true,
         }))
-        .send()
+        .send_and_await_response(5)
     {
-        Ok(_) => {}
-        Err(e) => println!("download failed: {e:?}"),
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => println!("download failed: {e:?}"),
+        Err(e) => println!("download failed; SendError: {e:?}"),
     }
 }
