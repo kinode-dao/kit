@@ -184,8 +184,8 @@ fn handle_internal_request(
 fn handle_worker_response(response: &WorkerResponse) -> anyhow::Result<bool> {
     match response {
         WorkerResponse::Download(ref result) => {
-            if result.is_err() {
-                return Err(anyhow::anyhow!("{}", result.as_ref().unwrap_err()));
+            if let Err(e) = result {
+                return Err(anyhow::anyhow!("{e}"));
             }
         }
         WorkerResponse::Progress => {}

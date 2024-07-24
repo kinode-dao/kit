@@ -128,8 +128,8 @@ fn handle_transfer_response(source: &Address, response: &TransferResponse) -> an
 fn handle_worker_response(response: &WorkerResponse) -> anyhow::Result<()> {
     match response {
         WorkerResponse::Download(ref result) => {
-            if result.is_err() {
-                return Err(anyhow::anyhow!("{}", result.as_ref().unwrap_err()));
+            if let Err(e) = result {
+                return Err(anyhow::anyhow!("{e}"))
             }
         }
         WorkerResponse::Progress => {}
