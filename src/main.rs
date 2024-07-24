@@ -213,6 +213,7 @@ async fn execute(
                 local_dependencies,
                 *force,
                 *verbose,
+                false,
             )
             .await
         }

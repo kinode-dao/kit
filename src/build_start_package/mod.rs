@@ -32,6 +32,7 @@ pub async fn execute(
         local_dependencies,
         force,
         verbose,
+        false,
     )
     .await?;
     start_package::execute(package_dir, url).await?;

@@ -353,6 +353,7 @@ async fn build_packages(
             dependency_package_paths.clone(),
             false,
             false,
+            false,
         ).await?;
         start_package::execute(&path, &url).await?;
     }
@@ -370,6 +371,7 @@ async fn build_packages(
             dependency_package_paths.clone(),
             false,
             false,
+            false,
         ).await?;
     }
     for test_package_path in &test_package_paths {
@@ -383,6 +385,7 @@ async fn build_packages(
             None,
             None,
             dependency_package_paths.clone(),
+            false,
             false,
             false,
         ).await?;

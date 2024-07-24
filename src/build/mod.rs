@@ -588,6 +588,7 @@ async fn compile_package_and_ui(
     local_dependencies: Vec<PathBuf>,
     force: bool,
     verbose: bool,
+    ignore_deps: bool,
 ) -> Result<()> {
     compile_and_copy_ui(package_dir, valid_node, verbose).await?;
     compile_package(
@@ -600,6 +601,7 @@ async fn compile_package_and_ui(
         local_dependencies,
         force,
         verbose,
+        ignore_deps,
     )
     .await?;
     Ok(())
@@ -665,18 +667,64 @@ async fn compile_package_item(
 }
 
 #[instrument(level = "trace", skip_all)]
+fn fetch_local_built_dependency(
+    apis: &mut HashMap<String, Vec<u8>>,
+    wasm_paths: &mut HashSet<PathBuf>,
+    local_dependency: &Path,
+) -> Result<()> {
+    for entry in local_dependency.join("api").read_dir()? {
+        let entry = entry?;
+        let path = entry.path();
+        let maybe_ext = path.extension().and_then(|s| s.to_str());
+        if Some("wit") == maybe_ext {
+            let file_name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default();
+            let wit_contents = fs::read(&path)?;
+            apis.insert(file_name.into(), wit_contents);
+        }
+    }
+    for entry in local_dependency.join("target").join("api").read_dir()? {
+        let entry = entry?;
+        let path = entry.path();
+        let maybe_ext = path.extension().and_then(|s| s.to_str());
+        if Some("wasm") == maybe_ext {
+            wasm_paths.insert(path);
+        }
+    }
+    Ok(())
+}
+
+#[instrument(level = "trace", skip_all)]
 async fn fetch_dependencies(
+    package_dir: &Path,
     dependencies: &Vec<String>,
     apis: &mut HashMap<String, Vec<u8>>,
     wasm_paths: &mut HashSet<PathBuf>,
     url: Option<String>,
     download_from: Option<&str>,
-    local_dependencies: Vec<PathBuf>,
+    mut local_dependencies: Vec<PathBuf>,
     features: &str,
     default_world: Option<&str>,
     force: bool,
     verbose: bool,
 ) -> Result<()> {
+    Box::pin(execute(
+        package_dir,
+        true,
+        false,
+        true,
+        features,
+        url.clone(),
+        download_from,
+        default_world,
+        vec![],  // TODO: what about deps-of-deps?
+        force,
+        verbose,
+        true,
+    )).await?;
+    fetch_local_built_dependency(apis, wasm_paths, package_dir)?;
     for local_dependency in &local_dependencies {
         // build dependency
         Box::pin(execute(
@@ -689,34 +737,16 @@ async fn fetch_dependencies(
             download_from,
             default_world,
             vec![],  // TODO: what about deps-of-deps?
-            verbose,
             force,
+            verbose,
+            false,
         )).await?;
-        for entry in local_dependency.join("api").read_dir()? {
-            let entry = entry?;
-            let path = entry.path();
-            let maybe_ext = path.extension().and_then(|s| s.to_str());
-            if Some("wit") == maybe_ext {
-                let file_name = path
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or_default();
-                let wit_contents = fs::read(&path)?;
-                apis.insert(file_name.into(), wit_contents);
-            }
-        }
-        for entry in local_dependency.join("target").join("api").read_dir()? {
-            let entry = entry?;
-            let path = entry.path();
-            let maybe_ext = path.extension().and_then(|s| s.to_str());
-            if Some("wasm") == maybe_ext {
-                wasm_paths.insert(path);
-            }
-        }
+        fetch_local_built_dependency(apis, wasm_paths, &local_dependency)?;
     }
     let Some(ref url) = url else {
         return Ok(());
     };
+    local_dependencies.push(package_dir.into());
     let local_dependencies: HashSet<&str> = local_dependencies
         .iter()
         .map(|p| p.file_name().and_then(|f| f.to_str()).unwrap())
@@ -884,6 +914,7 @@ async fn compile_package(
     local_dependencies: Vec<PathBuf>,
     force: bool,
     verbose: bool,
+    ignore_deps: bool,
 ) -> Result<()> {
     let metadata = read_metadata(package_dir)?;
     let mut checked_rust = false;
@@ -891,6 +922,7 @@ async fn compile_package(
     let mut checked_js = false;
     let mut apis = HashMap::new();
     let mut wasm_paths = HashSet::new();
+    let mut dependencies = HashSet::new();
     for entry in package_dir.read_dir()? {
         let entry = entry?;
         let path = entry.path();
@@ -933,29 +965,47 @@ async fn compile_package(
                 }
 
                 // fetch dependency apis: to be used in build
-                if let Some(ref dependencies) = metadata.properties.dependencies {
-                    if dependencies.is_empty() {
-                        continue;
-                    }
-                    //let Some(ref url) = url else {
-                    //    // TODO: can we use kit-cached deps?
-                    //    return Err(eyre!("Need a node to be able to fetch dependencies"));
-                    //};
-                    fetch_dependencies(
-                        dependencies,
-                        &mut apis,
-                        &mut wasm_paths,
-                        url.clone(),
-                        download_from,
-                        local_dependencies.clone(),
-                        features,
-                        default_world,
-                        force,
-                        verbose,
-                    ).await?;
+                if let Some(ref deps) = metadata.properties.dependencies {
+                    dependencies.extend(deps);
+                    //if dependencies.is_empty() {
+                    //    continue;
+                    //}
+                    ////let Some(ref url) = url else {
+                    ////    // TODO: can we use kit-cached deps?
+                    ////    return Err(eyre!("Need a node to be able to fetch dependencies"));
+                    ////};
+                    //fetch_dependencies(
+                    //    package_dir,
+                    //    dependencies,
+                    //    &mut apis,
+                    //    &mut wasm_paths,
+                    //    url.clone(),
+                    //    download_from,
+                    //    local_dependencies.clone(),
+                    //    features,
+                    //    default_world,
+                    //    force,
+                    //    verbose,
+                    //).await?;
                 }
             }
         }
+    }
+
+    if !ignore_deps && !dependencies.is_empty() {
+        fetch_dependencies(
+            package_dir,
+            &dependencies.iter().map(|s| s.to_string()).collect(),
+            &mut apis,
+            &mut wasm_paths,
+            url.clone(),
+            download_from,
+            local_dependencies.clone(),
+            features,
+            default_world,
+            force,
+            verbose,
+        ).await?;
     }
 
     let wit_world = default_world.unwrap_or_else(|| match metadata.properties.wit_version {
@@ -987,31 +1037,33 @@ async fn compile_package(
         copy_dir(&api_dir, &target_api_dir)?;
     }
 
-    // find non-standard imports/exports -> compositions
-    let (importers, exporters) = find_non_standard(package_dir, wasm_paths)?;
+    if !ignore_deps {
+        // find non-standard imports/exports -> compositions
+        let (importers, exporters) = find_non_standard(package_dir, wasm_paths)?;
 
-    // compose
-    for (import, import_paths) in importers {
-        let Some(export_path) = exporters.get(&import) else {
-            return Err(eyre!(
-                "Processes {import_paths:?} required export {import} not found in `pkg/`.",
-            ));
-        };
-        let export_path = export_path.to_str().unwrap();
-        for import_path in import_paths {
-            let import_path_str = import_path.to_str().unwrap();
-            run_command(
-                Command::new("wasm-tools")
-                    .args([
-                        "compose",
-                        import_path_str,
-                        "-d",
-                        export_path,
-                        "-o",
-                        import_path_str,
-                    ]),
-                false,
-            )?;
+        // compose
+        for (import, import_paths) in importers {
+            let Some(export_path) = exporters.get(&import) else {
+                return Err(eyre!(
+                    "Processes {import_paths:?} required export {import} not found in `pkg/`.",
+                ));
+            };
+            let export_path = export_path.to_str().unwrap();
+            for import_path in import_paths {
+                let import_path_str = import_path.to_str().unwrap();
+                run_command(
+                    Command::new("wasm-tools")
+                        .args([
+                            "compose",
+                            import_path_str,
+                            "-d",
+                            export_path,
+                            "-o",
+                            import_path_str,
+                        ]),
+                    false,
+                )?;
+            }
         }
     }
 
@@ -1038,6 +1090,7 @@ pub async fn execute(
     local_dependencies: Vec<PathBuf>,
     force: bool,
     verbose: bool,
+    ignore_deps: bool,  // for internal use; may cause problems when adding recursive deps
 ) -> Result<()> {
     if !package_dir.join("pkg").exists() {
         if Some(".DS_Store") == package_dir.file_name().and_then(|s| s.to_str()) {
@@ -1095,6 +1148,7 @@ pub async fn execute(
                 local_dependencies,
                 force,
                 verbose,
+                ignore_deps,
             )
             .await
         }
@@ -1110,6 +1164,7 @@ pub async fn execute(
                 local_dependencies,
                 force,
                 verbose,
+                ignore_deps,
             )
             .await;
         }
@@ -1132,6 +1187,7 @@ pub async fn execute(
                 local_dependencies,
                 force,
                 verbose,
+                ignore_deps,
             )
             .await
         }
