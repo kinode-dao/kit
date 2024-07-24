@@ -586,6 +586,7 @@ async fn compile_package_and_ui(
     default_world: Option<&str>,
     download_from: Option<&str>,
     local_dependencies: Vec<PathBuf>,
+    add_paths_to_api: Vec<PathBuf>,
     force: bool,
     verbose: bool,
     ignore_deps: bool,
@@ -599,6 +600,7 @@ async fn compile_package_and_ui(
         default_world,
         download_from,
         local_dependencies,
+        add_paths_to_api,
         force,
         verbose,
         ignore_deps,
@@ -720,6 +722,7 @@ async fn fetch_dependencies(
         download_from,
         default_world,
         vec![],  // TODO: what about deps-of-deps?
+        vec![],
         force,
         verbose,
         true,
@@ -737,6 +740,7 @@ async fn fetch_dependencies(
             download_from,
             default_world,
             vec![],  // TODO: what about deps-of-deps?
+            vec![],
             force,
             verbose,
             false,
@@ -912,6 +916,7 @@ async fn compile_package(
     default_world: Option<&str>,
     download_from: Option<&str>,
     local_dependencies: Vec<PathBuf>,
+    add_paths_to_api: Vec<PathBuf>,
     force: bool,
     verbose: bool,
     ignore_deps: bool,
@@ -1015,6 +1020,8 @@ async fn compile_package(
     let target_api_dir = package_dir.join("target").join("api");
     if api_dir.exists() {
         copy_dir(&api_dir, &target_api_dir)?;
+    } else if !target_api_dir.exists() {
+        fs::create_dir_all(&target_api_dir)?;
     }
 
     if !ignore_deps {
@@ -1049,6 +1056,24 @@ async fn compile_package(
 
     // zip & place API inside of pkg/ to publish API
     if target_api_dir.exists() {
+        for path in add_paths_to_api {
+            let path = if path.exists() {
+                path
+            } else {
+                package_dir.join(path).canonicalize().unwrap_or_default()
+            };
+            if !path.exists() {
+                warn!("Given path to add to API does not exist: {path:?}");
+                continue;
+            }
+            if let Err(e) = fs::copy(
+                &path,
+                target_api_dir.join(path.file_name().and_then(|f| f.to_str()).unwrap()),
+            ) {
+                warn!("Could not add path {path:?} to API: {e:?}");
+            }
+        }
+
         let zip_path = package_dir.join("pkg").join("api.zip");
         let zip_path = zip_path.to_str().unwrap();
         zip_directory(&target_api_dir, zip_path)?;
@@ -1068,6 +1093,7 @@ pub async fn execute(
     download_from: Option<&str>,
     default_world: Option<&str>,
     local_dependencies: Vec<PathBuf>,
+    add_paths_to_api: Vec<PathBuf>,
     force: bool,
     verbose: bool,
     ignore_deps: bool,  // for internal use; may cause problems when adding recursive deps
@@ -1126,6 +1152,7 @@ pub async fn execute(
                 default_world.clone(),
                 download_from,
                 local_dependencies,
+                add_paths_to_api,
                 force,
                 verbose,
                 ignore_deps,
@@ -1142,6 +1169,7 @@ pub async fn execute(
                 default_world,
                 download_from,
                 local_dependencies,
+                add_paths_to_api,
                 force,
                 verbose,
                 ignore_deps,
@@ -1165,6 +1193,7 @@ pub async fn execute(
                 default_world,
                 download_from,
                 local_dependencies,
+                add_paths_to_api,
                 force,
                 verbose,
                 ignore_deps,

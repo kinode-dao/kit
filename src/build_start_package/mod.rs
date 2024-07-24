@@ -17,6 +17,7 @@ pub async fn execute(
     download_from: Option<&str>,
     default_world: Option<&str>,
     local_dependencies: Vec<PathBuf>,
+    add_paths_to_api: Vec<PathBuf>,
     force: bool,
     verbose: bool,
 ) -> Result<()> {
@@ -30,6 +31,7 @@ pub async fn execute(
         download_from,
         default_world,
         local_dependencies,
+        add_paths_to_api,
         force,
         verbose,
         false,

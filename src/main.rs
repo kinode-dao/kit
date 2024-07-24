@@ -194,6 +194,11 @@ async fn execute(
                 .and_then(|s: &String| Some(s.as_str()));
             let default_world = matches.get_one::<String>("WORLD");
             let local_dependencies: Vec<PathBuf> = matches
+                .get_many::<String>("DEPENDENCY_PACKAGE_PATH")
+                .unwrap_or_default()
+                .map(|s| PathBuf::from(s))
+                .collect();
+            let add_paths_to_api: Vec<PathBuf> = matches
                 .get_many::<String>("PATH")
                 .unwrap_or_default()
                 .map(|s| PathBuf::from(s))
@@ -211,6 +216,7 @@ async fn execute(
                 download_from,
                 default_world.map(|w| w.as_str()),
                 local_dependencies,
+                add_paths_to_api,
                 *force,
                 *verbose,
                 false,
@@ -239,6 +245,11 @@ async fn execute(
                 .and_then(|s: &String| Some(s.as_str()));
             let default_world = matches.get_one::<String>("WORLD");
             let local_dependencies: Vec<PathBuf> = matches
+                .get_many::<String>("DEPENDENCY_PACKAGE_PATH")
+                .unwrap_or_default()
+                .map(|s| PathBuf::from(s))
+                .collect();
+            let add_paths_to_api: Vec<PathBuf> = matches
                 .get_many::<String>("PATH")
                 .unwrap_or_default()
                 .map(|s| PathBuf::from(s))
@@ -256,6 +267,7 @@ async fn execute(
                 download_from,
                 default_world.map(|w| w.as_str()),
                 local_dependencies,
+                add_paths_to_api,
                 *force,
                 *verbose,
             )
@@ -634,11 +646,17 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .long("world")
                 .help("Fallback WIT world name")
             )
-            .arg(Arg::new("PATH")
+            .arg(Arg::new("DEPENDENCY_PACKAGE_PATH")
                 .action(ArgAction::Append)
                 .short('l')
                 .long("local-dependency")
                 .help("Path to local dependency package (can specify multiple times)")
+            )
+            .arg(Arg::new("PATH")
+                .action(ArgAction::Append)
+                .short('a')
+                .long("add-to-api")
+                .help("Path to file to add to api.zip (can specify multiple times)")
             )
             .arg(Arg::new("FORCE")
                 .action(ArgAction::SetTrue)
@@ -685,11 +703,17 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("Fallback WIT world name")
                 .required(false)
             )
-            .arg(Arg::new("PATH")
+            .arg(Arg::new("DEPENDENCY_PACKAGE_PATH")
                 .action(ArgAction::Append)
                 .short('l')
                 .long("local-dependency")
                 .help("Path to local dependency package (can specify multiple times)")
+            )
+            .arg(Arg::new("PATH")
+                .action(ArgAction::Append)
+                .short('a')
+                .long("add-to-api")
+                .help("Path to file to add to api.zip (can specify multiple times)")
             )
             .arg(Arg::new("NO_UI")
                 .action(ArgAction::SetTrue)
