@@ -967,26 +967,6 @@ async fn compile_package(
                 // fetch dependency apis: to be used in build
                 if let Some(ref deps) = metadata.properties.dependencies {
                     dependencies.extend(deps);
-                    //if dependencies.is_empty() {
-                    //    continue;
-                    //}
-                    ////let Some(ref url) = url else {
-                    ////    // TODO: can we use kit-cached deps?
-                    ////    return Err(eyre!("Need a node to be able to fetch dependencies"));
-                    ////};
-                    //fetch_dependencies(
-                    //    package_dir,
-                    //    dependencies,
-                    //    &mut apis,
-                    //    &mut wasm_paths,
-                    //    url.clone(),
-                    //    download_from,
-                    //    local_dependencies.clone(),
-                    //    features,
-                    //    default_world,
-                    //    force,
-                    //    verbose,
-                    //).await?;
                 }
             }
         }
