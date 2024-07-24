@@ -22,7 +22,7 @@ fn start_download(
     let our_worker = spawn(
         None,
         &format!(
-            "{}:{}/pkg/worker.wasm",
+            "{}:{}/pkg/file_transfer_worker.wasm",
             our.process.package_name, our.process.publisher_node,
         ),
         OnExit::None,
