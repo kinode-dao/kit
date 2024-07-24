@@ -1,5 +1,6 @@
-use crate::kinode::process::standard::{ProcessId as WitProcessId};
-use crate::kinode::process::{package_name}::{start_download, Address as WitAddress, Request as TransferRequest, Response as TransferResponse, DownloadRequest, ProgressRequest, FileInfo};
+use crate::kinode::process::standard::{Address as WitAddress, ProcessId as WitProcessId};
+use crate::kinode::process::file_transfer_worker::{start_download, Request as WorkerRequest, Response as WorkerResponse, DownloadRequest, ProgressRequest};
+use crate::kinode::process::{package_name}::{Request as TransferRequest, Response as TransferResponse, FileInfo};
 use kinode_process_lib::{
     await_message, call_init, println,
     vfs::{create_drive, metadata, open_dir, Directory, FileType},
@@ -12,6 +13,18 @@ wit_bindgen::generate!({
     generate_unused_types: true,
     additional_derives: [serde::Deserialize, serde::Serialize, process_macros::SerdeJsonInto],
 });
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, process_macros::SerdeJsonInto)]
+#[serde(untagged)] // untagged as a meta-type for all incoming messages
+enum Msg {
+    // requests
+    TransferRequest(TransferRequest),
+    WorkerRequest(WorkerRequest),
+
+    // responses
+    TransferResponse(TransferResponse),
+    WorkerResponse(WorkerResponse),
+}
 
 impl From<Address> for WitAddress {
     fn from(address: Address) -> Self {
@@ -47,52 +60,59 @@ fn ls_files(files_dir: &Directory) -> anyhow::Result<Vec<FileInfo>> {
             _ => None,
         })
         .collect();
-
     Ok(files)
 }
 
 fn handle_transfer_request(
-    our: &Address,
-    message: &Message,
+    request: &TransferRequest,
     files_dir: &Directory,
 ) -> anyhow::Result<()> {
-    match message.body().try_into()? {
+    match request {
         TransferRequest::ListFiles => {
             let files = ls_files(files_dir)?;
             Response::new()
                 .body(TransferResponse::ListFiles(files))
                 .send()?;
         }
-        TransferRequest::Download(DownloadRequest { ref name, ref target, is_requestor }) => {
+    }
+    Ok(())
+}
+
+fn handle_worker_request(
+    our: &Address,
+    source: &Address,
+    request: &WorkerRequest,
+) -> anyhow::Result<()> {
+    match request {
+        WorkerRequest::Download(DownloadRequest { ref name, ref target, is_requestor }) => {
             match start_download(
                 &our.clone().into(),
-                &message.source().clone().into(),
+                &source.clone().into(),
                 name,
                 target,
-                is_requestor,
+                *is_requestor,
             ) {
                 Ok(_) => {}
                 Err(e) => return Err(anyhow::anyhow!("{e}")),
             }
         }
-        TransferRequest::Progress(ProgressRequest { name, progress }) => {
+        WorkerRequest::Progress(ProgressRequest { name, progress }) => {
             println!("{} progress: {}%", name, progress);
             Response::new()
-                .body(TransferResponse::Progress(Ok(())))
+                .body(WorkerResponse::Progress)
                 .send()?;
         }
     }
-
     Ok(())
 }
 
-fn handle_transfer_response(message: &Message) -> anyhow::Result<()> {
-    match message.body().try_into()? {
+fn handle_transfer_response(source: &Address, response: &TransferResponse) -> anyhow::Result<()> {
+    match response {
         TransferResponse::ListFiles(ref files) => {
             println!(
                 "{}",
                 files.iter().
-                    fold(format!("{} available files:\nFile\t\tSize (bytes)\n", message.source()), |mut msg, file| {
+                    fold(format!("{source} available files:\nFile\t\tSize (bytes)\n"), |mut msg, file| {
                         msg.push_str(&format!(
                             "{}\t\t{}", file.name.split('/').last().unwrap(),
                             file.size,
@@ -101,13 +121,19 @@ fn handle_transfer_response(message: &Message) -> anyhow::Result<()> {
                     })
             );
         }
-        TransferResponse::Download(result) | TransferResponse::Progress(result) => {
+    }
+    Ok(())
+}
+
+fn handle_worker_response(response: &WorkerResponse) -> anyhow::Result<()> {
+    match response {
+        WorkerResponse::Download(ref result) => {
             if result.is_err() {
-                return Err(anyhow::anyhow!("{}", result.unwrap_err()));
+                return Err(anyhow::anyhow!("{}", result.as_ref().unwrap_err()));
             }
         }
+        WorkerResponse::Progress => {}
     }
-
     Ok(())
 }
 
@@ -116,10 +142,14 @@ fn handle_message(
     message: &Message,
     files_dir: &Directory,
 ) -> anyhow::Result<()> {
-    if message.is_request() {
-        handle_transfer_request(our, message, files_dir)
-    } else {
-        handle_transfer_response(message)
+    match message.body().try_into()? {
+        // requests
+        Msg::TransferRequest(ref tr) => handle_transfer_request(tr, files_dir),
+        Msg::WorkerRequest(ref wr) => handle_worker_request(our, message.source(), wr),
+
+        // responses
+        Msg::TransferResponse(ref tr) => handle_transfer_response(message.source(), tr),
+        Msg::WorkerResponse(ref wr) => handle_worker_response(wr),
     }
 }
 

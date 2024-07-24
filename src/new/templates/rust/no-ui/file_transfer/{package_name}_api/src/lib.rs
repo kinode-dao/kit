@@ -1,10 +1,12 @@
-use crate::exports::kinode::process::{package_name}::{DownloadRequest, Guest, Request as TransferRequest, Response as TransferResponse};
-use crate::kinode::process::standard::{Address as WitAddress};
+use crate::exports::kinode::process::file_transfer_worker::{
+    DownloadRequest, Guest, Request as WorkerRequest, Response as WorkerResponse,
+};
+use crate::kinode::process::standard::Address as WitAddress;
 use kinode_process_lib::{our_capabilities, spawn, Address, OnExit, Request, Response};
 
 wit_bindgen::generate!({
     path: "target/wit",
-    world: "{package_name_kebab}-{publisher_dotted_kebab}-api-v0",
+    world: "file-transfer-worker-api-v0",
     generate_unused_types: true,
     additional_derives: [serde::Deserialize, serde::Serialize, process_macros::SerdeJsonInto],
 });
@@ -21,8 +23,7 @@ fn start_download(
         None,
         &format!(
             "{}:{}/pkg/worker.wasm",
-            our.process.package_name,
-            our.process.publisher_node,
+            our.process.package_name, our.process.publisher_node,
         ),
         OnExit::None,
         our_capabilities(),
@@ -30,23 +31,19 @@ fn start_download(
         false,
     )?;
 
-    let target = if is_requestor {
-        target
-    } else {
-        source
-    };
+    let target = if is_requestor { target } else { source };
     let our_worker_address = Address {
         node: our.node.clone(),
         process: our_worker,
     };
 
     Response::new()
-        .body(TransferResponse::Download(Ok(())))
+        .body(WorkerResponse::Download(Ok(())))
         .send()?;
 
     Request::new()
         .expects_response(5)
-        .body(TransferRequest::Download(DownloadRequest {
+        .body(WorkerRequest::Download(DownloadRequest {
             name: name.to_string(),
             target: target.clone(),
             is_requestor,

@@ -1,5 +1,5 @@
-use crate::kinode::process::standard::{ProcessId as WitProcessId};
-use crate::kinode::process::{package_name}::{Address as WitAddress, Request as TransferRequest, DownloadRequest};
+use crate::kinode::process::file_transfer_worker::{DownloadRequest, Request as WorkerRequest};
+use crate::kinode::process::standard::{Address as WitAddress, ProcessId as WitProcessId};
 use kinode_process_lib::{
     await_next_message_body, call_init, println, Address, ProcessId, Request,
 };
@@ -40,7 +40,7 @@ fn init(our: Address) {
     let args = String::from_utf8(body).unwrap_or_default();
     let Some((name, who)) = args.split_once(" ") else {
         println!("usage: download:{package_name}:{publisher} file_name who");
-        return
+        return;
     };
     let our: Address = format!("{}@{package_name}:{package_name}:{publisher}", our.node())
         .parse()
@@ -51,7 +51,7 @@ fn init(our: Address) {
         .unwrap();
 
     match Request::to(our)
-        .body(TransferRequest::Download(DownloadRequest {
+        .body(WorkerRequest::Download(DownloadRequest {
             name: name.into(),
             target: target.clone().into(),
             is_requestor: true,
