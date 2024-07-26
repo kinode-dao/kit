@@ -12,7 +12,7 @@ use color_eyre::{
 };
 use fs_err as fs;
 use serde::{Deserialize, Serialize};
-use tracing::{info, instrument, warn};
+use tracing::{debug, info, instrument, warn};
 
 use kinode_process_lib::{PackageId, kernel_types::Erc721Metadata};
 
@@ -712,7 +712,7 @@ async fn fetch_dependencies(
     force: bool,
     verbose: bool,
 ) -> Result<()> {
-    Box::pin(execute(
+    if let Err(e) = Box::pin(execute(
         package_dir,
         true,
         false,
@@ -726,8 +726,15 @@ async fn fetch_dependencies(
         force,
         verbose,
         true,
-    )).await?;
-    fetch_local_built_dependency(apis, wasm_paths, package_dir)?;
+    )).await {
+        debug!("Failed to build self as dependency: {e:?}");
+    } else  if let Err(e) = fetch_local_built_dependency(
+        apis,
+        wasm_paths,
+        package_dir,
+    ) {
+        debug!("Failed to fetch self as dependency: {e:?}");
+    };
     for local_dependency in &local_dependencies {
         // build dependency
         Box::pin(execute(
@@ -866,7 +873,11 @@ fn get_imports_exports_from_wasm(
 fn find_non_standard(
     package_dir: &Path,
     wasm_paths: HashSet<PathBuf>,
-) -> Result<(HashMap<String, Vec<PathBuf>>, HashMap<String, PathBuf>)> {
+) -> Result<(
+    HashMap<String, Vec<PathBuf>>,
+    HashMap<String, PathBuf>,
+    HashSet<PathBuf>,
+)> {
     let mut imports = HashMap::new();
     let mut exports = HashMap::new();
 
@@ -878,11 +889,15 @@ fn find_non_standard(
         }
         get_imports_exports_from_wasm(&path, &mut imports, &mut exports, true)?;
     }
-    for wasm_path in wasm_paths {
-        get_imports_exports_from_wasm(&wasm_path, &mut imports, &mut exports, false)?;
+    for wasm_path in &wasm_paths {
+        get_imports_exports_from_wasm(wasm_path, &mut imports, &mut exports, false)?;
     }
 
-    Ok((imports, exports))
+    let others = wasm_paths
+        .difference(&exports.values().map(|p| p.clone()).collect())
+        .map(|p| p.clone())
+        .collect();
+    Ok((imports, exports, others))
 }
 
 /// package dir looks like:
@@ -1026,7 +1041,8 @@ async fn compile_package(
 
     if !ignore_deps {
         // find non-standard imports/exports -> compositions
-        let (importers, exporters) = find_non_standard(package_dir, wasm_paths)?;
+        let (importers, exporters, others) = find_non_standard(package_dir, wasm_paths)?;
+        println!("{importers:?} {exporters:?} {others:?}");
 
         // compose
         for (import, import_paths) in importers {
@@ -1051,6 +1067,16 @@ async fn compile_package(
                     false,
                 )?;
             }
+        }
+
+        // copy others into pkg/
+        for path in &others {
+            fs::copy(
+                path,
+                package_dir
+                    .join("pkg")
+                    .join(path.file_name().and_then(|f| f.to_str()).unwrap())
+            )?;
         }
     }
 
