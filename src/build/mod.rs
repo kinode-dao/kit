@@ -1042,7 +1042,6 @@ async fn compile_package(
     if !ignore_deps {
         // find non-standard imports/exports -> compositions
         let (importers, exporters, others) = find_non_standard(package_dir, wasm_paths)?;
-        println!("{importers:?} {exporters:?} {others:?}");
 
         // compose
         for (import, import_paths) in importers {
