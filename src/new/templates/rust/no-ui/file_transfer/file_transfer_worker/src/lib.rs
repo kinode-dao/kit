@@ -121,10 +121,10 @@ fn handle_worker_request(
 }
 
 fn handle_internal_request(
-    our: &Address,
     request: &InternalRequest,
     file: &mut Option<File>,
     size: &mut Option<u64>,
+    parent: &Option<Address>,
 ) -> anyhow::Result<bool> {
     match request {
         InternalRequest::Chunk(ChunkRequest {
@@ -150,15 +150,13 @@ fn handle_internal_request(
             };
 
             file.write_all(&bytes)?;
+
             // if sender has sent us a size, give a progress update to main transfer
+            let Some(ref parent) = parent else {
+                return Ok(false);
+            };
             if let Some(size) = size {
                 let progress = ((offset + length) as f64 / *size as f64 * 100.0) as u64;
-
-                // send update to main process
-                let main_app = Address {
-                    node: our.node.clone(),
-                    process: "{package_name}:{package_name}:{publisher}".parse()?,
-                };
 
                 Request::new()
                     .expects_response(5)
@@ -166,7 +164,7 @@ fn handle_internal_request(
                         name: name.to_string(),
                         progress,
                     }))
-                    .target(&main_app)
+                    .target(parent)
                     .send()?;
 
                 if progress >= 100 {
@@ -199,11 +197,15 @@ fn handle_message(
     file: &mut Option<File>,
     files_dir: &Directory,
     size: &mut Option<u64>,
+    parent: &mut Option<Address>,
 ) -> anyhow::Result<bool> {
     return Ok(match message.body().try_into()? {
         // requests
-        Msg::WorkerRequest(ref wr) => handle_worker_request(wr, file, files_dir)?,
-        Msg::InternalRequest(ref ir) => handle_internal_request(our, ir, file, size)?,
+        Msg::WorkerRequest(ref wr) => {
+            *parent = Some(message.source().clone());
+            handle_worker_request(wr, file, files_dir)?
+        }
+        Msg::InternalRequest(ref ir) => handle_internal_request(ir, file, size, parent)?,
 
         // responses
         Msg::WorkerResponse(ref wr) => handle_worker_response(wr)?,
@@ -220,12 +222,13 @@ fn init(our: Address) {
 
     let mut file: Option<File> = None;
     let mut size: Option<u64> = None;
+    let mut parent: Option<Address> = None;
 
     loop {
         match await_message() {
             Err(send_error) => println!("worker: got SendError: {send_error}"),
             Ok(ref message) => {
-                match handle_message(&our, message, &mut file, &files_dir, &mut size) {
+                match handle_message(&our, message, &mut file, &files_dir, &mut size, &mut parent) {
                     Ok(exit) => {
                         if exit {
                             println!("worker: done: exiting, took {:?}", start.elapsed());
