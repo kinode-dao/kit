@@ -3,7 +3,6 @@ use crate::kinode::process::file_transfer_worker::{
     Response as WorkerResponse,
 };
 use crate::kinode::process::standard::{Address as WitAddress, ProcessId as WitProcessId};
-//use crate::kinode::process::{package_name}::{Request as TransferRequest, Response as TransferResponse, WorkerRequest, DownloadRequest, ProgressRequest, ChunkRequest};
 use kinode_process_lib::{
     await_message, call_init, get_blob, println,
     vfs::{open_dir, open_file, Directory, File, SeekFrom},
