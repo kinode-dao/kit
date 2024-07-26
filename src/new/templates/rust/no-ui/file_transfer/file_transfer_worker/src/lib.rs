@@ -191,7 +191,6 @@ fn handle_worker_response(response: &WorkerResponse) -> anyhow::Result<bool> {
 }
 
 fn handle_message(
-    our: &Address,
     message: &Message,
     file: &mut Option<File>,
     files_dir: &Directory,
@@ -227,7 +226,7 @@ fn init(our: Address) {
         match await_message() {
             Err(send_error) => println!("worker: got SendError: {send_error}"),
             Ok(ref message) => {
-                match handle_message(&our, message, &mut file, &files_dir, &mut size, &mut parent) {
+                match handle_message(message, &mut file, &files_dir, &mut size, &mut parent) {
                     Ok(exit) => {
                         if exit {
                             println!("worker: done: exiting, took {:?}", start.elapsed());
