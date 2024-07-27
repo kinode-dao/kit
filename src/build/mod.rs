@@ -841,9 +841,7 @@ fn get_imports_exports_from_wasm(
     }
     for wit_export in wit_exports {
         if exports.contains_key(&wit_export) {
-            return Err(eyre!(
-                "found multiple exporters of {wit_export}: {path:?} & {exports:?}",
-            ));
+            warn!("found multiple exporters of {wit_export}: {path:?} & {exports:?}");
         }
         let path = if should_move_export {
             let file_name = path
@@ -872,7 +870,7 @@ fn get_imports_exports_from_wasm(
 #[instrument(level = "trace", skip_all)]
 fn find_non_standard(
     package_dir: &Path,
-    wasm_paths: HashSet<PathBuf>,
+    wasm_paths: &mut HashSet<PathBuf>,
 ) -> Result<(
     HashMap<String, Vec<PathBuf>>,
     HashMap<String, PathBuf>,
@@ -884,12 +882,21 @@ fn find_non_standard(
     for entry in package_dir.join("pkg").read_dir()? {
         let entry = entry?;
         let path = entry.path();
+        if wasm_paths.contains(&path) {
+            continue;
+        }
         if !(path.is_file() && Some("wasm") == path.extension().and_then(|e| e.to_str())) {
             continue;
         }
         get_imports_exports_from_wasm(&path, &mut imports, &mut exports, true)?;
     }
-    for wasm_path in &wasm_paths {
+    for export_path in exports.values() {
+        if wasm_paths.contains(export_path) {
+            // we already have it; don't include it twice
+            wasm_paths.remove(export_path);
+        }
+    }
+    for wasm_path in wasm_paths.iter() {
         get_imports_exports_from_wasm(wasm_path, &mut imports, &mut exports, false)?;
     }
 
@@ -1041,7 +1048,7 @@ async fn compile_package(
 
     if !ignore_deps {
         // find non-standard imports/exports -> compositions
-        let (importers, exporters, others) = find_non_standard(package_dir, wasm_paths)?;
+        let (importers, exporters, others) = find_non_standard(package_dir, &mut wasm_paths)?;
 
         // compose
         for (import, import_paths) in importers {
