@@ -271,6 +271,12 @@ async fn build_packages(
     persist_home: &bool,
     runtime_path: &Path,
 ) -> Result<(Vec<SetupPackage>, Vec<PathBuf>)> {
+    let dependency_package_paths: Vec<PathBuf> = test
+        .dependency_package_paths
+        .iter()
+        .cloned()
+        .map(|p| test_dir_path.join(p).canonicalize().unwrap())
+        .collect();
     let setup_packages: Vec<SetupPackage> = test
         .setup_packages
         .iter()
@@ -344,6 +350,10 @@ async fn build_packages(
             Some(url.clone()),
             None,
             None,
+            dependency_package_paths.clone(),
+            vec![], // TODO
+            false,
+            false,
             false,
         ).await?;
         start_package::execute(&path, &url).await?;
@@ -359,6 +369,10 @@ async fn build_packages(
             Some(url.clone()),
             None,
             None,
+            dependency_package_paths.clone(),
+            vec![], // TODO
+            false,
+            false,
             false,
         ).await?;
     }
@@ -372,6 +386,10 @@ async fn build_packages(
             Some(url.clone()),
             None,
             None,
+            dependency_package_paths.clone(),
+            vec![], // TODO
+            false,
+            false,
             false,
         ).await?;
     }

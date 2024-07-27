@@ -193,6 +193,17 @@ async fn execute(
                 .get_one::<String>("NODE")
                 .and_then(|s: &String| Some(s.as_str()));
             let default_world = matches.get_one::<String>("WORLD");
+            let local_dependencies: Vec<PathBuf> = matches
+                .get_many::<String>("DEPENDENCY_PACKAGE_PATH")
+                .unwrap_or_default()
+                .map(|s| PathBuf::from(s))
+                .collect();
+            let add_paths_to_api: Vec<PathBuf> = matches
+                .get_many::<String>("PATH")
+                .unwrap_or_default()
+                .map(|s| PathBuf::from(s))
+                .collect();
+            let force = matches.get_one::<bool>("FORCE").unwrap();
             let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
 
             build::execute(
@@ -203,8 +214,12 @@ async fn execute(
                 &features,
                 url,
                 download_from,
-                default_world.cloned(),
+                default_world.map(|w| w.as_str()),
+                local_dependencies,
+                add_paths_to_api,
+                *force,
                 *verbose,
+                false,
             )
             .await
         }
@@ -229,6 +244,17 @@ async fn execute(
                 .get_one::<String>("NODE")
                 .and_then(|s: &String| Some(s.as_str()));
             let default_world = matches.get_one::<String>("WORLD");
+            let local_dependencies: Vec<PathBuf> = matches
+                .get_many::<String>("DEPENDENCY_PACKAGE_PATH")
+                .unwrap_or_default()
+                .map(|s| PathBuf::from(s))
+                .collect();
+            let add_paths_to_api: Vec<PathBuf> = matches
+                .get_many::<String>("PATH")
+                .unwrap_or_default()
+                .map(|s| PathBuf::from(s))
+                .collect();
+            let force = matches.get_one::<bool>("FORCE").unwrap();
             let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
 
             build_start_package::execute(
@@ -239,7 +265,10 @@ async fn execute(
                 *skip_deps_check,
                 &features,
                 download_from,
-                default_world.cloned(),
+                default_world.map(|w| w.as_str()),
+                local_dependencies,
+                add_paths_to_api,
+                *force,
                 *verbose,
             )
             .await
@@ -617,6 +646,25 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .long("world")
                 .help("Fallback WIT world name")
             )
+            .arg(Arg::new("DEPENDENCY_PACKAGE_PATH")
+                .action(ArgAction::Append)
+                .short('l')
+                .long("local-dependency")
+                .help("Path to local dependency package (can specify multiple times)")
+            )
+            .arg(Arg::new("PATH")
+                .action(ArgAction::Append)
+                .short('a')
+                .long("add-to-api")
+                .help("Path to file to add to api.zip (can specify multiple times)")
+            )
+            .arg(Arg::new("FORCE")
+                .action(ArgAction::SetTrue)
+                .short('f')
+                .long("force")
+                .help("Force a rebuild")
+                .required(false)
+            )
             .arg(Arg::new("VERBOSE")
                 .action(ArgAction::SetTrue)
                 .short('v')
@@ -655,6 +703,18 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("Fallback WIT world name")
                 .required(false)
             )
+            .arg(Arg::new("DEPENDENCY_PACKAGE_PATH")
+                .action(ArgAction::Append)
+                .short('l')
+                .long("local-dependency")
+                .help("Path to local dependency package (can specify multiple times)")
+            )
+            .arg(Arg::new("PATH")
+                .action(ArgAction::Append)
+                .short('a')
+                .long("add-to-api")
+                .help("Path to file to add to api.zip (can specify multiple times)")
+            )
             .arg(Arg::new("NO_UI")
                 .action(ArgAction::SetTrue)
                 .long("no-ui")
@@ -678,6 +738,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .long("features")
                 .help("Pass these comma-delimited feature flags to Rust cargo builds")
+                .required(false)
+            )
+            .arg(Arg::new("FORCE")
+                .action(ArgAction::SetTrue)
+                .short('f')
+                .long("force")
+                .help("Force a rebuild")
                 .required(false)
             )
             .arg(Arg::new("VERBOSE")
@@ -972,7 +1039,9 @@ async fn main() -> Result<()> {
     color_eyre::config::HookBuilder::default()
         .display_env_section(false)
         .install()?;
-    let current_dir = env::current_dir()?.into_os_string();
+    let current_dir = env::current_dir()
+        .with_suggestion(|| "Could not fetch CWD. Does CWD exist?")?
+        .into_os_string();
     let mut app = make_app(&current_dir).await?;
 
     let usage = app.render_usage();

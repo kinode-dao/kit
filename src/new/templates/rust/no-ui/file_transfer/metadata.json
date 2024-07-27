@@ -11,7 +11,9 @@
             "0.1.0": ""
         },
         "wit_version": 0,
-        "dependencies": []
+        "dependencies": [
+            "{package_name}:{publisher}"
+        ]
     },
     "external_url": "",
     "animation_url": ""

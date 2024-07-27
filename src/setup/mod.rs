@@ -13,7 +13,7 @@ use crate::build::run_command;
 const FETCH_NVM_VERSION: &str = "v0.39.7";
 const REQUIRED_NODE_MAJOR: u32 = 20;
 const MINIMUM_NODE_MINOR: u32 = 0;
-const REQUIRED_NPM_MAJOR: u32 = 9;
+const MINIMUM_NPM_MAJOR: u32 = 9;
 const MINIMUM_NPM_MINOR: u32 = 0;
 pub const REQUIRED_PY_MAJOR: u32 = 3;
 pub const MINIMUM_PY_MINOR: u32 = 10;
@@ -39,7 +39,7 @@ impl std::fmt::Display for Dependency {
             Dependency::Anvil => write!(f, "anvil"),
             Dependency::Forge => write!(f, "forge"),
             Dependency::Nvm => write!(f, "nvm {}", FETCH_NVM_VERSION),
-            Dependency::Npm => write!(f, "npm {}.{}", REQUIRED_NPM_MAJOR, MINIMUM_NPM_MINOR),
+            Dependency::Npm => write!(f, "npm {}.{}", MINIMUM_NPM_MAJOR, MINIMUM_NPM_MINOR),
             Dependency::Node => write!(f, "node {}.{}", REQUIRED_NODE_MAJOR, MINIMUM_NODE_MINOR),
             Dependency::Rust => write!(f, "rust"),
             Dependency::RustNightly => write!(f, "rust nightly"),
@@ -129,18 +129,7 @@ fn is_npm_version_correct(node_version: String, required_version: (u32, u32)) ->
         .collect::<Vec<&str>>();
     let version = version.last().unwrap_or_else(|| &"");
     Ok(parse_version(version)
-        .and_then(|v| Some(compare_versions(v, required_version)))
-        .unwrap_or(false))
-}
-
-#[instrument(level = "trace", skip_all)]
-fn is_version_correct(cmd: &str, required_version: (u32, u32)) -> Result<bool> {
-    let output = Command::new(cmd).arg("--version").output()?.stdout;
-
-    let version = String::from_utf8_lossy(&output);
-
-    Ok(parse_version(version.trim())
-        .and_then(|v| Some(compare_versions(v, required_version)))
+        .and_then(|v| Some(compare_versions_min_major(v, required_version)))
         .unwrap_or(false))
 }
 
@@ -229,8 +218,8 @@ fn call_cargo(arg: &str, verbose: bool) -> Result<()> {
     Ok(())
 }
 
-fn compare_versions(installed_version: (u32, u32), required_version: (u32, u32)) -> bool {
-    installed_version.0 == required_version.0 && installed_version.1 >= required_version.1
+fn compare_versions_min_major(installed_version: (u32, u32), required_version: (u32, u32)) -> bool {
+    installed_version.0 >= required_version.0 && installed_version.1 >= required_version.1
 }
 
 fn parse_version(version_str: &str) -> Option<(u32, u32)> {
@@ -385,7 +374,7 @@ pub fn check_js_deps() -> Result<Vec<Dependency>> {
         None => missing_deps.extend_from_slice(&[Dependency::Node, Dependency::Npm]),
         Some(vn) => {
             if !is_command_installed("npm")?
-                || !is_npm_version_correct(vn, (REQUIRED_NPM_MAJOR, MINIMUM_NPM_MINOR))?
+                || !is_npm_version_correct(vn, (MINIMUM_NPM_MAJOR, MINIMUM_NPM_MINOR))?
             {
                 missing_deps.push(Dependency::Npm);
             }
