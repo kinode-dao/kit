@@ -1,6 +1,3 @@
-use color_eyre::eyre::{self, Result};
-use reqwest::Client;
-use serde_json::Value;
 use std::fs;
 use std::path::Path;
 use std::str::FromStr;
@@ -16,6 +13,9 @@ use alloy::{
 };
 use alloy_sol_macro::sol;
 use alloy_sol_types::SolCall;
+use color_eyre::eyre::{self, Result};
+use reqwest::Client;
+use serde_json::Value;
 
 sol! {
     function mint (
