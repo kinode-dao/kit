@@ -18,48 +18,48 @@ use alloy_sol_macro::sol;
 use alloy_sol_types::SolCall;
 
 sol! {
-        function mint (
-            address who,
-            bytes calldata label,
-            bytes calldata initialization,
-            bytes calldata erc721Data,
-            address implementation
-        ) external returns (
-            address tba
-        );
+    function mint (
+        address who,
+        bytes calldata label,
+        bytes calldata initialization,
+        bytes calldata erc721Data,
+        address implementation
+    ) external returns (
+        address tba
+    );
 
-        function get (
-            bytes32 node
-        ) external view returns (
-            address tba,
-            address owner,
-            bytes data,
-        );
+    function get (
+        bytes32 node
+    ) external view returns (
+        address tba,
+        address owner,
+        bytes data,
+    );
 
-        function note (
-            bytes calldata note,
-            bytes calldata data
-        ) external returns (
-            bytes32 notenode
-        );
+    function note (
+        bytes calldata note,
+        bytes calldata data
+    ) external returns (
+        bytes32 notenode
+    );
 
-        // tba account
-        function execute(
-            address to,
-            uint256 value,
-            bytes calldata data,
-            uint8 operation
-        ) external payable returns (bytes memory returnData);
+    // tba account
+    function execute(
+        address to,
+        uint256 value,
+        bytes calldata data,
+        uint8 operation
+    ) external payable returns (bytes memory returnData);
 
 
-        struct Call {
-            address target;
-            bytes callData;
-        }
+    struct Call {
+        address target;
+        bytes callData;
+    }
 
-        function aggregate(
-            Call[] calldata calls
-        ) external payable returns (uint256 blockNumber, bytes[] memory returnData);
+    function aggregate(
+        Call[] calldata calls
+    ) external payable returns (uint256 blockNumber, bytes[] memory returnData);
 }
 
 const KIMAP_ADDRESS: &str = "0x0165878A594ca255338adfa4d48449f69242Eb8F";
