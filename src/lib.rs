@@ -7,6 +7,7 @@ pub mod connect;
 pub mod dev_ui;
 pub mod inject_message;
 pub mod new;
+pub mod publish;
 pub mod remove_package;
 pub mod reset_cache;
 pub mod run_tests;
