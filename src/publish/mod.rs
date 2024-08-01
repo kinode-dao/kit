@@ -67,6 +67,71 @@ const MULTICALL_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
 const KINO_ACCOUNT_IMPL: &str = "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9";
 const FAKE_DOTDEV_TBA: &str = "0x69C30C0Cf0e9726f9eEF50bb74FA32711fA0B02D";
 
+fn get_metadata_uri(manifest_path: &str) -> Result<String> {
+    let manifest_path = Path::new(manifest_path);
+    if manifest_path.exists() {
+        let contents = fs::read_to_string(manifest_path)?;
+        let manifest: Value = serde_json::from_str(&contents)?;
+        if let Some(uri) = manifest["metadata_uri"].as_str() {
+            return Ok(uri.to_string());
+        }
+    }
+    Err(eyre::eyre!("Metadata URI not found in the manifest file."))
+}
+
+async fn calculate_metadata_hash(metadata_uri: &str) -> Result<String> {
+    let client = Client::new();
+    let response = client.get(metadata_uri).send().await?;
+    let metadata_text = response.text().await?;
+
+    let _: Value = serde_json::from_str(&metadata_text)?;
+
+    let hash = keccak256(metadata_text.as_bytes());
+
+    Ok(format!("0x{}", hex::encode(hash)))
+}
+
+fn get_private_key(cli_key: Option<String>) -> Result<String> {
+    if let Some(key) = cli_key {
+        return Ok(key);
+    }
+
+    if let Ok(key) = std::env::var("PRIVATE_KEY") {
+        return Ok(key);
+    }
+
+    let env_path = Path::new(".env");
+    if env_path.exists() {
+        let contents = fs::read_to_string(env_path)?;
+        for line in contents.lines() {
+            if line.starts_with("PRIVATE_KEY=") {
+                return Ok(line.trim_start_matches("PRIVATE_KEY=").to_string());
+            }
+        }
+    }
+
+    Err(eyre::eyre!("Private key not found. Please provide it as an argument, set the PRIVATE_KEY environment variable, or include it in a .env file."))
+}
+
+fn get_app_name(cli_name: Option<String>, manifest_path: &str) -> Result<String> {
+    if let Some(name) = cli_name {
+        return Ok(name);
+    }
+
+    let manifest_path = Path::new(manifest_path);
+    if manifest_path.exists() {
+        let contents = fs::read_to_string(manifest_path)?;
+        let manifest: Value = serde_json::from_str(&contents)?;
+        if let Some(name) = manifest["name"].as_str() {
+            return Ok(name.to_string());
+        }
+    }
+
+    Err(eyre::eyre!(
+        "App name not found. Please provide it as an argument or include it in the manifest file."
+    ))
+}
+
 pub async fn execute(
     private_key: Option<String>,
     app_name: Option<String>,
@@ -163,69 +228,4 @@ pub async fn execute(
     println!("App '{}' published successfully!", app_name);
     println!("Transaction hash: {:?}", tx_hash);
     Ok(())
-}
-
-fn get_metadata_uri(manifest_path: &str) -> Result<String> {
-    let manifest_path = Path::new(manifest_path);
-    if manifest_path.exists() {
-        let contents = fs::read_to_string(manifest_path)?;
-        let manifest: Value = serde_json::from_str(&contents)?;
-        if let Some(uri) = manifest["metadata_uri"].as_str() {
-            return Ok(uri.to_string());
-        }
-    }
-    Err(eyre::eyre!("Metadata URI not found in the manifest file."))
-}
-
-async fn calculate_metadata_hash(metadata_uri: &str) -> Result<String> {
-    let client = Client::new();
-    let response = client.get(metadata_uri).send().await?;
-    let metadata_text = response.text().await?;
-
-    let _: Value = serde_json::from_str(&metadata_text)?;
-
-    let hash = keccak256(metadata_text.as_bytes());
-
-    Ok(format!("0x{}", hex::encode(hash)))
-}
-
-fn get_private_key(cli_key: Option<String>) -> Result<String> {
-    if let Some(key) = cli_key {
-        return Ok(key);
-    }
-
-    if let Ok(key) = std::env::var("PRIVATE_KEY") {
-        return Ok(key);
-    }
-
-    let env_path = Path::new(".env");
-    if env_path.exists() {
-        let contents = fs::read_to_string(env_path)?;
-        for line in contents.lines() {
-            if line.starts_with("PRIVATE_KEY=") {
-                return Ok(line.trim_start_matches("PRIVATE_KEY=").to_string());
-            }
-        }
-    }
-
-    Err(eyre::eyre!("Private key not found. Please provide it as an argument, set the PRIVATE_KEY environment variable, or include it in a .env file."))
-}
-
-fn get_app_name(cli_name: Option<String>, manifest_path: &str) -> Result<String> {
-    if let Some(name) = cli_name {
-        return Ok(name);
-    }
-
-    let manifest_path = Path::new(manifest_path);
-    if manifest_path.exists() {
-        let contents = fs::read_to_string(manifest_path)?;
-        let manifest: Value = serde_json::from_str(&contents)?;
-        if let Some(name) = manifest["name"].as_str() {
-            return Ok(name.to_string());
-        }
-    }
-
-    Err(eyre::eyre!(
-        "App name not found. Please provide it as an argument or include it in the manifest file."
-    ))
 }
