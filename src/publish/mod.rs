@@ -1,5 +1,4 @@
-use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 
 use alloy::{
@@ -9,13 +8,15 @@ use alloy::{
     pubsub::PubSubFrontend,
     rpc::client::WsConnect,
     rpc::types::eth::{TransactionInput, TransactionRequest},
-    signers::local::PrivateKeySigner,
+    signers::local::LocalSigner,
 };
 use alloy_sol_macro::sol;
 use alloy_sol_types::SolCall;
-use color_eyre::eyre::{self, Result};
-use reqwest::Client;
-use serde_json::Value;
+use color_eyre::eyre::{eyre, Result};
+use fs_err as fs;
+use tracing::{info, instrument};
+
+use crate::build::{download_file, read_metadata};
 
 sol! {
     function mint (
@@ -67,85 +68,84 @@ const MULTICALL_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
 const KINO_ACCOUNT_IMPL: &str = "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9";
 const FAKE_DOTDEV_TBA: &str = "0x69C30C0Cf0e9726f9eEF50bb74FA32711fA0B02D";
 
-fn get_metadata_uri(manifest_path: &str) -> Result<String> {
-    let manifest_path = Path::new(manifest_path);
-    if manifest_path.exists() {
-        let contents = fs::read_to_string(manifest_path)?;
-        let manifest: Value = serde_json::from_str(&contents)?;
-        if let Some(uri) = manifest["metadata_uri"].as_str() {
-            return Ok(uri.to_string());
-        }
-    }
-    Err(eyre::eyre!("Metadata URI not found in the manifest file."))
-}
-
-async fn calculate_metadata_hash(metadata_uri: &str) -> Result<String> {
-    let client = Client::new();
-    let response = client.get(metadata_uri).send().await?;
-    let metadata_text = response.text().await?;
-
-    let _: Value = serde_json::from_str(&metadata_text)?;
-
+#[instrument(level = "trace", skip_all)]
+fn calculate_metadata_hash(package_dir: &Path) -> Result<String> {
+    let metadata_text = fs::read_to_string(package_dir.join("metadata.json"))?;
     let hash = keccak256(metadata_text.as_bytes());
-
     Ok(format!("0x{}", hex::encode(hash)))
 }
 
-fn get_private_key(cli_key: Option<String>) -> Result<String> {
-    if let Some(key) = cli_key {
-        return Ok(key);
-    }
-
-    if let Ok(key) = std::env::var("PRIVATE_KEY") {
-        return Ok(key);
-    }
-
-    let env_path = Path::new(".env");
-    if env_path.exists() {
-        let contents = fs::read_to_string(env_path)?;
-        for line in contents.lines() {
-            if line.starts_with("PRIVATE_KEY=") {
-                return Ok(line.trim_start_matches("PRIVATE_KEY=").to_string());
-            }
-        }
-    }
-
-    Err(eyre::eyre!("Private key not found. Please provide it as an argument, set the PRIVATE_KEY environment variable, or include it in a .env file."))
+#[instrument(level = "trace", skip_all)]
+fn read_keystore(keystore_path: &Path) -> Result<(Address, EthereumWallet)> {
+    let password = rpassword::prompt_password("Enter password: ")?;
+    let signer = LocalSigner::decrypt_keystore(keystore_path, password)?;
+    let address = signer.address();
+    let wallet = EthereumWallet::from(signer);
+    Ok((address, wallet))
 }
 
-fn get_app_name(cli_name: Option<String>, manifest_path: &str) -> Result<String> {
-    if let Some(name) = cli_name {
-        return Ok(name);
-    }
-
-    let manifest_path = Path::new(manifest_path);
-    if manifest_path.exists() {
-        let contents = fs::read_to_string(manifest_path)?;
-        let manifest: Value = serde_json::from_str(&contents)?;
-        if let Some(name) = manifest["name"].as_str() {
-            return Ok(name.to_string());
-        }
-    }
-
-    Err(eyre::eyre!(
-        "App name not found. Please provide it as an argument or include it in the manifest file."
-    ))
-}
-
+#[instrument(level = "trace", skip_all)]
 pub async fn execute(
-    private_key: Option<String>,
-    app_name: Option<String>,
-    fakechain_port: u16,
-    manifest_path: &str,
+    package_dir: &Path,
+    metadata_uri: &str,
+    keystore_path: &Path,
+    fakechain_port: &u16,
 ) -> Result<()> {
-    let private_key = get_private_key(private_key)?;
-    let app_name = get_app_name(app_name, manifest_path)?;
+    if !package_dir.join("pkg").exists() {
+        return Err(eyre!(
+            "Required `pkg/` dir not found within given input dir {:?} (or cwd, if none given). Please re-run targeting a package.",
+            package_dir,
+        ));
+    }
 
-    let privkey_signer =
-        PrivateKeySigner::from_str(&private_key).expect("Failed to create signer from private key");
+    let metadata = read_metadata(package_dir)?;
+    let name = metadata.name.clone().unwrap_or_default();
 
-    let wallet_address = privkey_signer.address();
-    let wallet: EthereumWallet = privkey_signer.into();
+    let remote_metadata_path = PathBuf::from("/tmp/kinode-kit-cache/{name}");
+    if !remote_metadata_path.exists() {
+        fs::create_dir_all(&remote_metadata_path)?;
+    }
+    let remote_metadata_path = remote_metadata_path.join("metadata.json");
+    download_file(
+        metadata_uri,
+        &remote_metadata_path,
+    ).await?;
+    let remote_metadata = read_metadata(&remote_metadata_path)?;
+
+    //TODO: remove
+    println!(
+        "\033]8;;file://{}\033\\Local\033]8;;\033\\ and \033]8;;{}\033\\remote\033]8;;\033\\ metadata do not match loljk",
+        package_dir.join("metadata.json").to_str().unwrap_or_default(),
+        metadata_uri,
+    );
+    // TODO: either add derive(PartialEq) or serialize b4 cmp
+    if serde_json::to_string(&metadata)? != serde_json::to_string(&remote_metadata)? {
+        return Err(eyre!(
+            "\033]8;;file://{}\033\\Local\033]8;;\033\\ and \033]8;;{}\033\\remote\033]8;;\033\\ metadata do not match",
+            package_dir.join("metadata.json").to_str().unwrap_or_default(),
+            metadata_uri,
+        ));
+    }
+
+    let metadata_hash = calculate_metadata_hash(package_dir)?;
+    let current_version = &metadata.properties.current_version;
+    let expected_metadata_hash = metadata
+        .properties
+        .code_hashes
+        .get(current_version)
+        .cloned()
+        .unwrap_or_default();
+    if metadata_hash != expected_metadata_hash {
+        return Err(eyre!(
+            "Published metadata at {} hashes to {}, not {} as expected for current_version {}",
+            metadata_uri,
+            metadata_hash,
+            expected_metadata_hash,
+            current_version,
+        ));
+    }
+
+    let (wallet_address, wallet) = read_keystore(keystore_path)?;
 
     let endpoint = format!("ws://localhost:{}", fakechain_port);
     let ws = WsConnect::new(endpoint);
@@ -157,12 +157,9 @@ pub async fn execute(
     let kino_account_impl = Address::from_str(KINO_ACCOUNT_IMPL)?;
 
     // Create metadata calls
-    let metadata_uri = get_metadata_uri(manifest_path)?;
-    let metadata_hash = calculate_metadata_hash(&metadata_uri).await?;
-
     let metadata_uri_call = noteCall {
         note: "~metadata-uri".into(),
-        data: metadata_uri.into(),
+        data: metadata_uri.to_string().into(),
     }
     .abi_encode();
 
@@ -195,7 +192,7 @@ pub async fn execute(
 
     let create_app_tba_call = mintCall {
         who: wallet_address,
-        label: app_name.clone().into(),
+        label: name.clone().into(),
         initialization: init_call.into(),
         erc721Data: Bytes::default(),
         implementation: kino_account_impl,
@@ -225,7 +222,6 @@ pub async fn execute(
     let tx_encoded = tx_envelope.encoded_2718();
     let tx_hash = provider.send_raw_transaction(&tx_encoded).await?;
 
-    println!("App '{}' published successfully!", app_name);
-    println!("Transaction hash: {:?}", tx_hash);
+    info!("{name} published successfully; tx hash {tx_hash:?}", );
     Ok(())
 }

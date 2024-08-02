@@ -314,12 +314,19 @@ async fn execute(
             )
         }
         Some(("publish", publish_matches)) => {
-            let private_key = publish_matches.get_one::<String>("PRIVATE_KEY").cloned();
-            let app_name = publish_matches.get_one::<String>("APP_NAME").cloned();
-            let fakechain_port = *publish_matches.get_one::<u16>("FAKECHAIN_PORT").unwrap();
-            let manifest_path = publish_matches.get_one::<String>("MANIFEST").unwrap();
+            let package_dir =
+                PathBuf::from(publish_matches.get_one::<String>("DIR").unwrap());
+            let metadata_uri = publish_matches.get_one::<String>("URI").unwrap();
+            let keystore_path =
+                PathBuf::from(publish_matches.get_one::<String>("PATH").unwrap());
+            let fakechain_port = publish_matches.get_one::<u16>("FAKECHAIN_PORT").unwrap();
 
-            publish::execute(private_key, app_name, fakechain_port, manifest_path).await
+            publish::execute(
+                &package_dir,
+                metadata_uri,
+                &keystore_path,
+                fakechain_port,
+            ).await
         }
         Some(("remove-package", remove_package_matches)) => {
             let package_name = remove_package_matches
@@ -887,26 +894,35 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
             )
         )
         .subcommand(Command::new("publish")
-            .about("Publish or update an app")
+            .about("Publish or update a package")
             .visible_alias("p")
-            .arg(Arg::new("PRIVATE_KEY")
+            .arg(Arg::new("DIR")
+                .action(ArgAction::Set)
+                .help("The package directory to publish")
+                .default_value(current_dir)
+            )
+            .arg(Arg::new("URI")
+                .action(ArgAction::Set)
+                .short('u')
+                .long("metadata-uri")
+                .help("URI where metadata lives")
+                .required(true)
+            )
+            .arg(Arg::new("PATH")
+                .action(ArgAction::Set)
                 .short('k')
-                .long("private-key")
-                .help("Private key for transaction signing")
-                .required(false)
+                .long("keystore-path")
+                .help("Path to private key keystore") // TODO: add link to docs?
+                .required(true) // TODO: -> false when add hardware wallets
             )
-            .arg(Arg::new("APP_NAME")
-                .short('n')
-                .long("app-name")
-                .help("Name of the app to publish")
-                .required(false)
+            .arg(Arg::new("FAKECHAIN_PORT")
+                .action(ArgAction::Set)
+                .short('c')
+                .long("fakechain-port")
+                .help("The port to connect to the fakechain on")
+                .default_value("8545")
+                .value_parser(value_parser!(u16))
             )
-            .arg(Arg::new("MANIFEST")
-                .short('m')
-                .long("manifest")
-                .help("Path to the manifest file")
-                    .default_value("manifest.json")
-                )
         )
         .subcommand(Command::new("remove-package")
             .about("Remove a running package from a node")
