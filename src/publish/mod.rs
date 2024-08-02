@@ -3,11 +3,13 @@ use std::str::FromStr;
 
 use alloy::{
     network::{eip2718::Encodable2718, EthereumWallet, TransactionBuilder},
-    primitives::{keccak256, Address, Bytes, U256},
+    primitives::{keccak256, Address, Bytes, B256, U256},
     providers::{Provider, ProviderBuilder, RootProvider},
     pubsub::PubSubFrontend,
-    rpc::client::WsConnect,
-    rpc::types::eth::{TransactionInput, TransactionRequest},
+    rpc::{
+        client::WsConnect,
+        types::eth::{TransactionInput, TransactionRequest},
+    },
     signers::local::LocalSigner,
 };
 use alloy_sol_macro::sol;
@@ -83,6 +85,21 @@ fn read_keystore(keystore_path: &Path) -> Result<(Address, EthereumWallet)> {
     let address = signer.address();
     let wallet = EthereumWallet::from(signer);
     Ok((address, wallet))
+}
+
+fn namehash(name: &str) -> [u8; 32] {
+    let mut node = B256::default();
+
+    if name.is_empty() {
+        return node.into();
+    }
+    let mut labels: Vec<&str> = name.split(".").collect();
+    labels.reverse();
+    for label in labels.iter() {
+        let label_hash = keccak256(label.as_bytes());
+        node = keccak256([node, label_hash].concat());
+    }
+    node.into()
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -188,6 +205,27 @@ pub async fn execute(
 
     let notes_multicall = aggregateCall { calls }.abi_encode();
 
+    // Check if the app already exists
+    let app_node = format!("{}.{}", name, wallet_address);
+    let app_node = namehash(&app_node);
+
+    let get_tx = TransactionRequest::default().to(kimap).input(
+        getCall {
+            node: app_node.into(),
+        }
+        .abi_encode()
+        .into(),
+    );
+
+    let get_call = provider.call(&get_tx).await?;
+    let decoded = getCall::abi_decode_returns(&get_call, false)?;
+
+    let tba = decoded.tba;
+    let owner = decoded.owner;
+    let _data = decoded.data;
+
+    let is_update = tba != Address::default() && owner == wallet_address;
+
     let init_call = executeCall {
         to: multicall_address,
         value: U256::from(0),
@@ -196,22 +234,40 @@ pub async fn execute(
     }
     .abi_encode();
 
-    let create_app_tba_call = mintCall {
-        who: wallet_address,
-        label: name.clone().into(),
-        initialization: init_call.into(),
-        erc721Data: Bytes::default(),
-        implementation: kino_account_impl,
-    }
-    .abi_encode();
+    //let create_app_tba_call = mintCall {
+    //    who: wallet_address,
+    //    label: name.clone().into(),
+    //    initialization: init_call.into(),
+    //    erc721Data: Bytes::default(),
+    //    implementation: kino_account_impl,
+    //}
+    //.abi_encode();
 
-    let create_app_call = executeCall {
-        to: kimap,
-        value: U256::from(0),
-        data: create_app_tba_call.into(),
-        operation: 0,
-    }
-    .abi_encode();
+    //let create_app_call = executeCall {
+    //    to: kimap,
+    //    value: U256::from(0),
+    //    data: create_app_tba_call.into(),
+    //    operation: 0,
+    //}
+    //.abi_encode();
+    let create_app_call = if is_update {
+        executeCall {
+            to: kimap,
+            value: U256::from(0),
+            data: init_call.into(),
+            operation: 1,
+        }
+        .abi_encode()
+    } else {
+        mintCall {
+            who: wallet_address,
+            label: name.clone().into(),
+            initialization: init_call.into(),
+            erc721Data: Bytes::default(),
+            implementation: kino_account_impl,
+        }
+        .abi_encode()
+    };
 
     let nonce = provider.get_transaction_count(wallet_address).await?;
 
@@ -228,6 +284,6 @@ pub async fn execute(
     let tx_encoded = tx_envelope.encoded_2718();
     let tx_hash = provider.send_raw_transaction(&tx_encoded).await?;
 
-    info!("{name} published successfully; tx hash {tx_hash:?}", );
+    info!("{name} published successfully; tx hash {:?}", tx_hash.tx_hash());
     Ok(())
 }
