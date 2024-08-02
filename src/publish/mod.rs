@@ -101,28 +101,30 @@ pub async fn execute(
     let metadata = read_metadata(package_dir)?;
     let name = metadata.name.clone().unwrap_or_default();
 
-    let remote_metadata_path = PathBuf::from("/tmp/kinode-kit-cache/{name}");
-    if !remote_metadata_path.exists() {
-        fs::create_dir_all(&remote_metadata_path)?;
+    let remote_metadata_dir = PathBuf::from(format!(
+        "/tmp/kinode-kit-cache/{name}"
+    ));
+    if !remote_metadata_dir.exists() {
+        fs::create_dir_all(&remote_metadata_dir)?;
     }
-    let remote_metadata_path = remote_metadata_path.join("metadata.json");
+    let remote_metadata_path = remote_metadata_dir.join("metadata.json");
     download_file(
         metadata_uri,
         &remote_metadata_path,
     ).await?;
-    let remote_metadata = read_metadata(&remote_metadata_path)?;
+    let remote_metadata = read_metadata(&remote_metadata_dir)?;
 
-    //TODO: remove
-    println!(
-        "\033]8;;file://{}\033\\Local\033]8;;\033\\ and \033]8;;{}\033\\remote\033]8;;\033\\ metadata do not match loljk",
-        package_dir.join("metadata.json").to_str().unwrap_or_default(),
-        metadata_uri,
-    );
-    // TODO: either add derive(PartialEq) or serialize b4 cmp
+    // TODO: add derive(PartialEq) to Erc721
     if serde_json::to_string(&metadata)? != serde_json::to_string(&remote_metadata)? {
+        let local_path = package_dir
+            .join("metadata.json")
+            .canonicalize()
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_default();
         return Err(eyre!(
-            "\033]8;;file://{}\033\\Local\033]8;;\033\\ and \033]8;;{}\033\\remote\033]8;;\033\\ metadata do not match",
-            package_dir.join("metadata.json").to_str().unwrap_or_default(),
+            "\x1B]8;;file://{}\x1B\\Local\x1B]8;;\x1B\\ and \x1B]8;;{}\x1B\\remote\x1B]8;;\x1B\\ metadata do not match",
+            local_path,
             metadata_uri,
         ));
     }
