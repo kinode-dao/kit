@@ -17,6 +17,7 @@ use fs_err as fs;
 use tracing::{info, instrument};
 
 use crate::build::{download_file, read_metadata};
+use crate::start_package::{make_pkg_publisher, zip_pkg};
 
 sol! {
     function mint (
@@ -128,22 +129,25 @@ pub async fn execute(
             metadata_uri,
         ));
     }
-
     let metadata_hash = calculate_metadata_hash(package_dir)?;
+
+    let pkg_publisher = make_pkg_publisher(&metadata);
+    let (_, pkg_hash) = zip_pkg(package_dir, &pkg_publisher)?;
     let current_version = &metadata.properties.current_version;
-    let expected_metadata_hash = metadata
+    let expected_pkg_hash = metadata
         .properties
         .code_hashes
         .get(current_version)
         .cloned()
         .unwrap_or_default();
-    if metadata_hash != expected_metadata_hash {
+    if pkg_hash != expected_pkg_hash {
         return Err(eyre!(
-            "Published metadata at {} hashes to {}, not {} as expected for current_version {}",
-            metadata_uri,
-            metadata_hash,
-            expected_metadata_hash,
+            "Zipped pkg hashes to '{}' not '{}' as expected for current_version {} based on published metadata at \x1B]8;;{}\x1B\\{}\x1B]8;;\x1B\\",
+            pkg_hash,
+            expected_pkg_hash,
             current_version,
+            metadata_uri,
+            metadata_uri,
         ));
     }
 
