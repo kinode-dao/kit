@@ -66,9 +66,9 @@ sol! {
     ) external payable returns (uint256 blockNumber, bytes[] memory returnData);
 }
 
-const KIMAP_ADDRESS: &str = "0x0165878A594ca255338adfa4d48449f69242Eb8F";
+const KIMAP_ADDRESS: &str = "0xEce71a05B36CA55B895427cD9a440eEF7Cf3669D";
 const MULTICALL_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
-const KINO_ACCOUNT_IMPL: &str = "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9";
+const KINO_ACCOUNT_IMPL: &str = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0";
 const FAKE_DOTDEV_TBA: &str = "0x69C30C0Cf0e9726f9eEF50bb74FA32711fA0B02D";
 
 #[instrument(level = "trace", skip_all)]
@@ -119,17 +119,12 @@ pub async fn execute(
     let metadata = read_metadata(package_dir)?;
     let name = metadata.name.clone().unwrap_or_default();
 
-    let remote_metadata_dir = PathBuf::from(format!(
-        "/tmp/kinode-kit-cache/{name}"
-    ));
+    let remote_metadata_dir = PathBuf::from(format!("/tmp/kinode-kit-cache/{name}"));
     if !remote_metadata_dir.exists() {
         fs::create_dir_all(&remote_metadata_dir)?;
     }
     let remote_metadata_path = remote_metadata_dir.join("metadata.json");
-    download_file(
-        metadata_uri,
-        &remote_metadata_path,
-    ).await?;
+    download_file(metadata_uri, &remote_metadata_path).await?;
     let remote_metadata = read_metadata(&remote_metadata_dir)?;
 
     // TODO: add derive(PartialEq) to Erc721
@@ -284,6 +279,9 @@ pub async fn execute(
     let tx_encoded = tx_envelope.encoded_2718();
     let tx_hash = provider.send_raw_transaction(&tx_encoded).await?;
 
-    info!("{name} published successfully; tx hash {:?}", tx_hash.tx_hash());
+    info!(
+        "{name} published successfully; tx hash {:?}",
+        tx_hash.tx_hash()
+    );
     Ok(())
 }
