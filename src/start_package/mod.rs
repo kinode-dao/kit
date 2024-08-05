@@ -1,6 +1,6 @@
 use sha2::{Sha256, Digest};
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use color_eyre::{Result, Section, eyre::{eyre, WrapErr}};
 use fs_err as fs;
@@ -80,6 +80,30 @@ pub fn interact_with_package(
     )
 }
 
+pub fn make_pkg_publisher(metadata: &Erc721Metadata) -> String {
+    let package_name = metadata.properties.package_name.as_str();
+    let publisher = metadata.properties.publisher.as_str();
+    let pkg_publisher = format!("{}:{}", package_name, publisher);
+    pkg_publisher
+}
+
+#[instrument(level = "trace", skip_all)]
+pub fn zip_pkg(package_dir: &Path, pkg_publisher: &str) -> Result<(PathBuf, String)> {
+    let pkg_dir = package_dir.join("pkg");
+    let target_dir = package_dir.join("target");
+    fs::create_dir_all(&target_dir)?;
+    let zip_filename = target_dir.join(pkg_publisher).with_extension("zip");
+    zip_directory(&pkg_dir, &zip_filename.to_str().unwrap())?;
+
+    let mut file = fs::File::open(&zip_filename)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)?;
+    hasher.update(&buffer);
+    let hash_result = hasher.finalize();
+    Ok((zip_filename, format!("{hash_result:x}")))
+}
+
 #[instrument(level = "trace", skip_all)]
 pub fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
     let file = fs::File::create(zip_filename)?;
@@ -126,7 +150,7 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     let metadata = read_metadata(package_dir)?;
     let package_name = metadata.properties.package_name.as_str();
     let publisher = metadata.properties.publisher.as_str();
-    let pkg_publisher = format!("{}:{}", package_name, publisher);
+    let pkg_publisher = make_pkg_publisher(&metadata);
 
     let manifest: Vec<PackageManifestEntry> =
         serde_json::from_reader(fs::File::open(pkg_dir.join("manifest.json"))
@@ -147,20 +171,9 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
 
     info!("{}", pkg_publisher);
 
-    // Create zip and put it in /target
-    let parent_dir = pkg_dir.parent().unwrap();
-    let target_dir = parent_dir.join("target");
-    fs::create_dir_all(&target_dir)?;
-    let zip_filename = target_dir.join(&pkg_publisher).with_extension("zip");
-    zip_directory(&pkg_dir, &zip_filename.to_str().unwrap())?;
+    let (zip_filename, hash_result) = zip_pkg(package_dir, &pkg_publisher)?;
+    info!("package zip hash: {hash_result}");
 
-    let mut file = fs::File::open(&zip_filename)?;
-    let mut hasher = Sha256::new();
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)?;
-    hasher.update(&buffer);
-    let hash_result = hasher.finalize();
-    info!("package zip hash: {:x}", hash_result);
     // Create and send new package request
     let new_pkg_request = new_package(
         None,
