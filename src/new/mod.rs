@@ -18,6 +18,7 @@ pub enum Language {
 
 #[derive(Clone)]
 pub enum Template {
+    Blank,
     Chat,
     Echo,
     Fibonacci,
@@ -38,6 +39,7 @@ impl Language {
 impl Template {
     fn to_string(&self) -> String {
         match self {
+            Template::Blank => "blank",
             Template::Chat => "chat",
             Template::Echo => "echo",
             Template::Fibonacci => "fibonacci",
@@ -61,11 +63,12 @@ impl From<&String> for Language {
 impl From<&String> for Template {
     fn from(s: &String) -> Self {
         match s.as_str() {
+            "blank" => Template::Blank,
             "chat" => Template::Chat,
             "echo" => Template::Echo,
             "fibonacci" => Template::Fibonacci,
             "file_transfer" => Template::FileTransfer,
-            _ => panic!("kit: template must be 'chat', 'echo', or 'fibonacci'; not '{s}'"),
+            _ => panic!("kit: template must be 'blank', 'chat', 'echo', or 'fibonacci'; not '{s}'"),
         }
     }
 }

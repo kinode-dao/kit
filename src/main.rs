@@ -187,7 +187,8 @@ async fn execute(
                 Some(f) => f.clone(),
                 None => "".into(),
             };
-            let url = matches.get_one::<u16>("NODE_PORT")
+            let url = matches
+                .get_one::<u16>("NODE_PORT")
                 .map(|p| format!("http://localhost:{p}"));
             let download_from = matches
                 .get_one::<String>("NODE")
@@ -226,16 +227,12 @@ async fn execute(
         Some(("build-start-package", matches)) => {
             let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
             let no_ui = matches.get_one::<bool>("NO_UI").unwrap();
-            let ui_only = matches
-                .get_one::<bool>("UI_ONLY")
-                .unwrap_or(&false);
+            let ui_only = matches.get_one::<bool>("UI_ONLY").unwrap_or(&false);
             let url = format!(
                 "http://localhost:{}",
                 matches.get_one::<u16>("NODE_PORT").unwrap(),
             );
-            let skip_deps_check = matches
-                .get_one::<bool>("SKIP_DEPS_CHECK")
-                .unwrap();
+            let skip_deps_check = matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
             let features = match matches.get_one::<String>("FEATURES") {
                 Some(f) => f.clone(),
                 None => "".into(),
@@ -281,12 +278,8 @@ async fn execute(
         Some(("connect", matches)) => {
             let local_port = matches.get_one::<u16>("LOCAL_PORT").unwrap();
             let disconnect = matches.get_one::<bool>("IS_DISCONNECT").unwrap();
-            let host = matches
-                .get_one::<String>("HOST")
-                .map(|s| s.as_ref());
-            let host_port = matches
-                .get_one::<u16>("HOST_PORT")
-                .map(|hp| hp.clone());
+            let host = matches.get_one::<String>("HOST").map(|s| s.as_ref());
+            let host_port = matches.get_one::<u16>("HOST_PORT").map(|hp| hp.clone());
             connect::execute(*local_port, *disconnect, host, host_port)
         }
         Some(("dev-ui", matches)) => {
@@ -344,8 +337,7 @@ async fn execute(
             let publisher = matches
                 .get_one::<String>("PUBLISHER")
                 .and_then(|s: &String| Some(s.as_str()));
-            let package_dir =
-                PathBuf::from(matches.get_one::<String>("DIR").unwrap());
+            let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
             let url = format!(
                 "http://localhost:{}",
                 matches.get_one::<u16>("NODE_PORT").unwrap(),
@@ -375,8 +367,7 @@ async fn execute(
             setup::execute(*verbose)
         }
         Some(("start-package", matches)) => {
-            let package_dir =
-                PathBuf::from(matches.get_one::<String>("DIR").unwrap());
+            let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
             let url = format!(
                 "http://localhost:{}",
                 matches.get_one::<u16>("NODE_PORT").unwrap(),
@@ -910,7 +901,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('t')
                 .long("template")
                 .help("Template to create")
-                .value_parser(["chat", "echo", "fibonacci", "file_transfer"])
+                .value_parser(["blank", "chat", "echo", "fibonacci", "file_transfer"])
                 .default_value("chat")
             )
             .arg(Arg::new("UI")
