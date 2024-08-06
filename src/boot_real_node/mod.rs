@@ -21,8 +21,8 @@ pub async fn execute(
     verbosity: u8,
     mut args: Vec<String>,
 ) -> Result<()> {
-    let detached = false;  // TODO: to argument?
-    // TODO: factor out with run_tests?
+    let detached = false; // TODO: to argument?
+                          // TODO: factor out with run_tests?
     let runtime_path = match runtime_path {
         None => get_runtime_binary(&version, false).await?,
         Some(runtime_path) => {
@@ -32,7 +32,8 @@ pub async fn execute(
             if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(&runtime_path, release, false)?;
-                runtime_path.join("target")
+                runtime_path
+                    .join("target")
                     .join(if release { "release" } else { "debug" })
                     .join("kinode")
             } else {
@@ -41,7 +42,7 @@ pub async fn execute(
                     runtime_path,
                 ));
             }
-        },
+        }
     };
 
     let mut task_handles = Vec::new();
@@ -63,7 +64,10 @@ pub async fn execute(
     ));
     task_handles.push(handle);
     let send_to_cleanup_for_signal = send_to_cleanup.clone();
-    let handle = tokio::spawn(cleanup_on_signal(send_to_cleanup_for_signal, recv_kill_in_cos));
+    let handle = tokio::spawn(cleanup_on_signal(
+        send_to_cleanup_for_signal,
+        recv_kill_in_cos,
+    ));
     task_handles.push(handle);
     let send_to_cleanup_for_cleanup = send_to_cleanup.clone();
     let _cleanup_context = CleanupContext::new(send_to_cleanup_for_cleanup);
@@ -90,6 +94,7 @@ pub async fn execute(
         process_id: runtime_process.id().unwrap() as i32,
         home: node_home.clone(),
         anvil_process: None,
+        other_processes: vec![],
     });
     drop(node_cleanup_infos);
 

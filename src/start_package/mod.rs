@@ -1,8 +1,8 @@
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
 use std::path::Path;
 
-use color_eyre::{Result, Section, eyre::{eyre, WrapErr}};
+use color_eyre::{eyre::eyre, Result, Section};
 use fs_err as fs;
 use serde_json::json;
 use tracing::{info, instrument};
@@ -128,21 +128,20 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     let publisher = metadata.properties.publisher.as_str();
     let pkg_publisher = format!("{}:{}", package_name, publisher);
 
-    let manifest: Vec<PackageManifestEntry> =
-        serde_json::from_reader(fs::File::open(pkg_dir.join("manifest.json"))
-            .wrap_err_with(|| "Missing required manifest.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson")?
-        )?;
+    let manifest = fs::File::open(pkg_dir.join("manifest.json"))
+        .with_suggestion(|| "Missing required manifest.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson")?;
+    let manifest: Vec<PackageManifestEntry> = serde_json::from_reader(manifest)
+        .with_suggestion(|| "Failed to parse required manifest.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson")?;
     let has_all_entries = manifest.iter().fold(true, |has_all_entries, entry| {
-        let file_path = entry.process_wasm_path
+        let file_path = entry
+            .process_wasm_path
             .strip_prefix("/")
             .unwrap_or_else(|| &entry.process_wasm_path);
         has_all_entries && pkg_dir.join(file_path).exists()
     });
     if !has_all_entries {
-        return Err(eyre!(
-            "Missing a .wasm file declared by manifest.json."
-        ).with_suggestion(|| "Try `kit build`ing package first, or updating manifest.json.")
-        );
+        return Err(eyre!("Missing a .wasm file declared by manifest.json.")
+            .with_suggestion(|| "Try `kit build`ing package first, or updating manifest.json."));
     }
 
     info!("{}", pkg_publisher);
@@ -185,7 +184,10 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     let new_package_response = body.get("NewPackageResponse");
 
     if new_package_response != Some(&serde_json::Value::String("Success".to_string())) {
-        return Err(eyre!("Failed to add package. Got response from node: {}", body));
+        return Err(eyre!(
+            "Failed to add package. Got response from node: {}",
+            body
+        ));
     }
 
     // Install package
@@ -197,9 +199,15 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     let install_response = body.get("InstallResponse");
 
     if install_response == Some(&serde_json::Value::String("Success".to_string())) {
-        info!("Successfully installed package {} on node at {}", pkg_publisher, url);
+        info!(
+            "Successfully installed package {} on node at {}",
+            pkg_publisher, url
+        );
     } else {
-        return Err(eyre!("Failed to start package. Got response from node: {}", body));
+        return Err(eyre!(
+            "Failed to start package. Got response from node: {}",
+            body
+        ));
     }
 
     Ok(())

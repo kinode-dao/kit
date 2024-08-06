@@ -10,7 +10,10 @@
         "code_hashes": {
             "0.1.0": ""
         },
-        "wit_version": 0
+        "wit_version": 0,
+        "dependencies": [
+            "tester:sys"
+        ]
     },
     "external_url": "",
     "animation_url": ""

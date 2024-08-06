@@ -1,17 +1,30 @@
-use crate::kinode::process::standard::{ProcessId as WitProcessId};
-use crate::kinode::process::{package_name}::{Address as WitAddress, Request as TransferRequest, Response as TransferResponse, WorkerRequest, DownloadRequest, ProgressRequest, FileInfo, InitializeRequest};
+use crate::kinode::process::standard::{Address as WitAddress, ProcessId as WitProcessId};
+use crate::kinode::process::file_transfer_worker::{start_download, Request as WorkerRequest, Response as WorkerResponse, DownloadRequest, ProgressRequest};
+use crate::kinode::process::{package_name}::{Request as TransferRequest, Response as TransferResponse, FileInfo};
 use kinode_process_lib::{
-    await_message, call_init, our_capabilities, println, spawn,
+    await_message, call_init, println,
     vfs::{create_drive, metadata, open_dir, Directory, FileType},
-    Address, OnExit, ProcessId, Request, Response,
+    Address, Message, ProcessId, Response,
 };
 
 wit_bindgen::generate!({
     path: "target/wit",
     world: "{package_name_kebab}-{publisher_dotted_kebab}-v0",
     generate_unused_types: true,
-    additional_derives: [serde::Deserialize, serde::Serialize],
+    additional_derives: [serde::Deserialize, serde::Serialize, process_macros::SerdeJsonInto],
 });
+
+#[derive(Debug, serde::Deserialize, serde::Serialize, process_macros::SerdeJsonInto)]
+#[serde(untagged)] // untagged as a meta-type for all incoming messages
+enum Msg {
+    // requests
+    TransferRequest(TransferRequest),
+    WorkerRequest(WorkerRequest),
+
+    // responses
+    TransferResponse(TransferResponse),
+    WorkerResponse(WorkerResponse),
+}
 
 impl From<Address> for WitAddress {
     fn from(address: Address) -> Self {
@@ -25,24 +38,6 @@ impl From<Address> for WitAddress {
 impl From<ProcessId> for WitProcessId {
     fn from(process: ProcessId) -> Self {
         WitProcessId {
-            process_name: process.process_name,
-            package_name: process.package_name,
-            publisher_node: process.publisher_node,
-        }
-    }
-}
-impl From<WitAddress> for Address {
-    fn from(address: WitAddress) -> Self {
-        Address {
-            node: address.node,
-            process: address.process.into(),
-        }
-    }
-}
-
-impl From<WitProcessId> for ProcessId {
-    fn from(process: WitProcessId) -> Self {
-        ProcessId {
             process_name: process.process_name,
             package_name: process.package_name,
             publisher_node: process.publisher_node,
@@ -65,80 +60,97 @@ fn ls_files(files_dir: &Directory) -> anyhow::Result<Vec<FileInfo>> {
             _ => None,
         })
         .collect();
-
     Ok(files)
 }
 
 fn handle_transfer_request(
-    our: &Address,
-    source: &Address,
-    body: &[u8],
+    request: &TransferRequest,
     files_dir: &Directory,
 ) -> anyhow::Result<()> {
-    match serde_json::from_slice(body)? {
+    match request {
         TransferRequest::ListFiles => {
             let files = ls_files(files_dir)?;
-
             Response::new()
-                .body(serde_json::to_vec(&TransferResponse::ListFiles(files))?)
+                .body(TransferResponse::ListFiles(files))
                 .send()?;
         }
-        TransferRequest::Download(DownloadRequest { name, target }) => {
-            // spin up a worker, initialize based on whether it's a downloader or a sender.
-            let our_worker = spawn(
-                None,
-                &format!("{}/pkg/worker.wasm", our.package_id()),
-                OnExit::None,
-                our_capabilities(),
-                vec![],
-                false,
-            )?;
-
-            let our_worker_address = Address {
-                node: our.node.clone(),
-                process: our_worker,
-            };
-
-            if source.node == our.node {
-                // we want to download a file
-                let _resp = Request::new()
-                    .body(serde_json::to_vec(&WorkerRequest::Initialize(InitializeRequest {
-                        name: name.clone(),
-                        target_worker: None,
-                    }))?)
-                    .target(&our_worker_address)
-                    .send_and_await_response(5)??;
-
-                // send our initialized worker address to the other node
-                Request::new()
-                    .body(serde_json::to_vec(&TransferRequest::Download(DownloadRequest {
-                        name: name.clone(),
-                        target: our_worker_address.into(),
-                    }))?)
-                    .target::<Address>(target.clone().into())
-                    .send()?;
-            } else {
-                // they want to download a file
-                Request::new()
-                    .body(serde_json::to_vec(&WorkerRequest::Initialize(InitializeRequest {
-                        name: name.clone(),
-                        target_worker: Some(target),
-                    }))?)
-                    .target(&our_worker_address)
-                    .send()?;
-            }
-        }
-        TransferRequest::Progress(ProgressRequest { name, progress }) => {
-            println!("{} progress: {}%", name, progress);
-        }
     }
-
     Ok(())
 }
 
-fn handle_message(our: &Address, files_dir: &Directory) -> anyhow::Result<()> {
-    let message = await_message()?;
-    handle_transfer_request(our, message.source(), message.body(), files_dir)
+fn handle_worker_request(
+    our: &Address,
+    source: &Address,
+    request: &WorkerRequest,
+) -> anyhow::Result<()> {
+    match request {
+        WorkerRequest::Download(DownloadRequest { ref name, ref target, is_requestor }) => {
+            match start_download(
+                &our.clone().into(),
+                &source.clone().into(),
+                name,
+                target,
+                *is_requestor,
+            ) {
+                Ok(_) => {}
+                Err(e) => return Err(anyhow::anyhow!("{e}")),
+            }
+        }
+        WorkerRequest::Progress(ProgressRequest { name, progress }) => {
+            println!("{} progress: {}%", name, progress);
+            Response::new()
+                .body(WorkerResponse::Progress)
+                .send()?;
+        }
+    }
+    Ok(())
+}
+
+fn handle_transfer_response(source: &Address, response: &TransferResponse) -> anyhow::Result<()> {
+    match response {
+        TransferResponse::ListFiles(ref files) => {
+            println!(
+                "{}",
+                files.iter().
+                    fold(format!("{source} available files:\nFile\t\tSize (bytes)\n"), |mut msg, file| {
+                        msg.push_str(&format!(
+                            "{}\t\t{}", file.name.split('/').last().unwrap(),
+                            file.size,
+                        ));
+                        msg
+                    })
+            );
+        }
+    }
+    Ok(())
+}
+
+fn handle_worker_response(response: &WorkerResponse) -> anyhow::Result<()> {
+    match response {
+        WorkerResponse::Download(ref result) => {
+            if let Err(e) = result {
+                return Err(anyhow::anyhow!("{e}"))
+            }
+        }
+        WorkerResponse::Progress => {}
+    }
+    Ok(())
+}
+
+fn handle_message(
+    our: &Address,
+    message: &Message,
+    files_dir: &Directory,
+) -> anyhow::Result<()> {
+    match message.body().try_into()? {
+        // requests
+        Msg::TransferRequest(ref tr) => handle_transfer_request(tr, files_dir),
+        Msg::WorkerRequest(ref wr) => handle_worker_request(our, message.source(), wr),
+
+        // responses
+        Msg::TransferResponse(ref tr) => handle_transfer_response(message.source(), tr),
+        Msg::WorkerResponse(ref wr) => handle_worker_response(wr),
+    }
 }
 
 call_init!(init);
@@ -149,11 +161,12 @@ fn init(our: Address) {
     let files_dir = open_dir(&drive_path, false, None).unwrap();
 
     loop {
-        match handle_message(&our, &files_dir) {
-            Ok(()) => {}
-            Err(e) => {
-                println!("error: {:?}", e);
+        match await_message() {
+            Err(send_error) => println!("got SendError: {send_error}"),
+            Ok(ref message) => match handle_message(&our, message, &files_dir) {
+                Ok(_) => {}
+                Err(e) => println!("got error while handling message: {e:?}"),
             }
-        };
+        }
     }
 }
