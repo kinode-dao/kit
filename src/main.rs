@@ -932,6 +932,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
             )
             .arg(Arg::new("PUBLISHER")
                 .action(ArgAction::Set)
+                .short('u')
                 .long("publisher")
                 .help("Name of the publisher (Overrides DIR)")
                 .required(false)

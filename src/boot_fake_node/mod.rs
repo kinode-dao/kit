@@ -411,10 +411,7 @@ pub async fn execute(
                     .join(if release { "release" } else { "debug" })
                     .join("kinode")
             } else {
-                return Err(eyre!(
-                    "--runtime-path {:?} must be a directory (the repo).",
-                    runtime_path,
-                ));
+                runtime_path
             }
         }
     };
