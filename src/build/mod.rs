@@ -14,7 +14,7 @@ use fs_err as fs;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, info, instrument, warn};
 
-use kinode_process_lib::{PackageId, kernel_types::Erc721Metadata};
+use kinode_process_lib::{kernel_types::Erc721Metadata, PackageId};
 
 use crate::setup::{
     check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version,
@@ -59,10 +59,7 @@ pub fn has_feature(cargo_toml_path: &str, feature: &str) -> Result<bool> {
 }
 
 #[instrument(level = "trace", skip_all)]
-pub fn remove_missing_features(
-    cargo_toml_path: &Path,
-    features: Vec<&str>,
-) -> Result<Vec<String>> {
+pub fn remove_missing_features(cargo_toml_path: &Path, features: Vec<&str>) -> Result<Vec<String>> {
     let cargo_toml_content = fs::read_to_string(cargo_toml_path)?;
     let cargo_toml: toml::Value = cargo_toml_content.parse()?;
     let Some(cargo_features) = cargo_toml.get("features").and_then(|f| f.as_table()) else {
@@ -79,8 +76,7 @@ pub fn remove_missing_features(
                 None
             }
         })
-        .collect()
-    )
+        .collect())
 }
 
 /// Check if the first element is empty and there are no more elements
@@ -262,16 +258,25 @@ fn get_most_recent_modified_time(
         let entry = entry?;
         let path = entry.path();
 
-        let file_name = path.file_name().unwrap_or_default().to_str().unwrap_or_default();
+        let file_name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_str()
+            .unwrap_or_default();
 
         if exclude_files.contains(file_name) {
             let file_time = get_file_modified_time(&path)?;
-            most_recent_excluded = Some(most_recent_excluded.map_or(file_time, |t| t.max(file_time)));
+            most_recent_excluded =
+                Some(most_recent_excluded.map_or(file_time, |t| t.max(file_time)));
             continue;
         }
 
         if path.is_dir() {
-            let dir_name = path.file_name().unwrap_or_default().to_str().unwrap_or_default();
+            let dir_name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_str()
+                .unwrap_or_default();
             if exclude_dirs.contains(dir_name) {
                 continue;
             }
@@ -293,7 +298,8 @@ fn get_most_recent_modified_time(
             if let Some(extension) = path.extension() {
                 if exclude_extensions.contains(&extension.to_str().unwrap_or_default()) {
                     let file_time = get_file_modified_time(&path)?;
-                    most_recent_excluded = Some(most_recent_excluded.map_or(file_time, |t| t.max(file_time)));
+                    most_recent_excluded =
+                        Some(most_recent_excluded.map_or(file_time, |t| t.max(file_time)));
                     continue;
                 }
             }
@@ -456,12 +462,12 @@ async fn compile_rust_wasm_process(
     } else {
         features.len()
     };
-    let features = remove_missing_features(
-        &process_dir.join("Cargo.toml"),
-        features,
-    )?;
+    let features = remove_missing_features(&process_dir.join("Cargo.toml"), features)?;
     if !test_only && original_length != features.len() {
-        info!("process {:?} missing features; using {:?}", process_dir, features);
+        info!(
+            "process {:?} missing features; using {:?}",
+            process_dir, features
+        );
     };
     let features = features.join(",");
     if !features.is_empty() {
@@ -721,18 +727,16 @@ async fn fetch_dependencies(
         url.clone(),
         download_from,
         default_world,
-        vec![],  // TODO: what about deps-of-deps?
+        vec![], // TODO: what about deps-of-deps?
         vec![],
         force,
         verbose,
         true,
-    )).await {
+    ))
+    .await
+    {
         debug!("Failed to build self as dependency: {e:?}");
-    } else  if let Err(e) = fetch_local_built_dependency(
-        apis,
-        wasm_paths,
-        package_dir,
-    ) {
+    } else if let Err(e) = fetch_local_built_dependency(apis, wasm_paths, package_dir) {
         debug!("Failed to fetch self as dependency: {e:?}");
     };
     for local_dependency in &local_dependencies {
@@ -746,12 +750,13 @@ async fn fetch_dependencies(
             url.clone(),
             download_from,
             default_world,
-            vec![],  // TODO: what about deps-of-deps?
+            vec![], // TODO: what about deps-of-deps?
             vec![],
             force,
             verbose,
             false,
-        )).await?;
+        ))
+        .await?;
         fetch_local_built_dependency(apis, wasm_paths, &local_dependency)?;
     }
     let Some(ref url) = url else {
@@ -771,13 +776,9 @@ async fn fetch_dependencies(
         if local_dependencies.contains(dep.package()) {
             continue;
         }
-        let Some(zip_dir) = view_api::execute(
-            None,
-            Some(dependency),
-            url,
-            download_from,
-            false,
-        ).await? else {
+        let Some(zip_dir) =
+            view_api::execute(None, Some(dependency), url, download_from, false).await?
+        else {
             return Err(eyre!(
                 "Got unexpected result from fetching API for {dependency}"
             ));
@@ -804,12 +805,14 @@ async fn fetch_dependencies(
 fn extract_imports_exports_from_wit(input: &str) -> (Vec<String>, Vec<String>) {
     let import_re = regex::Regex::new(r"import\s+([^\s;]+)").unwrap();
     let export_re = regex::Regex::new(r"export\s+([^\s;]+)").unwrap();
-    let imports: Vec<String> = import_re.captures_iter(input)
+    let imports: Vec<String> = import_re
+        .captures_iter(input)
         .map(|cap| cap[1].to_string())
         .filter(|s| !(s.contains("wasi") || s.contains("kinode:process/standard")))
         .collect();
 
-    let exports: Vec<String> = export_re.captures_iter(input)
+    let exports: Vec<String> = export_re
+        .captures_iter(input)
         .map(|cap| cap[1].to_string())
         .filter(|s| !s.contains("init"))
         .collect();
@@ -825,8 +828,7 @@ fn get_imports_exports_from_wasm(
     should_move_export: bool,
 ) -> Result<()> {
     let wit = run_command(
-        Command::new("wasm-tools")
-            .args(["component", "wit", path.to_str().unwrap()]),
+        Command::new("wasm-tools").args(["component", "wit", path.to_str().unwrap()]),
         false,
     )?;
     let Some((ref wit, _)) = wit else {
@@ -1012,13 +1014,16 @@ async fn compile_package(
             default_world,
             force,
             verbose,
-        ).await?;
+        )
+        .await?;
     }
 
-    let wit_world = default_world.unwrap_or_else(|| match metadata.properties.wit_version {
-        None => DEFAULT_WORLD_0_7_0,
-        Some(0) | _ => DEFAULT_WORLD_0_8_0,
-    }).to_string();
+    let wit_world = default_world
+        .unwrap_or_else(|| match metadata.properties.wit_version {
+            None => DEFAULT_WORLD_0_7_0,
+            Some(0) | _ => DEFAULT_WORLD_0_8_0,
+        })
+        .to_string();
 
     let mut tasks = tokio::task::JoinSet::new();
     let features = features.to_string();
@@ -1061,15 +1066,14 @@ async fn compile_package(
             for import_path in import_paths {
                 let import_path_str = import_path.to_str().unwrap();
                 run_command(
-                    Command::new("wasm-tools")
-                        .args([
-                            "compose",
-                            import_path_str,
-                            "-d",
-                            export_path,
-                            "-o",
-                            import_path_str,
-                        ]),
+                    Command::new("wasm-tools").args([
+                        "compose",
+                        import_path_str,
+                        "-d",
+                        export_path,
+                        "-o",
+                        import_path_str,
+                    ]),
                     false,
                 )?;
             }
@@ -1081,7 +1085,7 @@ async fn compile_package(
                 path,
                 package_dir
                     .join("pkg")
-                    .join(path.file_name().and_then(|f| f.to_str()).unwrap())
+                    .join(path.file_name().and_then(|f| f.to_str()).unwrap()),
             )?;
         }
     }
@@ -1108,8 +1112,19 @@ async fn compile_package(
 
         let zip_path = package_dir.join("pkg").join("api.zip");
         let zip_path = zip_path.to_str().unwrap();
-        zip_directory(&target_api_dir, zip_path)?;
+        let _ = zip_directory(&target_api_dir, zip_path)?;
     }
+
+    // Create zip and put it in /target
+    let pkg_dir = package_dir.join("pkg");
+    let target_dir = package_dir.join("target");
+    fs::create_dir_all(&target_dir)?;
+    let zip_filename = target_dir.join(format!(
+        "{}:{}.zip",
+        metadata.properties.package_name, metadata.properties.publisher
+    ));
+    let hash_result = zip_directory(&pkg_dir, &zip_filename.to_str().unwrap())?;
+    info!("Package zip hash: {}", hash_result);
 
     Ok(())
 }
@@ -1128,7 +1143,7 @@ pub async fn execute(
     add_paths_to_api: Vec<PathBuf>,
     force: bool,
     verbose: bool,
-    ignore_deps: bool,  // for internal use; may cause problems when adding recursive deps
+    ignore_deps: bool, // for internal use; may cause problems when adding recursive deps
 ) -> Result<()> {
     if !package_dir.join("pkg").exists() {
         if Some(".DS_Store") == package_dir.file_name().and_then(|s| s.to_str()) {

@@ -81,12 +81,13 @@ pub fn interact_with_package(
 }
 
 #[instrument(level = "trace", skip_all)]
-pub fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
+pub fn zip_directory(directory: &Path, zip_filename: &str) -> Result<String> {
     let file = fs::File::create(zip_filename)?;
     let walkdir = WalkDir::new(directory);
     let it = walkdir.into_iter();
 
     let mut zip = zip::ZipWriter::new(file);
+    let mut hasher = Sha256::new();
 
     let options = FileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
@@ -103,15 +104,17 @@ pub fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
             let mut f = fs::File::open(path)?;
             let mut buffer = Vec::new();
             f.read_to_end(&mut buffer)?;
-            zip.write_all(&*buffer)?;
-        } else if name.as_os_str().len() != 0 {
+            zip.write_all(&buffer)?;
+            hasher.update(&buffer);
+        } else if !name.as_os_str().is_empty() {
             // Only if it is not the root directory
             zip.add_directory(name.to_string_lossy(), options)?;
         }
     }
 
     zip.finish()?;
-    Ok(())
+    let hash_result = hasher.finalize();
+    Ok(format!("{:x}", hash_result))
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -151,15 +154,9 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     let target_dir = parent_dir.join("target");
     fs::create_dir_all(&target_dir)?;
     let zip_filename = target_dir.join(&pkg_publisher).with_extension("zip");
-    zip_directory(&pkg_dir, &zip_filename.to_str().unwrap())?;
+    let hash_result = zip_directory(&pkg_dir, &zip_filename.to_str().unwrap())?;
 
-    let mut file = fs::File::open(&zip_filename)?;
-    let mut hasher = Sha256::new();
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)?;
-    hasher.update(&buffer);
-    let hash_result = hasher.finalize();
-    info!("package zip hash: {:x}", hash_result);
+    info!("package zip hash: {}", hash_result);
     // Create and send new package request
     let new_pkg_request = new_package(
         None,
