@@ -99,7 +99,7 @@ fn expand_home_path(path: &PathBuf) -> Option<PathBuf> {
     path.as_os_str()
         .to_str()
         .and_then(|s| expand_home_path_string(s))
-        .and_then(|s| Some(Path::new(&s).to_path_buf()))
+        .map(|s| PathBuf::from(&s))
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -275,7 +275,12 @@ async fn build_packages(
         .dependency_package_paths
         .iter()
         .cloned()
-        .map(|p| test_dir_path.join(p).canonicalize().unwrap())
+        .map(|p| {
+            match expand_home_path(&p) {
+                Some(p) => p,
+                None => test_dir_path.join(&p).canonicalize().unwrap(),
+            }
+        })
         .collect();
     let setup_packages: Vec<SetupPackage> = test
         .setup_packages
@@ -340,7 +345,10 @@ async fn build_packages(
     let url = format!("http://localhost:{port}");
 
     for dependency_package_path in &test.dependency_package_paths {
-        let path = test_dir_path.join(&dependency_package_path).canonicalize()?;
+        let path =  match expand_home_path(&dependency_package_path) {
+            Some(p) => p,
+            None => test_dir_path.join(&dependency_package_path).canonicalize()?,
+        };
         build::execute(
             &path,
             false,
