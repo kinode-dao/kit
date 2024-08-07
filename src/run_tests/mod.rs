@@ -476,25 +476,37 @@ async fn load_setups(setup_paths: &Vec<SetupPackage>, port: u16) -> Result<()> {
 
 #[instrument(level = "trace", skip_all)]
 async fn load_process(path: &Path, drive: &str, port: &u16) -> Result<()> {
-    let basename = get_basename(path).unwrap();
-    let request = inject_message::make_message(
-        "vfs:distro:sys",
-        Some(15),
-        &serde_json::to_string(&serde_json::json!({
-            "path": format!("/tester:sys/{drive}/{basename}.wasm"),
-            "action": "Write",
-        }))
-        .unwrap(),
-        None,
-        None,
-        path.join("pkg").join(format!("{basename}.wasm")).to_str(),
-    )?;
+    for entry in path.join("pkg").read_dir()? {
+        let entry = entry?;
+        let path = entry.path();
+        if Some("wasm") == path.extension().and_then(|s| s.to_str()) {
+            println!("include path {:?}", path);
+            let file_name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default();
+            let request = inject_message::make_message(
+                "vfs:distro:sys",
+                Some(15),
+                &serde_json::to_string(&serde_json::json!({
+                    "path": format!("/tester:sys/{drive}/{file_name}"),
+                    "action": "Write",
+                }))
+                .unwrap(),
+                None,
+                None,
+                path.to_str(),
+            )?;
 
-    let response =
-        inject_message::send_request(&format!("http://localhost:{}", port), request).await?;
-    match inject_message::parse_response(response).await {
-        Ok(_) => {}
-        Err(e) => return Err(eyre!("Failed to load test {path:?}: {}", e)),
+            let response = inject_message::send_request(
+                &format!("http://localhost:{}", port),
+                request,
+            ).await?;
+            match inject_message::parse_response(response).await {
+                Ok(_) => {}
+                Err(e) => return Err(eyre!("Failed to load test {path:?}: {}", e)),
+            }
+        }
     }
     Ok(())
 }
