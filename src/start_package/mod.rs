@@ -147,8 +147,7 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     info!("{}", pkg_publisher);
 
     // Create zip and put it in /target
-    let parent_dir = pkg_dir.parent().unwrap();
-    let target_dir = parent_dir.join("target");
+    let target_dir = package_dir.join("target");
     fs::create_dir_all(&target_dir)?;
     let zip_filename = target_dir.join(&pkg_publisher).with_extension("zip");
     zip_directory(&pkg_dir, &zip_filename.to_str().unwrap())?;

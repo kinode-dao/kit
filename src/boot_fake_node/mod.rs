@@ -32,14 +32,14 @@ const LOCAL_PREFIX: &str = "kinode-";
 pub const CACHE_EXPIRY_SECONDS: u64 = 300;
 
 #[derive(Deserialize, Debug)]
-struct Release {
-    tag_name: String,
-    assets: Vec<Asset>,
+pub struct Release {
+    pub tag_name: String,
+    pub assets: Vec<Asset>,
 }
 
 #[derive(Deserialize, Debug)]
-struct Asset {
-    name: String,
+pub struct Asset {
+    pub name: String,
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -254,7 +254,7 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> Result<
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn fetch_releases(owner: &str, repo: &str) -> Result<Vec<Release>> {
+pub async fn fetch_releases(owner: &str, repo: &str) -> Result<Vec<Release>> {
     let bytes = get_from_github(owner, repo, "releases").await?;
     if bytes.is_empty() {
         return Ok(vec![]);
@@ -411,10 +411,7 @@ pub async fn execute(
                     .join(if release { "release" } else { "debug" })
                     .join("kinode")
             } else {
-                return Err(eyre!(
-                    "--runtime-path {:?} must be a directory (the repo).",
-                    runtime_path,
-                ));
+                runtime_path
             }
         }
     };
