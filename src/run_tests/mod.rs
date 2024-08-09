@@ -106,7 +106,7 @@ fn expand_home_path(path: &PathBuf) -> Option<PathBuf> {
     path.as_os_str()
         .to_str()
         .and_then(|s| expand_home_path_string(s))
-        .and_then(|s| Some(Path::new(&s).to_path_buf()))
+        .map(|s| PathBuf::from(&s))
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -277,7 +277,12 @@ async fn build_packages(
         .dependency_package_paths
         .iter()
         .cloned()
-        .map(|p| test_dir_path.join(p).canonicalize().unwrap())
+        .map(|p| {
+            match expand_home_path(&p) {
+                Some(p) => p,
+                None => test_dir_path.join(&p).canonicalize().unwrap(),
+            }
+        })
         .collect();
     let setup_packages: Vec<SetupPackage> = test
         .setup_packages
@@ -341,9 +346,10 @@ async fn build_packages(
     let url = format!("http://localhost:{port}");
 
     for dependency_package_path in &test.dependency_package_paths {
-        let path = test_dir_path
-            .join(&dependency_package_path)
-            .canonicalize()?;
+        let path =  match expand_home_path(&dependency_package_path) {
+            Some(p) => p,
+            None => test_dir_path.join(&dependency_package_path).canonicalize()?,
+        };
         build::execute(
             &path,
             false,
@@ -471,25 +477,37 @@ async fn load_setups(setup_paths: &Vec<SetupPackage>, port: u16) -> Result<()> {
 
 #[instrument(level = "trace", skip_all)]
 async fn load_process(path: &Path, drive: &str, port: &u16) -> Result<()> {
-    let basename = get_basename(path).unwrap();
-    let request = inject_message::make_message(
-        "vfs:distro:sys",
-        Some(15),
-        &serde_json::to_string(&serde_json::json!({
-            "path": format!("/tester:sys/{drive}/{basename}.wasm"),
-            "action": "Write",
-        }))
-        .unwrap(),
-        None,
-        None,
-        path.join("pkg").join(format!("{basename}.wasm")).to_str(),
-    )?;
+    for entry in path.join("pkg").read_dir()? {
+        let entry = entry?;
+        let path = entry.path();
+        if Some("wasm") == path.extension().and_then(|s| s.to_str()) {
+            println!("include path {:?}", path);
+            let file_name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default();
+            let request = inject_message::make_message(
+                "vfs:distro:sys",
+                Some(15),
+                &serde_json::to_string(&serde_json::json!({
+                    "path": format!("/tester:sys/{drive}/{file_name}"),
+                    "action": "Write",
+                }))
+                .unwrap(),
+                None,
+                None,
+                path.to_str(),
+            )?;
 
-    let response =
-        inject_message::send_request(&format!("http://localhost:{}", port), request).await?;
-    match inject_message::parse_response(response).await {
-        Ok(_) => {}
-        Err(e) => return Err(eyre!("Failed to load test {path:?}: {}", e)),
+            let response = inject_message::send_request(
+                &format!("http://localhost:{}", port),
+                request,
+            ).await?;
+            match inject_message::parse_response(response).await {
+                Ok(_) => {}
+                Err(e) => return Err(eyre!("Failed to load test {path:?}: {}", e)),
+            }
+        }
     }
     Ok(())
 }
@@ -762,10 +780,7 @@ pub async fn execute(config_path: PathBuf) -> Result<()> {
                     })
                     .join("kinode")
             } else {
-                return Err(eyre!(
-                    "RepoPath {:?} must be a directory (the repo).",
-                    runtime_path
-                ));
+                runtime_path
             }
         }
     };
