@@ -788,10 +788,7 @@ pub async fn execute(config_path: PathBuf) -> Result<()> {
                     })
                     .join("kinode")
             } else {
-                return Err(eyre!(
-                    "RepoPath {:?} must be a directory (the repo).",
-                    runtime_path
-                ));
+                runtime_path
             }
         }
     };
