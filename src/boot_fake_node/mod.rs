@@ -32,14 +32,14 @@ const LOCAL_PREFIX: &str = "kinode-";
 pub const CACHE_EXPIRY_SECONDS: u64 = 300;
 
 #[derive(Deserialize, Debug)]
-struct Release {
-    tag_name: String,
-    assets: Vec<Asset>,
+pub struct Release {
+    pub tag_name: String,
+    pub assets: Vec<Asset>,
 }
 
 #[derive(Deserialize, Debug)]
-struct Asset {
-    name: String,
+pub struct Asset {
+    pub name: String,
 }
 
 #[instrument(level = "trace", skip_all)]
