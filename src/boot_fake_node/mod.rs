@@ -254,7 +254,7 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> Result<
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn fetch_releases(owner: &str, repo: &str) -> Result<Vec<Release>> {
+pub async fn fetch_releases(owner: &str, repo: &str) -> Result<Vec<Release>> {
     let bytes = get_from_github(owner, repo, "releases").await?;
     if bytes.is_empty() {
         return Ok(vec![]);
