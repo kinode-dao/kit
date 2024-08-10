@@ -7,7 +7,7 @@ wit_bindgen::generate!({
     path: "target/wit",
     world: "{package_name_kebab}-{publisher_dotted_kebab}-v0",
     generate_unused_types: true,
-    additional_derives: [serde::Deserialize, serde::Serialize],
+    additional_derives: [serde::Deserialize, serde::Serialize, process_macros::SerdeJsonInto],
 });
 
 call_init!(init);
@@ -29,14 +29,14 @@ fn init(_our: Address) {
 
     let Ok(Ok(Message::Response { body, .. })) =
         Request::to(target)
-            .body(serde_json::to_vec(&TransferRequest::ListFiles).unwrap())
+            .body(TransferRequest::ListFiles)
             .send_and_await_response(5)
     else {
         println!("did not receive expected Response from {who}");
         return;
     };
 
-    let Ok(TransferResponse::ListFiles(files)) = serde_json::from_slice(&body) else {
+    let Ok(TransferResponse::ListFiles(files)) = body.try_into() else {
         println!("did not receive expected ListFiles from {who}");
         return;
     };

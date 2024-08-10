@@ -1,14 +1,14 @@
-use crate::kinode::process::standard::{ProcessId as WitProcessId};
-use crate::kinode::process::{package_name}::{Address as WitAddress, Request as TransferRequest, DownloadRequest};
+use crate::kinode::process::file_transfer_worker::{DownloadRequest, Request as WorkerRequest};
+use crate::kinode::process::standard::{Address as WitAddress, ProcessId as WitProcessId};
 use kinode_process_lib::{
-    await_next_message_body, call_init, println, Address, Message, ProcessId, Request,
+    await_next_message_body, call_init, println, Address, ProcessId, Request,
 };
 
 wit_bindgen::generate!({
     path: "target/wit",
     world: "{package_name_kebab}-{publisher_dotted_kebab}-v0",
     generate_unused_types: true,
-    additional_derives: [serde::Deserialize, serde::Serialize],
+    additional_derives: [serde::Deserialize, serde::Serialize, process_macros::SerdeJsonInto],
 });
 
 impl From<Address> for WitAddress {
@@ -40,7 +40,7 @@ fn init(our: Address) {
     let args = String::from_utf8(body).unwrap_or_default();
     let Some((name, who)) = args.split_once(" ") else {
         println!("usage: download:{package_name}:{publisher} file_name who");
-        return
+        return;
     };
     let our: Address = format!("{}@{package_name}:{package_name}:{publisher}", our.node())
         .parse()
@@ -50,15 +50,16 @@ fn init(our: Address) {
         .parse()
         .unwrap();
 
-    let Ok(Ok(Message::Response { .. })) =
-        Request::to(our)
-            .body(serde_json::to_vec(&TransferRequest::Download(DownloadRequest {
-                name: name.into(),
-                target: target.clone().into(),
-            })).unwrap())
-            .send_and_await_response(5)
-    else {
-        println!("download: did not receive expected Response from {target:?}");
-        return;
-    };
+    match Request::to(our)
+        .body(WorkerRequest::Download(DownloadRequest {
+            name: name.into(),
+            target: target.clone().into(),
+            is_requestor: true,
+        }))
+        .send_and_await_response(5)
+    {
+        Ok(Ok(_)) => {}
+        Ok(Err(e)) => println!("download failed: {e:?}"),
+        Err(e) => println!("download failed; SendError: {e:?}"),
+    }
 }

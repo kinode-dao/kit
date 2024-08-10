@@ -1,6 +1,6 @@
 [package]
 name = "kit"
-version = "0.6.2"
+version = "0.6.10"
 edition = "2021"
 
 [build-dependencies]
@@ -32,7 +32,6 @@ clap = { version = "4.4", features = ["cargo", "string"] }
 color-eyre = { version = "0.6", features = ["capture-spantrace"] }
 dirs = "5.0"
 fs-err = "2.11"
-futures-util = "0.3"
 hex = "0.4"
 kinode_process_lib = { git = "https://github.com/kinode-dao/process_lib.git", rev = "7eb3a04" }
 nix = { version = "0.27", features = ["process", "signal", "term"] }
@@ -44,10 +43,7 @@ semver = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10.8"
-ssh2 = "0.9.4"
-thiserror = "1.0"
 tokio = { version = "1.28", features = [
-    "fs",
     "macros",
     "process",
     "rt-multi-thread",
@@ -55,7 +51,6 @@ tokio = { version = "1.28", features = [
     "sync",
     "time",
 ] }
-tokio-tungstenite = "*"
 toml = "0.8"
 tracing = "0.1"
 tracing-appender = "0.2"

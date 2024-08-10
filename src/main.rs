@@ -118,22 +118,22 @@ async fn execute(
     matches: Option<(&str, &clap::ArgMatches)>,
 ) -> Result<()> {
     match matches {
-        Some(("boot-fake-node", boot_matches)) => {
-            let runtime_path = boot_matches
+        Some(("boot-fake-node", matches)) => {
+            let runtime_path = matches
                 .get_one::<String>("PATH")
                 .and_then(|p| Some(PathBuf::from(p)));
-            let version = boot_matches.get_one::<String>("VERSION").unwrap();
-            let node_home = PathBuf::from(boot_matches.get_one::<String>("HOME").unwrap());
-            let node_port = boot_matches.get_one::<u16>("NODE_PORT").unwrap();
-            let fakechain_port = boot_matches.get_one::<u16>("FAKECHAIN_PORT").unwrap();
-            let rpc = boot_matches
+            let version = matches.get_one::<String>("VERSION").unwrap();
+            let node_home = PathBuf::from(matches.get_one::<String>("HOME").unwrap());
+            let node_port = matches.get_one::<u16>("NODE_PORT").unwrap();
+            let fakechain_port = matches.get_one::<u16>("FAKECHAIN_PORT").unwrap();
+            let rpc = matches
                 .get_one::<String>("RPC_ENDPOINT")
                 .and_then(|s| Some(s.as_str()));
-            let fake_node_name = boot_matches.get_one::<String>("NODE_NAME").unwrap();
-            let password = boot_matches.get_one::<String>("PASSWORD").unwrap();
-            let is_persist = boot_matches.get_one::<bool>("PERSIST").unwrap();
-            let release = boot_matches.get_one::<bool>("RELEASE").unwrap();
-            let verbosity = boot_matches.get_one::<u8>("VERBOSITY").unwrap();
+            let fake_node_name = matches.get_one::<String>("NODE_NAME").unwrap();
+            let password = matches.get_one::<String>("PASSWORD").unwrap();
+            let is_persist = matches.get_one::<bool>("PERSIST").unwrap();
+            let release = matches.get_one::<bool>("RELEASE").unwrap();
+            let verbosity = matches.get_one::<u8>("VERBOSITY").unwrap();
 
             boot_fake_node::execute(
                 runtime_path,
@@ -151,19 +151,19 @@ async fn execute(
             )
             .await
         }
-        Some(("boot-real-node", boot_matches)) => {
-            let runtime_path = boot_matches
+        Some(("boot-real-node", matches)) => {
+            let runtime_path = matches
                 .get_one::<String>("PATH")
                 .and_then(|p| Some(PathBuf::from(p)));
-            let version = boot_matches.get_one::<String>("VERSION").unwrap();
-            let node_home = PathBuf::from(boot_matches.get_one::<String>("HOME").unwrap());
-            let node_port = boot_matches.get_one::<u16>("NODE_PORT").unwrap();
-            let rpc = boot_matches
+            let version = matches.get_one::<String>("VERSION").unwrap();
+            let node_home = PathBuf::from(matches.get_one::<String>("HOME").unwrap());
+            let node_port = matches.get_one::<u16>("NODE_PORT").unwrap();
+            let rpc = matches
                 .get_one::<String>("RPC_ENDPOINT")
                 .and_then(|s| Some(s.as_str()));
-            // let password = boot_matches.get_one::<String>("PASSWORD").unwrap(); // TODO: with develop 0.8.0
-            let release = boot_matches.get_one::<bool>("RELEASE").unwrap();
-            let verbosity = boot_matches.get_one::<u8>("VERBOSITY").unwrap();
+            // let password = matches.get_one::<String>("PASSWORD").unwrap(); // TODO: with develop 0.8.0
+            let release = matches.get_one::<bool>("RELEASE").unwrap();
+            let verbosity = matches.get_one::<u8>("VERBOSITY").unwrap();
 
             boot_real_node::execute(
                 runtime_path,
@@ -178,23 +178,34 @@ async fn execute(
             )
             .await
         }
-        Some(("build", build_matches)) => {
-            let package_dir = PathBuf::from(build_matches.get_one::<String>("DIR").unwrap());
-            let no_ui = build_matches.get_one::<bool>("NO_UI").unwrap();
-            let ui_only = build_matches.get_one::<bool>("UI_ONLY").unwrap();
-            let skip_deps_check = build_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
-            let features = match build_matches.get_one::<String>("FEATURES") {
+        Some(("build", matches)) => {
+            let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
+            let no_ui = matches.get_one::<bool>("NO_UI").unwrap();
+            let ui_only = matches.get_one::<bool>("UI_ONLY").unwrap();
+            let skip_deps_check = matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
+            let features = match matches.get_one::<String>("FEATURES") {
                 Some(f) => f.clone(),
                 None => "".into(),
             };
-            let url: Option<String> = match build_matches.get_one::<String>("URL") {
-                Some(url) => Some(url.clone()),
-                None => build_matches
-                    .get_one::<u16>("NODE_PORT")
-                    .map(|p| format!("http://localhost:{}", p)),
-            };
-            let default_world = build_matches.get_one::<String>("WORLD");
-            let verbose = build_matches.get_one::<bool>("VERBOSE").unwrap();
+            let url = matches
+                .get_one::<u16>("NODE_PORT")
+                .map(|p| format!("http://localhost:{p}"));
+            let download_from = matches
+                .get_one::<String>("NODE")
+                .and_then(|s: &String| Some(s.as_str()));
+            let default_world = matches.get_one::<String>("WORLD");
+            let local_dependencies: Vec<PathBuf> = matches
+                .get_many::<String>("DEPENDENCY_PACKAGE_PATH")
+                .unwrap_or_default()
+                .map(|s| PathBuf::from(s))
+                .collect();
+            let add_paths_to_api: Vec<PathBuf> = matches
+                .get_many::<String>("PATH")
+                .unwrap_or_default()
+                .map(|s| PathBuf::from(s))
+                .collect();
+            let force = matches.get_one::<bool>("FORCE").unwrap();
+            let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
 
             build::execute(
                 &package_dir,
@@ -203,33 +214,45 @@ async fn execute(
                 *skip_deps_check,
                 &features,
                 url,
-                default_world.cloned(),
+                download_from,
+                default_world.map(|w| w.as_str()),
+                local_dependencies,
+                add_paths_to_api,
+                *force,
                 *verbose,
+                false,
             )
             .await
         }
-        Some(("build-start-package", build_start_matches)) => {
-            let package_dir = PathBuf::from(build_start_matches.get_one::<String>("DIR").unwrap());
-            let no_ui = build_start_matches.get_one::<bool>("NO_UI").unwrap();
-            let ui_only = build_start_matches
-                .get_one::<bool>("UI_ONLY")
-                .unwrap_or(&false);
-            let url: String = match build_start_matches.get_one::<String>("URL") {
-                Some(url) => url.clone(),
-                None => {
-                    let port = build_start_matches.get_one::<u16>("NODE_PORT").unwrap();
-                    format!("http://localhost:{}", port)
-                }
-            };
-            let skip_deps_check = build_start_matches
-                .get_one::<bool>("SKIP_DEPS_CHECK")
-                .unwrap();
-            let features = match build_start_matches.get_one::<String>("FEATURES") {
+        Some(("build-start-package", matches)) => {
+            let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
+            let no_ui = matches.get_one::<bool>("NO_UI").unwrap();
+            let ui_only = matches.get_one::<bool>("UI_ONLY").unwrap_or(&false);
+            let url = format!(
+                "http://localhost:{}",
+                matches.get_one::<u16>("NODE_PORT").unwrap(),
+            );
+            let skip_deps_check = matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
+            let features = match matches.get_one::<String>("FEATURES") {
                 Some(f) => f.clone(),
                 None => "".into(),
             };
-            let default_world = build_start_matches.get_one::<String>("WORLD");
-            let verbose = build_start_matches.get_one::<bool>("VERBOSE").unwrap();
+            let download_from = matches
+                .get_one::<String>("NODE")
+                .and_then(|s: &String| Some(s.as_str()));
+            let default_world = matches.get_one::<String>("WORLD");
+            let local_dependencies: Vec<PathBuf> = matches
+                .get_many::<String>("DEPENDENCY_PACKAGE_PATH")
+                .unwrap_or_default()
+                .map(|s| PathBuf::from(s))
+                .collect();
+            let add_paths_to_api: Vec<PathBuf> = matches
+                .get_many::<String>("PATH")
+                .unwrap_or_default()
+                .map(|s| PathBuf::from(s))
+                .collect();
+            let force = matches.get_one::<bool>("FORCE").unwrap();
+            let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
 
             build_start_package::execute(
                 &package_dir,
@@ -238,71 +261,65 @@ async fn execute(
                 &url,
                 *skip_deps_check,
                 &features,
-                default_world.cloned(),
+                download_from,
+                default_world.map(|w| w.as_str()),
+                local_dependencies,
+                add_paths_to_api,
+                *force,
                 *verbose,
             )
             .await
         }
-        Some(("chain", chain_matches)) => {
-            let port = chain_matches.get_one::<u16>("PORT").unwrap();
-            let verbose = chain_matches.get_one::<bool>("VERBOSE").unwrap();
+        Some(("chain", matches)) => {
+            let port = matches.get_one::<u16>("PORT").unwrap();
+            let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
             chain::execute(*port, *verbose).await
         }
-        Some(("connect", connect_matches)) => {
-            let local_port = connect_matches.get_one::<u16>("LOCAL_PORT").unwrap();
-            let disconnect = connect_matches.get_one::<bool>("IS_DISCONNECT").unwrap();
-            let host = connect_matches
-                .get_one::<String>("HOST")
-                .map(|s| s.as_ref());
-            let host_port = connect_matches
-                .get_one::<u16>("HOST_PORT")
-                .map(|hp| hp.clone());
+        Some(("connect", matches)) => {
+            let local_port = matches.get_one::<u16>("LOCAL_PORT").unwrap();
+            let disconnect = matches.get_one::<bool>("IS_DISCONNECT").unwrap();
+            let host = matches.get_one::<String>("HOST").map(|s| s.as_ref());
+            let host_port = matches.get_one::<u16>("HOST_PORT").map(|hp| hp.clone());
             connect::execute(*local_port, *disconnect, host, host_port)
         }
-        Some(("dev-ui", dev_ui_matches)) => {
-            let package_dir = PathBuf::from(dev_ui_matches.get_one::<String>("DIR").unwrap());
-            let url: String = match dev_ui_matches.get_one::<String>("URL") {
-                Some(url) => url.clone(),
-                None => {
-                    let port = dev_ui_matches.get_one::<u16>("NODE_PORT").unwrap();
-                    format!("http://localhost:{}", port)
-                }
-            };
-            let skip_deps_check = dev_ui_matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
-            let release = dev_ui_matches.get_one::<bool>("RELEASE").unwrap();
+        Some(("dev-ui", matches)) => {
+            let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
+            let url = format!(
+                "http://localhost:{}",
+                matches.get_one::<u16>("NODE_PORT").unwrap(),
+            );
+            let skip_deps_check = matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
+            let release = matches.get_one::<bool>("RELEASE").unwrap();
 
             dev_ui::execute(&package_dir, &url, *skip_deps_check, *release)
         }
-        Some(("inject-message", inject_message_matches)) => {
-            let url: String = match inject_message_matches.get_one::<String>("URL") {
-                Some(url) => url.clone(),
-                None => {
-                    let port = inject_message_matches.get_one::<u16>("NODE_PORT").unwrap();
-                    format!("http://localhost:{}", port)
-                }
-            };
-            let process: &String = inject_message_matches.get_one("PROCESS").unwrap();
-            let non_block: &bool = inject_message_matches.get_one("NONBLOCK").unwrap();
-            let body: &String = inject_message_matches.get_one("BODY_JSON").unwrap();
-            let node: Option<&str> = inject_message_matches
+        Some(("inject-message", matches)) => {
+            let url = format!(
+                "http://localhost:{}",
+                matches.get_one::<u16>("NODE_PORT").unwrap(),
+            );
+            let process: &String = matches.get_one("PROCESS").unwrap();
+            let non_block: &bool = matches.get_one("NONBLOCK").unwrap();
+            let body: &String = matches.get_one("BODY_JSON").unwrap();
+            let node: Option<&str> = matches
                 .get_one("NODE_NAME")
                 .and_then(|s: &String| Some(s.as_str()));
-            let bytes: Option<&str> = inject_message_matches
+            let bytes: Option<&str> = matches
                 .get_one("PATH")
                 .and_then(|s: &String| Some(s.as_str()));
 
             let expects_response = if *non_block { None } else { Some(15) };
             inject_message::execute(&url, process, expects_response, body, node, bytes).await
         }
-        Some(("new", new_matches)) => {
-            let new_dir = PathBuf::from(new_matches.get_one::<String>("DIR").unwrap());
-            let package_name = new_matches
+        Some(("new", matches)) => {
+            let new_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
+            let package_name = matches
                 .get_one::<String>("PACKAGE")
                 .map(|pn| pn.to_string());
-            let publisher = new_matches.get_one::<String>("PUBLISHER").unwrap();
-            let language: new::Language = new_matches.get_one::<String>("LANGUAGE").unwrap().into();
-            let template: new::Template = new_matches.get_one::<String>("TEMPLATE").unwrap().into();
-            let ui = new_matches.get_one::<bool>("UI").unwrap_or(&false);
+            let publisher = matches.get_one::<String>("PUBLISHER").unwrap();
+            let language: new::Language = matches.get_one::<String>("LANGUAGE").unwrap().into();
+            let template: new::Template = matches.get_one::<String>("TEMPLATE").unwrap().into();
+            let ui = matches.get_one::<bool>("UI").unwrap_or(&false);
 
             new::execute(
                 new_dir,
@@ -313,13 +330,11 @@ async fn execute(
                 *ui,
             )
         }
-        Some(("publish", publish_matches)) => {
-            let package_dir =
-                PathBuf::from(publish_matches.get_one::<String>("DIR").unwrap());
-            let metadata_uri = publish_matches.get_one::<String>("URI").unwrap();
-            let keystore_path =
-                PathBuf::from(publish_matches.get_one::<String>("PATH").unwrap());
-            let fakechain_port = publish_matches.get_one::<u16>("FAKECHAIN_PORT").unwrap();
+        Some(("publish", matches)) => {
+            let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
+            let metadata_uri = matches.get_one::<String>("URI").unwrap();
+            let keystore_path = PathBuf::from(matches.get_one::<String>("PATH").unwrap());
+            let fakechain_port = matches.get_one::<u16>("FAKECHAIN_PORT").unwrap();
 
             publish::execute(
                 &package_dir,
@@ -328,81 +343,73 @@ async fn execute(
                 fakechain_port,
             ).await
         }
-        Some(("remove-package", remove_package_matches)) => {
-            let package_name = remove_package_matches
+        Some(("remove-package", matches)) => {
+            let package_name = matches
                 .get_one::<String>("PACKAGE")
                 .and_then(|s: &String| Some(s.as_str()));
-            let publisher = remove_package_matches
+            let publisher = matches
                 .get_one::<String>("PUBLISHER")
                 .and_then(|s: &String| Some(s.as_str()));
-            let package_dir =
-                PathBuf::from(remove_package_matches.get_one::<String>("DIR").unwrap());
-            let url: String = match remove_package_matches.get_one::<String>("URL") {
-                Some(url) => url.clone(),
-                None => {
-                    let port = remove_package_matches.get_one::<u16>("NODE_PORT").unwrap();
-                    format!("http://localhost:{}", port)
-                }
-            };
+            let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
+            let url = format!(
+                "http://localhost:{}",
+                matches.get_one::<u16>("NODE_PORT").unwrap(),
+            );
             remove_package::execute(&package_dir, &url, package_name, publisher).await
         }
-        Some(("reset-cache", _reset_cache_matches)) => reset_cache::execute(),
-        Some(("run-tests", run_tests_matches)) => {
-            let config_path = match run_tests_matches.get_one::<String>("PATH") {
+        Some(("reset-cache", _matches)) => reset_cache::execute(),
+        Some(("run-tests", matches)) => {
+            let config_path = match matches.get_one::<String>("PATH") {
                 Some(path) => PathBuf::from(path),
                 None => std::env::current_dir()?.join("tests.toml"),
             };
 
             if !config_path.exists() {
                 let error = format!(
-                    "Configuration file not found: {:?}\nUsage:\n{}",
+                    "Configuration path does not exist: {:?}\nUsage:\n{}",
                     config_path, usage,
                 );
                 return Err(eyre!(error));
             }
 
-            run_tests::execute(config_path.to_str().unwrap()).await
+            run_tests::execute(config_path).await
         }
-        Some(("setup", setup_matches)) => {
-            let verbose = setup_matches.get_one::<bool>("VERBOSE").unwrap();
+        Some(("setup", matches)) => {
+            let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
 
             setup::execute(*verbose)
         }
-        Some(("start-package", start_package_matches)) => {
-            let package_dir =
-                PathBuf::from(start_package_matches.get_one::<String>("DIR").unwrap());
-            let url: String = match start_package_matches.get_one::<String>("URL") {
-                Some(url) => url.clone(),
-                None => {
-                    let port = start_package_matches.get_one::<u16>("NODE_PORT").unwrap();
-                    format!("http://localhost:{}", port)
-                }
-            };
+        Some(("start-package", matches)) => {
+            let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
+            let url = format!(
+                "http://localhost:{}",
+                matches.get_one::<u16>("NODE_PORT").unwrap(),
+            );
             start_package::execute(&package_dir, &url).await
         }
-        Some(("update", update_matches)) => {
-            let args = update_matches
+        Some(("update", matches)) => {
+            let args = matches
                 .get_many::<String>("ARGUMENTS")
                 .unwrap_or_default()
                 .map(|v| v.to_string())
                 .collect::<Vec<_>>();
-            let branch = update_matches.get_one::<String>("BRANCH").unwrap();
+            let branch = matches.get_one::<String>("BRANCH").unwrap();
 
             update::execute(args, branch)
         }
-        Some(("view-api", view_api_matches)) => {
-            let package_id = view_api_matches
+        Some(("view-api", matches)) => {
+            let package_id = matches
                 .get_one::<String>("PACKAGE_ID")
                 .and_then(|s: &String| Some(s.as_str()));
-            let url: String = match view_api_matches.get_one::<String>("URL") {
-                Some(url) => url.clone(),
-                None => {
-                    let port = view_api_matches.get_one::<u16>("NODE_PORT").unwrap();
-                    format!("http://localhost:{}", port)
-                }
-            };
+            let url = format!(
+                "http://localhost:{}",
+                matches.get_one::<u16>("NODE_PORT").unwrap(),
+            );
+            let download_from = matches
+                .get_one::<String>("NODE")
+                .and_then(|s: &String| Some(s.as_str()));
 
-            view_api::execute(None, package_id, &url, true).await?;
+            view_api::execute(None, package_id, &url, download_from, true).await?;
             Ok(())
         }
         _ => {
@@ -626,15 +633,15 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .short('p')
                 .long("port")
-                .help("Node port: for use on localhost (overridden by URL)")
+                .help("localhost node port; for remote see https://book.kinode.org/hosted-nodes.html#using-kit-with-your-hosted-node")
+                .default_value("8080")
                 .value_parser(value_parser!(u16))
-                .required(false)
             )
-            .arg(Arg::new("URL")
+            .arg(Arg::new("NODE")
                 .action(ArgAction::Set)
-                .short('u')
-                .long("url")
-                .help("Node URL (overrides NODE_PORT)")
+                .short('d')
+                .long("download-from")
+                .help("Download API from this node if not found")
                 .required(false)
             )
             .arg(Arg::new("WORLD")
@@ -642,6 +649,25 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('w')
                 .long("world")
                 .help("Fallback WIT world name")
+            )
+            .arg(Arg::new("DEPENDENCY_PACKAGE_PATH")
+                .action(ArgAction::Append)
+                .short('l')
+                .long("local-dependency")
+                .help("Path to local dependency package (can specify multiple times)")
+            )
+            .arg(Arg::new("PATH")
+                .action(ArgAction::Append)
+                .short('a')
+                .long("add-to-api")
+                .help("Path to file to add to api.zip (can specify multiple times)")
+            )
+            .arg(Arg::new("FORCE")
+                .action(ArgAction::SetTrue)
+                .short('f')
+                .long("force")
+                .help("Force a rebuild")
+                .required(false)
             )
             .arg(Arg::new("VERBOSE")
                 .action(ArgAction::SetTrue)
@@ -663,15 +689,15 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .short('p')
                 .long("port")
-                .help("Node port: for use on localhost (overridden by URL)")
+                .help("localhost node port; for remote see https://book.kinode.org/hosted-nodes.html#using-kit-with-your-hosted-node")
                 .default_value("8080")
                 .value_parser(value_parser!(u16))
             )
-            .arg(Arg::new("URL")
+            .arg(Arg::new("NODE")
                 .action(ArgAction::Set)
-                .short('u')
-                .long("url")
-                .help("Node URL (overrides NODE_PORT)")
+                .short('d')
+                .long("download-from")
+                .help("Download API from this node if not found")
                 .required(false)
             )
             .arg(Arg::new("WORLD")
@@ -680,6 +706,18 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .long("world")
                 .help("Fallback WIT world name")
                 .required(false)
+            )
+            .arg(Arg::new("DEPENDENCY_PACKAGE_PATH")
+                .action(ArgAction::Append)
+                .short('l')
+                .long("local-dependency")
+                .help("Path to local dependency package (can specify multiple times)")
+            )
+            .arg(Arg::new("PATH")
+                .action(ArgAction::Append)
+                .short('a')
+                .long("add-to-api")
+                .help("Path to file to add to api.zip (can specify multiple times)")
             )
             .arg(Arg::new("NO_UI")
                 .action(ArgAction::SetTrue)
@@ -704,6 +742,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .long("features")
                 .help("Pass these comma-delimited feature flags to Rust cargo builds")
+                .required(false)
+            )
+            .arg(Arg::new("FORCE")
+                .action(ArgAction::SetTrue)
+                .short('f')
+                .long("force")
+                .help("Force a rebuild")
                 .required(false)
             )
             .arg(Arg::new("VERBOSE")
@@ -776,16 +821,9 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .short('p')
                 .long("port")
-                .help("Node port: for use on localhost (overridden by URL)")
+                .help("localhost node port; for remote see https://book.kinode.org/hosted-nodes.html#using-kit-with-your-hosted-node")
                 .default_value("8080")
                 .value_parser(value_parser!(u16))
-            )
-            .arg(Arg::new("URL")
-                .action(ArgAction::Set)
-                .short('u')
-                .long("url")
-                .help("Node URL (overrides NODE_PORT)")
-                .required(false)
             )
             .arg(Arg::new("RELEASE")
                 .action(ArgAction::SetTrue)
@@ -817,16 +855,9 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .short('p')
                 .long("port")
-                .help("Node port: for use on localhost (overridden by URL)")
+                .help("localhost node port; for remote see https://book.kinode.org/hosted-nodes.html#using-kit-with-your-hosted-node")
                 .default_value("8080")
                 .value_parser(value_parser!(u16))
-            )
-            .arg(Arg::new("URL")
-                .action(ArgAction::Set)
-                .short('u')
-                .long("url")
-                .help("Node URL (overrides NODE_PORT)")
-                .required(false)
             )
             .arg(Arg::new("NODE_NAME")
                 .action(ArgAction::Set)
@@ -883,7 +914,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('t')
                 .long("template")
                 .help("Template to create")
-                .value_parser(["chat", "echo", "fibonacci", "file_transfer"])
+                .value_parser(["blank", "chat", "echo", "fibonacci", "file_transfer"])
                 .default_value("chat")
             )
             .arg(Arg::new("UI")
@@ -936,6 +967,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
             )
             .arg(Arg::new("PUBLISHER")
                 .action(ArgAction::Set)
+                .short('u')
                 .long("publisher")
                 .help("Name of the publisher (Overrides DIR)")
                 .required(false)
@@ -949,16 +981,9 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .short('p')
                 .long("port")
-                .help("Node port: for use on localhost (overridden by URL)")
+                .help("localhost node port; for remote see https://book.kinode.org/hosted-nodes.html#using-kit-with-your-hosted-node")
                 .default_value("8080")
                 .value_parser(value_parser!(u16))
-            )
-            .arg(Arg::new("URL")
-                .action(ArgAction::Set)
-                .short('u')
-                .long("url")
-                .help("Node URL (overrides NODE_PORT)")
-                .required(false)
             )
         )
         .subcommand(Command::new("reset-cache")
@@ -969,8 +994,8 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
             .visible_alias("t")
             .arg(Arg::new("PATH")
                 .action(ArgAction::Set)
-                .help("Path to tests configuration file")
-                .default_value("tests.toml")
+                .help("Path to tests configuration file (or test dir)")
+                .default_value(current_dir)
             )
         )
         .subcommand(Command::new("setup")
@@ -984,27 +1009,20 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
             )
         )
         .subcommand(Command::new("start-package")
-            .about("Start a built Kinode process")
+            .about("Start a built Kinode package")
             .visible_alias("s")
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
-                .help("The package directory to build")
+                .help("The package directory to start")
                 .default_value(current_dir)
             )
             .arg(Arg::new("NODE_PORT")
                 .action(ArgAction::Set)
                 .short('p')
                 .long("port")
-                .help("Node port: for use on localhost (overridden by URL)")
+                .help("localhost node port; for remote see https://book.kinode.org/hosted-nodes.html#using-kit-with-your-hosted-node")
                 .default_value("8080")
                 .value_parser(value_parser!(u16))
-            )
-            .arg(Arg::new("URL")
-                .action(ArgAction::Set)
-                .short('u')
-                .long("url")
-                .help("Node URL (overrides NODE_PORT)")
-                .required(false)
             )
         )
         .subcommand(Command::new("update")
@@ -1033,15 +1051,15 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .short('p')
                 .long("port")
-                .help("Node port: for use on localhost (overridden by URL)")
+                .help("localhost node port; for remote see https://book.kinode.org/hosted-nodes.html#using-kit-with-your-hosted-node")
                 .default_value("8080")
                 .value_parser(value_parser!(u16))
             )
-            .arg(Arg::new("URL")
+            .arg(Arg::new("NODE")
                 .action(ArgAction::Set)
-                .short('u')
-                .long("url")
-                .help("Node URL (overrides NODE_PORT)")
+                .short('d')
+                .long("download-from")
+                .help("Download API from this node if not found")
                 .required(false)
             )
         )
@@ -1057,7 +1075,9 @@ async fn main() -> Result<()> {
     color_eyre::config::HookBuilder::default()
         .display_env_section(false)
         .install()?;
-    let current_dir = env::current_dir()?.into_os_string();
+    let current_dir = env::current_dir()
+        .with_suggestion(|| "Could not fetch CWD. Does CWD exist?")?
+        .into_os_string();
     let mut app = make_app(&current_dir).await?;
 
     let usage = app.render_usage();

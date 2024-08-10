@@ -1,13 +1,17 @@
 runtime = { FetchVersion = "latest" }
 # runtime = { RepoPath = "~/git/kinode" }
+persist_home = false
 runtime_build_release = false
 
 
 [[tests]]
-setup_package_paths = [".."]
-test_packages = [
-    { path = "{package_name}_test", grant_capabilities = ["{package_name}:{package_name}:{publisher}"] },
+dependency_package_paths = [".."]
+setup_packages = [
+    { path = "..", run = true }
 ]
+setup_scripts = []
+test_package_paths = ["{package_name}_test"]
+test_scripts = []
 timeout_secs = 5
 fakechain_router = 8545
 
@@ -15,10 +19,10 @@ fakechain_router = 8545
 port = 8080
 home = "home/first"
 fake_node_name = "first.dev"
-runtime_verbosity = 0
+runtime_verbosity = 2
 
 [[tests.nodes]]
 port = 8081
 home = "home/second"
 fake_node_name = "second.dev"
-runtime_verbosity = 0
+runtime_verbosity = 2

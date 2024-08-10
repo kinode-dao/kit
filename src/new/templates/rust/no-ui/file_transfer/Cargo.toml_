@@ -2,7 +2,8 @@
 resolver = "2"
 members = [
     "{package_name}",
-    "worker",
+    "file_transfer_worker_api",
+    "file_transfer_worker",
     "download",
     "list_files"
 ]
