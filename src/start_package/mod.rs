@@ -57,30 +57,6 @@ fn new_package(
 }
 
 #[instrument(level = "trace", skip_all)]
-pub fn interact_with_package(
-    request_type: &str,
-    node: Option<&str>,
-    package_name: &str,
-    publisher_node: &str,
-) -> Result<serde_json::Value> {
-    let message = json!({
-        request_type: {
-            "package_name": package_name,
-            "publisher_node": publisher_node,
-        }
-    });
-
-    inject_message::make_message(
-        "main:app_store:sys",
-        Some(15),
-        &message.to_string(),
-        node,
-        None,
-        None,
-    )
-}
-
-#[instrument(level = "trace", skip_all)]
 pub fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
     let file = fs::File::create(zip_filename)?;
     let walkdir = WalkDir::new(directory);
@@ -157,8 +133,8 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)?;
     hasher.update(&buffer);
-    let hash_result = hasher.finalize();
-    info!("package zip hash: {:x}", hash_result);
+    let hash_string = format!("{:x}", hasher.finalize());
+    info!("package zip hash: {:?}", hash_string);
     // Create and send new package request
     let new_pkg_request = new_package(
         None,
@@ -190,7 +166,19 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     }
 
     // Install package
-    let install_request = interact_with_package("Install", None, package_name, publisher)?;
+    let body = json!({
+        "Install": {
+            "package_id": {"package_name": package_name, "publisher_node": publisher, "version": hash_string},
+        }
+    });
+    let install_request = inject_message::make_message(
+        "main:app_store:sys",
+        Some(15),
+        &body.to_string(),
+        None,
+        None,
+        None,
+    )?;
     let response = inject_message::send_request(url, install_request).await?;
     let inject_message::Response { ref body, .. } =
         inject_message::parse_response(response).await?;
