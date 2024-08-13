@@ -163,7 +163,7 @@ fn check_pkg_hash(metadata: &Erc721Metadata, package_dir: &Path, metadata_uri: &
 }
 
 #[instrument(level = "trace", skip_all)]
-fn make_init_call(
+fn make_multicall(
     metadata_uri: &str,
     metadata_hash: &str,
     kimap: Address,
@@ -235,7 +235,7 @@ async fn kimap_get(
 
 #[instrument(level = "trace", skip_all)]
 async fn prepare_kimap_put(
-    init_call: Vec<u8>,
+    multicall: Vec<u8>,
     name: String,
     publisher: &str,
     kimap: Address,
@@ -255,7 +255,7 @@ async fn prepare_kimap_put(
     let (to, call) = if is_update {
         (
             app_tba,
-            init_call,
+            multicall,
         )
     } else {
         let (publisher_tba, _, _) = kimap_get(
@@ -266,7 +266,7 @@ async fn prepare_kimap_put(
         let mint_call = mintCall {
             who: wallet_address,
             label: name.into(),
-            initialization: init_call.into(),
+            initialization: multicall.into(),
             erc721Data: Bytes::default(),
             implementation: kino_account_impl,
         }
@@ -327,10 +327,10 @@ pub async fn execute(
     let multicall_address = Address::from_str(MULTICALL_ADDRESS)?;
     let kino_account_impl = Address::from_str(KINO_ACCOUNT_IMPL)?;
 
-    let init_call = make_init_call(metadata_uri, &metadata_hash, kimap, multicall_address);
+    let multicall = make_multicall(metadata_uri, &metadata_hash, kimap, multicall_address);
 
     let (to, call) = prepare_kimap_put(
-        init_call,
+        multicall,
         name.clone(),
         &publisher,
         kimap,
