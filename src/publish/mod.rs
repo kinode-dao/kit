@@ -18,6 +18,8 @@ use color_eyre::eyre::{eyre, Result};
 use fs_err as fs;
 use tracing::{info, instrument};
 
+use kinode_process_lib::kernel_types::Erc721Metadata;
+
 use crate::build::{download_file, read_metadata};
 use crate::start_package::{make_pkg_publisher, zip_pkg};
 
@@ -71,7 +73,7 @@ const FAKE_CHAIN_ID: u64 = 31337;
 
 const REAL_KIMAP_ADDRESS: &str = "0xcA92476B2483aBD5D82AEBF0b56701Bb2e9be658";
 const MULTICALL_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
-const KINO_ACCOUNT_IMPL: &str = "0x58790D9957ECE58607A4b58308BBD5FE1a2e4789";
+const KINO_ACCOUNT_IMPL: &str = "0x38766C70a4FB2f23137D9251a1aA12b1143fC716";
 const FAKE_DOTDEV_TBA: &str = "0x69C30C0Cf0e9726f9eEF50bb74FA32711fA0B02D";
 const REAL_CHAIN_ID: u64 = 10;
 
@@ -106,6 +108,105 @@ fn namehash(name: &str) -> [u8; 32] {
     node.into()
 }
 
+#[instrument(level = "trace", skip_all)]
+async fn check_remote_metadata(metadata: &Erc721Metadata, metadata_uri: &str, package_dir: &Path) -> Result<String> {
+    let remote_metadata_dir = PathBuf::from(format!(
+        "/tmp/kinode-kit-cache/{}",
+        metadata.name.as_ref().unwrap(),
+    ));
+    if !remote_metadata_dir.exists() {
+        fs::create_dir_all(&remote_metadata_dir)?;
+    }
+    let remote_metadata_path = remote_metadata_dir.join("metadata.json");
+    download_file(metadata_uri, &remote_metadata_path).await?;
+    let remote_metadata = read_metadata(&remote_metadata_dir)?;
+
+    // TODO: add derive(PartialEq) to Erc721
+    if serde_json::to_string(&metadata)? != serde_json::to_string(&remote_metadata)? {
+        let local_path = package_dir
+            .join("metadata.json")
+            .canonicalize()
+            .ok()
+            .and_then(|p| p.to_str().map(|s| s.to_string()))
+            .unwrap_or_default();
+        return Err(eyre!(
+            "\x1B]8;;file://{}\x1B\\Local\x1B]8;;\x1B\\ and \x1B]8;;{}\x1B\\remote\x1B]8;;\x1B\\ metadata do not match",
+            local_path,
+            metadata_uri,
+        ));
+    }
+    let metadata_hash = calculate_metadata_hash(package_dir)?;
+    Ok(metadata_hash)
+}
+
+#[instrument(level = "trace", skip_all)]
+fn check_pkg_hash(metadata: &Erc721Metadata, package_dir: &Path, metadata_uri: &str) -> Result<()> {
+    let pkg_publisher = make_pkg_publisher(&metadata);
+    let (_, pkg_hash) = zip_pkg(package_dir, &pkg_publisher)?;
+    let current_version = &metadata.properties.current_version;
+    let expected_pkg_hash = metadata
+        .properties
+        .code_hashes
+        .get(current_version)
+        .cloned()
+        .unwrap_or_default();
+    if pkg_hash != expected_pkg_hash {
+        return Err(eyre!(
+            "Zipped pkg hashes to '{}' not '{}' as expected for current_version {} based on published metadata at \x1B]8;;{}\x1B\\{}\x1B]8;;\x1B\\",
+            pkg_hash,
+            expected_pkg_hash,
+            current_version,
+            metadata_uri,
+            metadata_uri,
+        ));
+    }
+    Ok(())
+}
+
+#[instrument(level = "trace", skip_all)]
+fn make_init_call(
+    metadata_uri: &str,
+    metadata_hash: &str,
+    kimap: Address,
+    multicall_address: Address,
+) -> Vec<u8> {
+    // Create metadata calls
+    let metadata_uri_call = noteCall {
+        note: "~metadata-uri".into(),
+        data: metadata_uri.to_string().into(),
+    }
+    .abi_encode();
+    let metadata_hash_call = noteCall {
+        note: "~metadata-hash".into(),
+        data: metadata_hash.to_string().into(),
+    }
+    .abi_encode();
+
+    let calls = vec![
+        Call {
+            target: kimap,
+            callData: metadata_uri_call.into(),
+        },
+        Call {
+            target: kimap,
+            callData: metadata_hash_call.into(),
+        },
+    ];
+
+    let notes_multicall = aggregateCall { calls }.abi_encode();
+
+    let init_call = executeCall {
+        to: multicall_address,
+        value: U256::from(0),
+        data: notes_multicall.into(),
+        operation: 1,
+    }
+    .abi_encode();
+
+    init_call
+}
+
+#[instrument(level = "trace", skip_all)]
 async fn kimap_get(
     node: &str,
     kimap: Address,
@@ -134,6 +235,59 @@ async fn kimap_get(
 }
 
 #[instrument(level = "trace", skip_all)]
+async fn prepare_kimap_put(
+    init_call: Vec<u8>,
+    name: String,
+    publisher: &str,
+    kimap: Address,
+    provider: &RootProvider<PubSubFrontend>,
+    wallet_address: Address,
+    kino_account_impl: Address,
+) -> Result<(Address, Vec<u8>)> {
+    // if app_tba exists, update existing state;
+    // else mint it & add new state
+    let (app_tba, owner, _) = kimap_get(
+        &format!("{}.{}", name, publisher),
+        kimap,
+        &provider,
+    ).await?;
+    let is_update = app_tba != Address::default() && owner == wallet_address;
+
+    let (to, call) = if is_update {
+        (
+            app_tba,
+            init_call,
+        )
+    } else {
+        let (publisher_tba, _, _) = kimap_get(
+            &publisher,
+            kimap,
+            &provider,
+        ).await?;
+        let mint_call = mintCall {
+            who: wallet_address,
+            label: name.into(),
+            initialization: init_call.into(),
+            erc721Data: Bytes::default(),
+            implementation: kino_account_impl,
+        }
+        .abi_encode();
+        let call = executeCall {
+            to: kimap,
+            value: U256::from(0),
+            data: mint_call.into(),
+            operation: 0,
+        }
+        .abi_encode();
+        (
+            publisher_tba,
+            call,
+        )
+    };
+    Ok((to, call))
+}
+
+#[instrument(level = "trace", skip_all)]
 pub async fn execute(
     package_dir: &Path,
     metadata_uri: &str,
@@ -141,8 +295,8 @@ pub async fn execute(
     rpc_uri: &str,
     real: &bool,
     gas_limit: u128,
-    max_priority_fee_per_gas: u128,
-    max_fee_per_gas: u128,
+    max_priority_fee_per_gas: Option<u128>,
+    max_fee_per_gas: Option<u128>,
 ) -> Result<()> {
     if !package_dir.join("pkg").exists() {
         return Err(eyre!(
@@ -152,52 +306,12 @@ pub async fn execute(
     }
 
     let metadata = read_metadata(package_dir)?;
+
+    let metadata_hash = check_remote_metadata(&metadata, metadata_uri, package_dir).await?;
+    check_pkg_hash(&metadata, package_dir, metadata_uri)?;
+
     let name = metadata.name.clone().unwrap();
     let publisher = metadata.properties.publisher.clone();
-
-    let remote_metadata_dir = PathBuf::from(format!("/tmp/kinode-kit-cache/{name}"));
-    if !remote_metadata_dir.exists() {
-        fs::create_dir_all(&remote_metadata_dir)?;
-    }
-    let remote_metadata_path = remote_metadata_dir.join("metadata.json");
-    download_file(metadata_uri, &remote_metadata_path).await?;
-    let remote_metadata = read_metadata(&remote_metadata_dir)?;
-
-    // TODO: add derive(PartialEq) to Erc721
-    if serde_json::to_string(&metadata)? != serde_json::to_string(&remote_metadata)? {
-        let local_path = package_dir
-            .join("metadata.json")
-            .canonicalize()
-            .ok()
-            .and_then(|p| p.to_str().map(|s| s.to_string()))
-            .unwrap_or_default();
-        return Err(eyre!(
-            "\x1B]8;;file://{}\x1B\\Local\x1B]8;;\x1B\\ and \x1B]8;;{}\x1B\\remote\x1B]8;;\x1B\\ metadata do not match",
-            local_path,
-            metadata_uri,
-        ));
-    }
-    let metadata_hash = calculate_metadata_hash(package_dir)?;
-
-    let pkg_publisher = make_pkg_publisher(&metadata);
-    let (_, pkg_hash) = zip_pkg(package_dir, &pkg_publisher)?;
-    let current_version = &metadata.properties.current_version;
-    let expected_pkg_hash = metadata
-        .properties
-        .code_hashes
-        .get(current_version)
-        .cloned()
-        .unwrap_or_default();
-    if pkg_hash != expected_pkg_hash {
-        return Err(eyre!(
-            "Zipped pkg hashes to '{}' not '{}' as expected for current_version {} based on published metadata at \x1B]8;;{}\x1B\\{}\x1B]8;;\x1B\\",
-            pkg_hash,
-            expected_pkg_hash,
-            current_version,
-            metadata_uri,
-            metadata_uri,
-        ));
-    }
 
     let (wallet_address, wallet) = read_keystore(keystore_path)?;
 
@@ -213,114 +327,41 @@ pub async fn execute(
     )?;
     let multicall_address = Address::from_str(MULTICALL_ADDRESS)?;
     let kino_account_impl = Address::from_str(KINO_ACCOUNT_IMPL)?;
-    let tld_tba =  if *real {
-        let (tba, _, _) = kimap_get(
-            publisher.split('.').last().unwrap(),
-            kimap,
-            &provider,
-        ).await?;
-        tba
-    } else {
-        Address::from_str(FAKE_DOTDEV_TBA)?
-    };
 
-    // Create metadata calls
-    let metadata_uri_call = noteCall {
-        note: "~metadata-uri".into(),
-        data: metadata_uri.to_string().into(),
-    }
-    .abi_encode();
+    let init_call = make_init_call(metadata_uri, &metadata_hash, kimap, multicall_address);
 
-    let metadata_hash_call = noteCall {
-        note: "~metadata-hash".into(),
-        data: metadata_hash.into(),
-    }
-    .abi_encode();
-
-    let calls = vec![
-        Call {
-            target: kimap,
-            callData: metadata_uri_call.into(),
-        },
-        Call {
-            target: kimap,
-            callData: metadata_hash_call.into(),
-        },
-    ];
-
-    let notes_multicall = aggregateCall { calls }.abi_encode();
-
-    // Check if the app already exists
-
-    let (tba, owner, _) = kimap_get(
-        &format!("{}.{}", name, publisher),
+    let (to, call) = prepare_kimap_put(
+        init_call,
+        name.clone(),
+        &publisher,
         kimap,
         &provider,
+        wallet_address,
+        kino_account_impl,
     ).await?;
 
-    let is_update = tba != Address::default() && owner == wallet_address;
-
-    let init_call = executeCall {
-        to: multicall_address,
-        value: U256::from(0),
-        data: notes_multicall.into(),
-        operation: 1,
-    }
-    .abi_encode();
-
-    //let create_app_tba_call = mintCall {
-    //    who: wallet_address,
-    //    label: name.clone().into(),
-    //    initialization: init_call.into(),
-    //    erc721Data: Bytes::default(),
-    //    implementation: kino_account_impl,
-    //}
-    //.abi_encode();
-
-    //let create_app_call = executeCall {
-    //    to: kimap,
-    //    value: U256::from(0),
-    //    data: create_app_tba_call.into(),
-    //    operation: 0,
-    //}
-    //.abi_encode();
-    let create_app_call = if is_update {
-        executeCall {
-            to: kimap,
-            value: U256::from(0),
-            data: init_call.into(),
-            operation: 1,
-        }
-        .abi_encode()
-    } else {
-        mintCall {
-            who: wallet_address,
-            label: name.clone().into(),
-            initialization: init_call.into(),
-            erc721Data: Bytes::default(),
-            implementation: kino_account_impl,
-        }
-        .abi_encode()
-    };
-
     let nonce = provider.get_transaction_count(wallet_address).await?;
+    let gas_price = provider.get_gas_price().await?;
 
     let tx = TransactionRequest::default()
-        .to(tld_tba)
-        .input(TransactionInput::new(create_app_call.into()))
+        .to(to)
+        .input(TransactionInput::new(call.into()))
         .nonce(nonce)
         .with_chain_id(if *real { REAL_CHAIN_ID } else { FAKE_CHAIN_ID })
         .with_gas_limit(gas_limit)
-        .with_max_priority_fee_per_gas(max_priority_fee_per_gas)
-        .with_max_fee_per_gas(max_fee_per_gas);
+        .with_max_priority_fee_per_gas(max_priority_fee_per_gas.unwrap_or_else(|| gas_price))
+        .with_max_fee_per_gas(max_fee_per_gas.unwrap_or_else(|| gas_price));
 
     let tx_envelope = tx.build(&wallet).await?;
     let tx_encoded = tx_envelope.encoded_2718();
-    let tx_hash = provider.send_raw_transaction(&tx_encoded).await?;
+    let tx = provider.send_raw_transaction(&tx_encoded).await?;
 
-    info!(
-        "{name} published successfully; tx hash {:?}",
-        tx_hash.tx_hash()
+    let tx_hash = format!("{:?}", tx.tx_hash());
+    let link = format!(
+        "\x1B]8;;https://optimistic.etherscan.io/tx/{}\x1B\\{}\x1B]8;;\x1B\\",
+        tx_hash,
+        tx_hash,
     );
+    info!("{name} tx sent: {link}");
     Ok(())
 }

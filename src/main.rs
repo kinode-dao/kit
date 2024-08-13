@@ -36,6 +36,11 @@ struct Commit {
     sha: String,
 }
 
+fn parse_u128_with_underscores(s: &str) -> Result<u128, &'static str> {
+    let clean_string = s.replace('_', "");
+    clean_string.parse::<u128>().map_err(|_| "Invalid number format")
+}
+
 async fn get_latest_commit_sha_from_branch(
     owner: &str,
     repo: &str,
@@ -337,8 +342,12 @@ async fn execute(
             let rpc_uri = matches.get_one::<String>("RPC_URI").unwrap();
             let real = matches.get_one::<bool>("REAL").unwrap();
             let gas_limit = matches.get_one::<u128>("GAS_LIMIT").unwrap();
-            let max_priority_fee = matches.get_one::<u128>("MAX_PRIORITY_FEE").unwrap();
-            let max_fee_per_gas = matches.get_one::<u128>("MAX_FEE_PER_GAS").unwrap();
+            let max_priority_fee = matches
+                .get_one::<u128>("MAX_PRIORITY_FEE_PER_GAS")
+                .and_then(|mpf| Some(mpf.clone()));
+            let max_fee_per_gas = matches
+                .get_one::<u128>("MAX_FEE_PER_GAS")
+                .and_then(|mfpg| Some(mfpg.clone()));
 
             publish::execute(
                 &package_dir,
@@ -347,8 +356,8 @@ async fn execute(
                 rpc_uri,
                 real,
                 *gas_limit,
-                *max_priority_fee,
-                *max_fee_per_gas,
+                max_priority_fee,
+                max_fee_per_gas,
             ).await
         }
         Some(("remove-package", matches)) => {
@@ -974,16 +983,15 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .long("gas-limit")
                 .help("The ETH transaction gas limit")
                 .default_value("1_000_000")
-                .value_parser(value_parser!(u64))
+                .value_parser(clap::builder::ValueParser::new(parse_u128_with_underscores))
                 .required(false)
             )
-            .arg(Arg::new("MAX_PRIORITY_FEE")
+            .arg(Arg::new("MAX_PRIORITY_FEE_PER_GAS")
                 .action(ArgAction::Set)
                 .short('p')
                 .long("priority-fee")
-                .help("The ETH transaction max priority fee")
-                .default_value("200_000_000_000")
-                .value_parser(value_parser!(u64))
+                .help("The ETH transaction max priority fee per gas")
+                .value_parser(clap::builder::ValueParser::new(parse_u128_with_underscores))
                 .required(false)
             )
             .arg(Arg::new("MAX_FEE_PER_GAS")
@@ -991,8 +999,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('f')
                 .long("fee-per-gas")
                 .help("The ETH transaction max fee per gas")
-                .default_value("300_000_000_000")
-                .value_parser(value_parser!(u64))
+                .value_parser(clap::builder::ValueParser::new(parse_u128_with_underscores))
                 .required(false)
             )
         )
