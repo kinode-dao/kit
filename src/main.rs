@@ -334,13 +334,21 @@ async fn execute(
             let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
             let metadata_uri = matches.get_one::<String>("URI").unwrap();
             let keystore_path = PathBuf::from(matches.get_one::<String>("PATH").unwrap());
-            let fakechain_port = matches.get_one::<u16>("FAKECHAIN_PORT").unwrap();
+            let rpc_uri = matches.get_one::<String>("RPC_URI").unwrap();
+            let real = matches.get_one::<bool>("REAL").unwrap();
+            let gas_limit = matches.get_one::<u128>("GAS_LIMIT").unwrap();
+            let max_priority_fee = matches.get_one::<u128>("MAX_PRIORITY_FEE").unwrap();
+            let max_fee_per_gas = matches.get_one::<u128>("MAX_FEE_PER_GAS").unwrap();
 
             publish::execute(
                 &package_dir,
                 metadata_uri,
                 &keystore_path,
-                fakechain_port,
+                rpc_uri,
+                real,
+                *gas_limit,
+                *max_priority_fee,
+                *max_fee_per_gas,
             ).await
         }
         Some(("remove-package", matches)) => {
@@ -946,13 +954,46 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("Path to private key keystore") // TODO: add link to docs?
                 .required(true) // TODO: -> false when add hardware wallets
             )
-            .arg(Arg::new("FAKECHAIN_PORT")
+            .arg(Arg::new("RPC_URI")
                 .action(ArgAction::Set)
-                .short('c')
-                .long("fakechain-port")
-                .help("The port to connect to the fakechain on")
-                .default_value("8545")
-                .value_parser(value_parser!(u16))
+                .short('r')
+                .long("rpc")
+                .help("The ETH RPC WebSockets URI")
+                .required(true)
+            )
+            .arg(Arg::new("REAL")
+                .action(ArgAction::SetTrue)
+                .short('e')
+                .long("real")
+                .help("If set, deploy to real network (default: fake node)")
+                .required(false)
+            )
+            .arg(Arg::new("GAS_LIMIT")
+                .action(ArgAction::Set)
+                .short('g')
+                .long("gas-limit")
+                .help("The ETH transaction gas limit")
+                .default_value("1_000_000")
+                .value_parser(value_parser!(u64))
+                .required(false)
+            )
+            .arg(Arg::new("MAX_PRIORITY_FEE")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("priority-fee")
+                .help("The ETH transaction max priority fee")
+                .default_value("200_000_000_000")
+                .value_parser(value_parser!(u64))
+                .required(false)
+            )
+            .arg(Arg::new("MAX_FEE_PER_GAS")
+                .action(ArgAction::Set)
+                .short('f')
+                .long("fee-per-gas")
+                .help("The ETH transaction max fee per gas")
+                .default_value("300_000_000_000")
+                .value_parser(value_parser!(u64))
+                .required(false)
             )
         )
         .subcommand(Command::new("remove-package")

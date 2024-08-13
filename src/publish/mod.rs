@@ -66,10 +66,14 @@ sol! {
     ) external payable returns (uint256 blockNumber, bytes[] memory returnData);
 }
 
-const KIMAP_ADDRESS: &str = "0xEce71a05B36CA55B895427cD9a440eEF7Cf3669D";
+const FAKE_KIMAP_ADDRESS: &str = "0xEce71a05B36CA55B895427cD9a440eEF7Cf3669D";
+const FAKE_CHAIN_ID: u64 = 31337;
+
+const REAL_KIMAP_ADDRESS: &str = "0xcA92476B2483aBD5D82AEBF0b56701Bb2e9be658";
 const MULTICALL_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
-const KINO_ACCOUNT_IMPL: &str = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0";
+const KINO_ACCOUNT_IMPL: &str = "0x58790D9957ECE58607A4b58308BBD5FE1a2e4789";
 const FAKE_DOTDEV_TBA: &str = "0x69C30C0Cf0e9726f9eEF50bb74FA32711fA0B02D";
+const REAL_CHAIN_ID: u64 = 10;
 
 #[instrument(level = "trace", skip_all)]
 fn calculate_metadata_hash(package_dir: &Path) -> Result<String> {
@@ -102,12 +106,43 @@ fn namehash(name: &str) -> [u8; 32] {
     node.into()
 }
 
+async fn kimap_get(
+    node: &str,
+    kimap: Address,
+    provider: &RootProvider<PubSubFrontend>,
+) -> Result<(Address, Address, Option<Bytes>)> {
+    let node = namehash(&node);
+    let get_tx = TransactionRequest::default().to(kimap).input(
+        getCall {
+            node: node.into(),
+        }
+        .abi_encode()
+        .into(),
+    );
+
+    let get_call = provider.call(&get_tx).await?;
+    let decoded = getCall::abi_decode_returns(&get_call, false)?;
+
+    let tba = decoded.tba;
+    let owner = decoded.owner;
+    let data = if decoded.data == Bytes::default() {
+        None
+    } else {
+        Some(decoded.data)
+    };
+    Ok((tba, owner, data))
+}
+
 #[instrument(level = "trace", skip_all)]
 pub async fn execute(
     package_dir: &Path,
     metadata_uri: &str,
     keystore_path: &Path,
-    fakechain_port: &u16,
+    rpc_uri: &str,
+    real: &bool,
+    gas_limit: u128,
+    max_priority_fee_per_gas: u128,
+    max_fee_per_gas: u128,
 ) -> Result<()> {
     if !package_dir.join("pkg").exists() {
         return Err(eyre!(
@@ -117,7 +152,8 @@ pub async fn execute(
     }
 
     let metadata = read_metadata(package_dir)?;
-    let name = metadata.name.clone().unwrap_or_default();
+    let name = metadata.name.clone().unwrap();
+    let publisher = metadata.properties.publisher.clone();
 
     let remote_metadata_dir = PathBuf::from(format!("/tmp/kinode-kit-cache/{name}"));
     if !remote_metadata_dir.exists() {
@@ -165,14 +201,28 @@ pub async fn execute(
 
     let (wallet_address, wallet) = read_keystore(keystore_path)?;
 
-    let endpoint = format!("ws://localhost:{}", fakechain_port);
-    let ws = WsConnect::new(endpoint);
+    let ws = WsConnect::new(rpc_uri);
     let provider: RootProvider<PubSubFrontend> = ProviderBuilder::default().on_ws(ws).await?;
 
-    let kimap = Address::from_str(KIMAP_ADDRESS)?;
+    let kimap = Address::from_str(
+        if *real {
+            REAL_KIMAP_ADDRESS
+        } else {
+            FAKE_KIMAP_ADDRESS
+        }
+    )?;
     let multicall_address = Address::from_str(MULTICALL_ADDRESS)?;
-    let fakedotdev_tba = Address::from_str(FAKE_DOTDEV_TBA)?;
     let kino_account_impl = Address::from_str(KINO_ACCOUNT_IMPL)?;
+    let tld_tba =  if *real {
+        let (tba, _, _) = kimap_get(
+            publisher.split('.').last().unwrap(),
+            kimap,
+            &provider,
+        ).await?;
+        tba
+    } else {
+        Address::from_str(FAKE_DOTDEV_TBA)?
+    };
 
     // Create metadata calls
     let metadata_uri_call = noteCall {
@@ -201,23 +251,12 @@ pub async fn execute(
     let notes_multicall = aggregateCall { calls }.abi_encode();
 
     // Check if the app already exists
-    let app_node = format!("{}.{}", name, wallet_address);
-    let app_node = namehash(&app_node);
 
-    let get_tx = TransactionRequest::default().to(kimap).input(
-        getCall {
-            node: app_node.into(),
-        }
-        .abi_encode()
-        .into(),
-    );
-
-    let get_call = provider.call(&get_tx).await?;
-    let decoded = getCall::abi_decode_returns(&get_call, false)?;
-
-    let tba = decoded.tba;
-    let owner = decoded.owner;
-    let _data = decoded.data;
+    let (tba, owner, _) = kimap_get(
+        &format!("{}.{}", name, publisher),
+        kimap,
+        &provider,
+    ).await?;
 
     let is_update = tba != Address::default() && owner == wallet_address;
 
@@ -267,13 +306,13 @@ pub async fn execute(
     let nonce = provider.get_transaction_count(wallet_address).await?;
 
     let tx = TransactionRequest::default()
-        .to(fakedotdev_tba)
+        .to(tld_tba)
         .input(TransactionInput::new(create_app_call.into()))
         .nonce(nonce)
-        .with_chain_id(31337)
-        .with_gas_limit(1_000_000)
-        .with_max_priority_fee_per_gas(200_000_000_000)
-        .with_max_fee_per_gas(300_000_000_000);
+        .with_chain_id(if *real { REAL_CHAIN_ID } else { FAKE_CHAIN_ID })
+        .with_gas_limit(gas_limit)
+        .with_max_priority_fee_per_gas(max_priority_fee_per_gas)
+        .with_max_fee_per_gas(max_fee_per_gas);
 
     let tx_envelope = tx.build(&wallet).await?;
     let tx_encoded = tx_envelope.encoded_2718();
