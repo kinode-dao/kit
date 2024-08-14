@@ -341,6 +341,7 @@ async fn execute(
             let keystore_path = PathBuf::from(matches.get_one::<String>("PATH").unwrap());
             let rpc_uri = matches.get_one::<String>("RPC_URI").unwrap();
             let real = matches.get_one::<bool>("REAL").unwrap();
+            let unpublish = matches.get_one::<bool>("UNPUBLISH").unwrap();
             let gas_limit = matches.get_one::<u128>("GAS_LIMIT").unwrap();
             let max_priority_fee = matches
                 .get_one::<u128>("MAX_PRIORITY_FEE_PER_GAS")
@@ -355,6 +356,7 @@ async fn execute(
                 &keystore_path,
                 rpc_uri,
                 real,
+                unpublish,
                 *gas_limit,
                 max_priority_fee,
                 max_fee_per_gas,
@@ -977,6 +979,11 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("If set, deploy to real network [default: fake node]")
                 .required(false)
             )
+            .arg(Arg::new("UNPUBLISH")
+                .action(ArgAction::SetTrue)
+                .long("unpublish")
+                .help("If set, unpublish existing published package [default: publish a package]")
+            )
             .arg(Arg::new("GAS_LIMIT")
                 .action(ArgAction::Set)
                 .short('g')
@@ -990,7 +997,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .short('p')
                 .long("priority-fee")
-                .help("The ETH transaction max priority fee per gas")
+                .help("The ETH transaction max priority fee per gas [default: estimated from network conditions]")
                 .value_parser(clap::builder::ValueParser::new(parse_u128_with_underscores))
                 .required(false)
             )
@@ -998,7 +1005,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .short('f')
                 .long("fee-per-gas")
-                .help("The ETH transaction max fee per gas")
+                .help("The ETH transaction max fee per gas [default: estimated from network conditions]")
                 .value_parser(clap::builder::ValueParser::new(parse_u128_with_underscores))
                 .required(false)
             )

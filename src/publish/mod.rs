@@ -293,6 +293,7 @@ pub async fn execute(
     keystore_path: &Path,
     rpc_uri: &str,
     real: &bool,
+    unpublish: &bool,
     gas_limit: u128,
     max_priority_fee_per_gas: Option<u128>,
     max_fee_per_gas: Option<u128>,
@@ -327,17 +328,33 @@ pub async fn execute(
     let multicall_address = Address::from_str(MULTICALL_ADDRESS)?;
     let kino_account_impl = Address::from_str(KINO_ACCOUNT_IMPL)?;
 
-    let multicall = make_multicall(metadata_uri, &metadata_hash, kimap, multicall_address);
+    let (to, call) = if *unpublish {
+        let app_node = format!("{}.{}", name, publisher);
+        let (app_tba, owner, _) = kimap_get(
+            &app_node,
+            kimap,
+            &provider,
+        ).await?;
+        let exists = app_tba != Address::default() && owner == wallet_address;
+        if !exists {
+            return Err(eyre!("Can't find {app_node} to unpublish."));
+        }
 
-    let (to, call) = prepare_kimap_put(
-        multicall,
-        name.clone(),
-        &publisher,
-        kimap,
-        &provider,
-        wallet_address,
-        kino_account_impl,
-    ).await?;
+        let multicall = make_multicall("", "", kimap, multicall_address);
+        (app_tba, multicall)
+    } else {
+        let multicall = make_multicall(metadata_uri, &metadata_hash, kimap, multicall_address);
+
+        prepare_kimap_put(
+            multicall,
+            name.clone(),
+            &publisher,
+            kimap,
+            &provider,
+            wallet_address,
+            kino_account_impl,
+        ).await?
+    };
 
     let nonce = provider.get_transaction_count(wallet_address).await?;
     let gas_price = provider.get_gas_price().await?;
@@ -361,6 +378,6 @@ pub async fn execute(
         tx_hash,
         tx_hash,
     );
-    info!("{name} tx sent: {link}");
+    info!("{} {name} tx sent: {link}", if *unpublish { "unpublish" } else { "publish" });
     Ok(())
 }
