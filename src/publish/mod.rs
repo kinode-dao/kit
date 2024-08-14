@@ -10,7 +10,7 @@ use alloy::{
         client::WsConnect,
         types::eth::{TransactionInput, TransactionRequest},
     },
-    signers::local::LocalSigner,
+    signers::{ledger, local::LocalSigner, trezor},
 };
 use alloy_sol_macro::sol;
 use alloy_sol_types::SolCall;
@@ -88,6 +88,28 @@ fn read_keystore(keystore_path: &Path) -> Result<(Address, EthereumWallet)> {
     let password = rpassword::prompt_password("Enter password: ")?;
     let signer = LocalSigner::decrypt_keystore(keystore_path, password)?;
     let address = signer.address();
+    let wallet = EthereumWallet::from(signer);
+    Ok((address, wallet))
+}
+
+#[instrument(level = "trace", skip_all)]
+async fn read_ledger(chain_id: u64) -> Result<(Address, EthereumWallet)> {
+    let signer = ledger::LedgerSigner::new(
+        ledger::HDPath::LedgerLive(0),
+        Some(chain_id),
+    ).await?;
+    let address = signer.get_address().await?;
+    let wallet = EthereumWallet::from(signer);
+    Ok((address, wallet))
+}
+
+#[instrument(level = "trace", skip_all)]
+async fn read_trezor(chain_id: u64) -> Result<(Address, EthereumWallet)> {
+    let signer = trezor::TrezorSigner::new(
+        trezor::HDPath::TrezorLive(0),
+        Some(chain_id),
+    ).await?;
+    let address = signer.get_address().await?;
     let wallet = EthereumWallet::from(signer);
     Ok((address, wallet))
 }
@@ -290,7 +312,9 @@ async fn prepare_kimap_put(
 pub async fn execute(
     package_dir: &Path,
     metadata_uri: &str,
-    keystore_path: &Path,
+    keystore_path: Option<PathBuf>,
+    ledger: &bool,
+    trezor: &bool,
     rpc_uri: &str,
     real: &bool,
     unpublish: &bool,
@@ -305,6 +329,14 @@ pub async fn execute(
         ));
     }
 
+    let chain_id = if *real { REAL_CHAIN_ID } else { FAKE_CHAIN_ID };
+    let (wallet_address, wallet) = match (keystore_path, *ledger, *trezor) {
+        (Some(ref kp), false, false) => read_keystore(kp)?,
+        (None, true, false) => read_ledger(chain_id).await?,
+        (None, false, true) => read_trezor(chain_id).await?,
+        _ => return Err(eyre!("Must supply one and only one of `--keystore_path`, `--ledger`, or `--trezor`")),
+    };
+
     let metadata = read_metadata(package_dir)?;
 
     let metadata_hash = check_remote_metadata(&metadata, metadata_uri, package_dir).await?;
@@ -312,8 +344,6 @@ pub async fn execute(
 
     let name = metadata.name.clone().unwrap();
     let publisher = metadata.properties.publisher.clone();
-
-    let (wallet_address, wallet) = read_keystore(keystore_path)?;
 
     let ws = WsConnect::new(rpc_uri);
     let provider: RootProvider<PubSubFrontend> = ProviderBuilder::default().on_ws(ws).await?;
@@ -363,7 +393,7 @@ pub async fn execute(
         .to(to)
         .input(TransactionInput::new(call.into()))
         .nonce(nonce)
-        .with_chain_id(if *real { REAL_CHAIN_ID } else { FAKE_CHAIN_ID })
+        .with_chain_id(chain_id)
         .with_gas_limit(gas_limit)
         .with_max_priority_fee_per_gas(max_priority_fee_per_gas.unwrap_or_else(|| gas_price))
         .with_max_fee_per_gas(max_fee_per_gas.unwrap_or_else(|| gas_price));

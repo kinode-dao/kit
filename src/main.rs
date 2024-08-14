@@ -338,7 +338,11 @@ async fn execute(
         Some(("publish", matches)) => {
             let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
             let metadata_uri = matches.get_one::<String>("URI").unwrap();
-            let keystore_path = PathBuf::from(matches.get_one::<String>("PATH").unwrap());
+            let keystore_path = matches
+                .get_one::<String>("PATH")
+                .and_then(|kp| Some(PathBuf::from(kp)));
+            let ledger = matches.get_one::<bool>("LEDGER").unwrap();
+            let trezor = matches.get_one::<bool>("TREZOR").unwrap();
             let rpc_uri = matches.get_one::<String>("RPC_URI").unwrap();
             let real = matches.get_one::<bool>("REAL").unwrap();
             let unpublish = matches.get_one::<bool>("UNPUBLISH").unwrap();
@@ -353,7 +357,9 @@ async fn execute(
             publish::execute(
                 &package_dir,
                 metadata_uri,
-                &keystore_path,
+                keystore_path,
+                ledger,
+                trezor,
                 rpc_uri,
                 real,
                 unpublish,
@@ -951,19 +957,33 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("The package directory to publish")
                 .default_value(current_dir)
             )
+            .arg(Arg::new("PATH")
+                .action(ArgAction::Set)
+                .short('k')
+                .long("keystore-path")
+                .help("Path to private key keystore (choose 1 of `k`, `l`, `t`)") // TODO: add link to docs?
+                .required(false)
+            )
+            .arg(Arg::new("LEDGER")
+                .action(ArgAction::SetTrue)
+                .short('l')
+                .long("ledger")
+                .help("Use Ledger private key (choose 1 of `k`, `l`, `t`)")
+                .required(false)
+            )
+            .arg(Arg::new("TREZOR")
+                .action(ArgAction::SetTrue)
+                .short('t')
+                .long("trezor")
+                .help("Use Trezor private key (choose 1 of `k`, `l`, `t`)")
+                .required(false)
+            )
             .arg(Arg::new("URI")
                 .action(ArgAction::Set)
                 .short('u')
                 .long("metadata-uri")
                 .help("URI where metadata lives")
                 .required(true)
-            )
-            .arg(Arg::new("PATH")
-                .action(ArgAction::Set)
-                .short('k')
-                .long("keystore-path")
-                .help("Path to private key keystore") // TODO: add link to docs?
-                .required(true) // TODO: -> false when add hardware wallets
             )
             .arg(Arg::new("RPC_URI")
                 .action(ArgAction::Set)
