@@ -22,7 +22,6 @@ fn visit_dirs(dir: &Path, output_buffer: &mut Vec<u8>) -> io::Result<()> {
                 let path_str = relative_path.to_str().unwrap().replace("\\", "/");
 
                 let relative_path_from_includes = Path::new("..").join(path);
-                //let relative_path_from_includes = path.strip_prefix(NEW_DIR).unwrap();
                 let path_str_from_includes = relative_path_from_includes
                     .to_str()
                     .unwrap()
