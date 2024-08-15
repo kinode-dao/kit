@@ -2,8 +2,9 @@ use std::fs;
 use std::io::{self, Write};
 use std::path::Path;
 
-const NEW_DIR: &str = "src/new";
 const TEMPLATES_DIR: &str = "src/new/templates";
+const TARGET_DIR: &str = "target";
+const INCLUDES: &str = "includes.rs";
 
 fn visit_dirs(dir: &Path, output_buffer: &mut Vec<u8>) -> io::Result<()> {
     if dir.is_dir() {
@@ -20,7 +21,8 @@ fn visit_dirs(dir: &Path, output_buffer: &mut Vec<u8>) -> io::Result<()> {
                 let relative_path = path.strip_prefix(TEMPLATES_DIR).unwrap();
                 let path_str = relative_path.to_str().unwrap().replace("\\", "/");
 
-                let relative_path_from_includes = path.strip_prefix(NEW_DIR).unwrap();
+                let relative_path_from_includes = Path::new("..").join(path);
+                //let relative_path_from_includes = path.strip_prefix(NEW_DIR).unwrap();
                 let path_str_from_includes = relative_path_from_includes
                     .to_str()
                     .unwrap()
@@ -67,15 +69,19 @@ fn main() -> anyhow::Result<()> {
     writeln!(
         output_buffer,
         "    (\"{}\", include_str!(\"{}\")),",
-        "componentize.mjs", "componentize.mjs",
+        "componentize.mjs", "../src/new/componentize.mjs",
     )?;
 
     visit_dirs(Path::new(TEMPLATES_DIR), &mut output_buffer)?;
 
     writeln!(&mut output_buffer, "];")?;
 
-    let output_path = Path::new(NEW_DIR).join("includes.rs");
+    let target_dir = Path::new(TARGET_DIR);
+    let output_path = target_dir.join(INCLUDES);
     // create includes.rs if it does not exist
+    if !target_dir.exists() {
+        fs::create_dir_all(target_dir)?;
+    }
     if !output_path.exists() {
         fs::write(&output_path, &output_buffer)?;
     } else {

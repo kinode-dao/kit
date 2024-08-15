@@ -6,7 +6,7 @@ use kinode_process_lib::{
 
 wit_bindgen::generate!({
     path: "target/wit",
-    world: "{package_name_kebab}-{publisher_dotted_kebab}-v0",
+    world: "file-transfer-template-dot-os-v0",
     generate_unused_types: true,
     additional_derives: [serde::Deserialize, serde::Serialize, process_macros::SerdeJsonInto],
 });
@@ -39,14 +39,14 @@ fn init(our: Address) {
 
     let args = String::from_utf8(body).unwrap_or_default();
     let Some((name, who)) = args.split_once(" ") else {
-        println!("usage: download:{package_name}:{publisher} file_name who");
+        println!("usage: download:file_transfer:template.os file_name who");
         return;
     };
-    let our: Address = format!("{}@{package_name}:{package_name}:{publisher}", our.node())
+    let our: Address = format!("{}@file_transfer:file_transfer:template.os", our.node())
         .parse()
         .unwrap();
 
-    let target: Address = format!("{}@{package_name}:{package_name}:{publisher}", who)
+    let target: Address = format!("{}@file_transfer:file_transfer:template.os", who)
         .parse()
         .unwrap();
 

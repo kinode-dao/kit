@@ -10,7 +10,7 @@ setup_packages = [
     { path = "..", run = true }
 ]
 setup_scripts = []
-test_package_paths = ["{package_name}_test"]
+test_package_paths = ["chat_test"]
 test_scripts = []
 timeout_secs = 5
 fakechain_router = 8545

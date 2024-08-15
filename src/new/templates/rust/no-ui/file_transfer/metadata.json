@@ -1,18 +1,18 @@
 {
-    "name": "{package_name}",
+    "name": "file_transfer",
     "description": "",
     "image": "",
     "properties": {
-        "package_name": "{package_name}",
+        "package_name": "file_transfer",
         "current_version": "0.1.0",
-        "publisher": "{publisher}",
+        "publisher": "template.os",
         "mirrors": [],
         "code_hashes": {
             "0.1.0": ""
         },
         "wit_version": 0,
         "dependencies": [
-            "{package_name}:{publisher}"
+            "file_transfer:template.os"
         ]
     },
     "external_url": "",

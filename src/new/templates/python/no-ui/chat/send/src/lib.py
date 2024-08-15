@@ -1,7 +1,7 @@
 import json
 
-import {package_name}_{publisher_dotted_snake}_v0
-from {package_name}_{publisher_dotted_snake}_v0.imports.standard import (
+import chat_template_dot_os_v0
+from chat_template_dot_os_v0.imports.standard import (
     Address,
     MessageRequest,
     MessageResponse,
@@ -10,7 +10,7 @@ from {package_name}_{publisher_dotted_snake}_v0.imports.standard import (
     receive,
     send_and_await_response,
 )
-from {package_name}_{publisher_dotted_snake}_v0.types import Err
+from chat_template_dot_os_v0.types import Err
 
 def parse_address(address_string):
     node, _, rest = address_string.partition("@")
@@ -20,7 +20,7 @@ def parse_address(address_string):
 
     return node, process, package, publisher
 
-class {package_name_upper_camel}{publisher_dotted_upper_camel}V0({package_name}_{publisher_dotted_snake}_v0.{package_name_upper_camel}{publisher_dotted_upper_camel}V0):
+class ChatTemplateDotOsV0(chat_template_dot_os_v0.ChatTemplateDotOsV0):
     def init(self, our):
         our_node, _, _, _ = parse_address(our)
         result = receive()
@@ -44,7 +44,7 @@ class {package_name_upper_camel}{publisher_dotted_upper_camel}V0({package_name}_
                 response = send_and_await_response(
                     Address(
                         our_node,
-                        ProcessId("{package_name}", "{package_name}", "{publisher}"),
+                        ProcessId("chat", "chat", "template.os"),
                     ),
                     Request(False, 5, json.dumps(request).encode("utf-8"), None, []),
                     None,
