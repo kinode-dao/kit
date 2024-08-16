@@ -42,19 +42,20 @@ zip = "0.6"
 [workspace]
 members = []
 exclude = [
-    "src/new/templates/rust/no-ui/blank/blank",
-    "src/new/templates/rust/no-ui/chat/chat",
-    "src/new/templates/rust/no-ui/chat/send",
-    "src/new/templates/rust/no-ui/chat/test/chat_test",
-    "src/new/templates/rust/no-ui/echo/echo",
-    "src/new/templates/rust/no-ui/echo/test/echo_test",
-    "src/new/templates/rust/no-ui/fibonacci/fibonacci",
-    "src/new/templates/rust/no-ui/fibonacci/number",
-    "src/new/templates/rust/no-ui/fibonacci/test/fibonacci_test",
-    "src/new/templates/rust/no-ui/file_transfer/file_transfer",
-    "src/new/templates/rust/no-ui/file_transfer/download",
-    "src/new/templates/rust/no-ui/file_transfer/list_files",
-    "src/new/templates/rust/no-ui/file_transfer/test/file_transfer_test",
+    "src/new/templates/*",
+    #"src/new/templates/rust/no-ui/blank/blank",
+    #"src/new/templates/rust/no-ui/chat/chat",
+    #"src/new/templates/rust/no-ui/chat/send",
+    #"src/new/templates/rust/no-ui/chat/test/chat_test",
+    #"src/new/templates/rust/no-ui/echo/echo",
+    #"src/new/templates/rust/no-ui/echo/test/echo_test",
+    #"src/new/templates/rust/no-ui/fibonacci/fibonacci",
+    #"src/new/templates/rust/no-ui/fibonacci/number",
+    #"src/new/templates/rust/no-ui/fibonacci/test/fibonacci_test",
+    #"src/new/templates/rust/no-ui/file_transfer/file_transfer",
+    #"src/new/templates/rust/no-ui/file_transfer/download",
+    #"src/new/templates/rust/no-ui/file_transfer/list_files",
+    #"src/new/templates/rust/no-ui/file_transfer/test/file_transfer_test",
 ]
 resolver = "2"
 
