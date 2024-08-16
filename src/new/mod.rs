@@ -225,15 +225,14 @@ pub fn execute(
         ui_infix,
         template.to_string(),
     );
-    let ui_prefix = format!("{}/{}/", ui_infix, template.to_string(),);
-    let test_prefix = format!("test/{}/", template.to_string(),);
+    let ui_prefix = format!("{}/{}/", ui_infix, template.to_string());
+    let test_prefix = format!("test/{}/", template.to_string());
     let mut path_to_content: HashMap<String, String> = PATH_TO_CONTENT
         .iter()
         .filter_map(|(path, content)| {
             path.strip_prefix(&template_prefix)
                 .map(|p| p.to_string())
                 .or_else(|| path.strip_prefix(&ui_prefix).map(|p| p.to_string()))
-                .or_else(|| path.strip_prefix(&test_prefix).map(|p| format!("test/{p}")))
                 .or_else(|| {
                     if path.starts_with(&test_prefix) {
                         Some(path.to_string())

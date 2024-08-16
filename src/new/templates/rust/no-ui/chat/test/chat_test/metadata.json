@@ -1,0 +1,21 @@
+{
+    "name": "chat Test",
+    "description": "A test for chat.",
+    "image": "",
+    "properties": {
+        "package_name": "chat_test",
+        "current_version": "0.1.0",
+        "publisher": "template.os",
+        "mirrors": [],
+        "code_hashes": {
+            "0.1.0": ""
+        },
+        "wit_version": 0,
+        "dependencies": [
+            "chat:template.os",
+            "tester:sys"
+        ]
+    },
+    "external_url": "",
+    "animation_url": ""
+}

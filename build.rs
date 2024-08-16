@@ -7,31 +7,41 @@ const TARGET_DIR: &str = "target";
 const INCLUDES: &str = "includes.rs";
 
 fn visit_dirs(dir: &Path, output_buffer: &mut Vec<u8>) -> io::Result<()> {
-    if dir.is_dir() {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                visit_dirs(&path, output_buffer)?;
-            } else {
-                if path.extension().and_then(|s| s.to_str()) == Some("swp") {
-                    continue;
-                }
-
-                let relative_path = path.strip_prefix(TEMPLATES_DIR).unwrap();
-                let path_str = relative_path.to_str().unwrap().replace("\\", "/");
-
-                let relative_path_from_includes = Path::new("..").join(path);
-                let path_str_from_includes = relative_path_from_includes
-                    .to_str()
-                    .unwrap()
-                    .replace("\\", "/");
-                writeln!(
-                    output_buffer,
-                    "    (\"{}\", include_str!(\"{}\")),",
-                    path_str, path_str_from_includes,
-                )?;
+    if !dir.is_dir() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            let dir_name = path.file_name().and_then(|s| s.to_str());
+            if dir_name == Some("home") || dir_name == Some("target") {
+                continue;
             }
+            visit_dirs(&path, output_buffer)?;
+        } else {
+            let ext = path.extension().and_then(|s| s.to_str());
+            if ext == Some("swp") || ext == Some("wasm") || ext == Some("zip") {
+                continue;
+            }
+            let file_name = path.file_name().and_then(|s| s.to_str());
+            if file_name == Some("Cargo.lock") {
+                continue;
+            }
+
+            let relative_path = path.strip_prefix(TEMPLATES_DIR).unwrap();
+            let path_str = relative_path.to_str().unwrap().replace("\\", "/");
+
+            let relative_path_from_includes = Path::new("..").join(path);
+            let path_str_from_includes = relative_path_from_includes
+                .to_str()
+                .unwrap()
+                .replace("\\", "/");
+            writeln!(
+                output_buffer,
+                "    (\"{}\", include_str!(\"{}\")),",
+                path_str, path_str_from_includes,
+            )?;
         }
     }
     Ok(())
