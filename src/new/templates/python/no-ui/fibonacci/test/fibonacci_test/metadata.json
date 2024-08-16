@@ -1,9 +1,9 @@
 {
-    "name": "echo Test",
-    "description": "A test for echo.",
+    "name": "fibonacci Test",
+    "description": "A test for fibonacci.",
     "image": "",
     "properties": {
-        "package_name": "echo_test",
+        "package_name": "fibonacci_test",
         "current_version": "0.1.0",
         "publisher": "template.os",
         "mirrors": [],
@@ -12,7 +12,7 @@
         },
         "wit_version": 0,
         "dependencies": [
-            "echo:template.os",
+            "fibonacci:template.os",
             "tester:sys"
         ]
     },
