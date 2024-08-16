@@ -9,7 +9,7 @@ use tracing::{info, instrument};
 use walkdir::WalkDir;
 use zip::write::FileOptions;
 
-use kinode_process_lib::kernel_types::{Erc721Metadata, PackageManifestEntry};
+use kinode_process_lib::kernel_types::PackageManifestEntry;
 
 use crate::{build::read_metadata, inject_message, KIT_LOG_PATH_DEFAULT};
 
@@ -18,30 +18,11 @@ fn new_package(
     node: Option<&str>,
     package_name: &str,
     publisher_node: &str,
-    metadata: &Erc721Metadata,
     bytes_path: &str,
 ) -> Result<serde_json::Value> {
     let message = json!({
         "NewPackage": {
             "package_id": {"package_name": package_name, "publisher_node": publisher_node},
-            "metadata": {
-                "name": metadata.name,
-                "description": metadata.description,
-                "image": metadata.image,
-                "external_url": metadata.external_url,
-                "animation_url": metadata.animation_url,
-                "properties": {
-                    "package_name": metadata.properties.package_name,
-                    "publisher": metadata.properties.publisher,
-                    "current_version": metadata.properties.current_version,
-                    "mirrors": metadata.properties.mirrors,
-                    "code_hashes": metadata.properties.code_hashes.clone().into_iter().collect::<Vec<(String, String)>>(),
-                    "license": metadata.properties.license,
-                    "screenshots": metadata.properties.screenshots,
-                    "wit_version": metadata.properties.wit_version,
-                    "dependencies": metadata.properties.dependencies,
-                },
-            },
             "mirror": true
         }
     });
@@ -53,30 +34,6 @@ fn new_package(
         node,
         None,
         Some(bytes_path),
-    )
-}
-
-#[instrument(level = "trace", skip_all)]
-pub fn interact_with_package(
-    request_type: &str,
-    node: Option<&str>,
-    package_name: &str,
-    publisher_node: &str,
-) -> Result<serde_json::Value> {
-    let message = json!({
-        request_type: {
-            "package_name": package_name,
-            "publisher_node": publisher_node,
-        }
-    });
-
-    inject_message::make_message(
-        "main:app_store:sys",
-        Some(15),
-        &message.to_string(),
-        node,
-        None,
-        None,
     )
 }
 
@@ -157,14 +114,13 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)?;
     hasher.update(&buffer);
-    let hash_result = hasher.finalize();
-    info!("package zip hash: {:x}", hash_result);
+    let hash_string = format!("{:x}", hasher.finalize());
+    info!("package zip hash: {:?}", hash_string);
     // Create and send new package request
     let new_pkg_request = new_package(
         None,
         package_name,
         publisher,
-        &metadata,
         zip_filename.to_str().unwrap(),
     )?;
     let response = inject_message::send_request(url, new_pkg_request).await?;
@@ -190,7 +146,41 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     }
 
     // Install package
-    let install_request = interact_with_package("Install", None, package_name, publisher)?;
+    let body = json!({
+        "Install": {
+            "package_id": {
+                "package_name": package_name,
+                "publisher_node": publisher,
+            },
+            "version_hash": hash_string,
+            "metadata": {
+                "name": metadata.name,
+                "description": metadata.description,
+                "image": metadata.image,
+                "external_url": metadata.external_url,
+                "animation_url": metadata.animation_url,
+                "properties": {
+                    "package_name": metadata.properties.package_name,
+                    "publisher": metadata.properties.publisher,
+                    "current_version": metadata.properties.current_version,
+                    "mirrors": metadata.properties.mirrors,
+                    "code_hashes": metadata.properties.code_hashes.clone().into_iter().collect::<Vec<(String, String)>>(),
+                    "license": metadata.properties.license,
+                    "screenshots": metadata.properties.screenshots,
+                    "wit_version": metadata.properties.wit_version,
+                    "dependencies": metadata.properties.dependencies,
+                },
+            },
+        }
+    });
+    let install_request = inject_message::make_message(
+        "main:app_store:sys",
+        Some(15),
+        &body.to_string(),
+        None,
+        None,
+        None,
+    )?;
     let response = inject_message::send_request(url, install_request).await?;
     let inject_message::Response { ref body, .. } =
         inject_message::parse_response(response).await?;
