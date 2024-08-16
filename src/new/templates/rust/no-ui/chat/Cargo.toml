@@ -1,0 +1,11 @@
+[workspace]
+resolver = "2"
+members = [
+    "chat",
+    "send",
+]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true

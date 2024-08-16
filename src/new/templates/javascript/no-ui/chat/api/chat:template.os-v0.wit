@@ -1,0 +1,27 @@
+interface chat {
+    variant request {
+        send(send-request),
+        /// history of chat with given node
+        history(string),
+    }
+
+    variant response {
+        send,
+        history(list<chat-message>),
+    }
+
+    record send-request {
+        target: string,
+        message: string,
+    }
+
+    record chat-message {
+        author: string,
+        content: string,
+    }
+}
+
+world chat-template-dot-os-v0 {
+    import chat;
+    include process;
+}

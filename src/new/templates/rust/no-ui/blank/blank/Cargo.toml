@@ -1,0 +1,17 @@
+[package]
+name = "blank"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+kinode_process_lib = "0.8.5"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+wit-bindgen = "0.24.0"
+
+[lib]
+crate-type = ["cdylib"]
+
+[package.metadata.component]
+package = "kinode:process"

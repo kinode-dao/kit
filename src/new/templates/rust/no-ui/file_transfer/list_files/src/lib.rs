@@ -1,11 +1,11 @@
-use crate::kinode::process::{package_name}::{Request as TransferRequest, Response as TransferResponse};
+use crate::kinode::process::file_transfer::{Request as TransferRequest, Response as TransferResponse};
 use kinode_process_lib::{
     await_next_message_body, call_init, println, Address, Message, Request,
 };
 
 wit_bindgen::generate!({
     path: "target/wit",
-    world: "{package_name_kebab}-{publisher_dotted_kebab}-v0",
+    world: "file-transfer-template-dot-os-v0",
     generate_unused_types: true,
     additional_derives: [serde::Deserialize, serde::Serialize, process_macros::SerdeJsonInto],
 });
@@ -19,11 +19,11 @@ fn init(_our: Address) {
 
     let who = String::from_utf8(body).unwrap_or_default();
     if who.is_empty() {
-        println!("usage: list_files:{package_name}:{publisher} who");
+        println!("usage: list_files:file_transfer:template.os who");
         return;
     }
 
-    let target: Address = format!("{}@{package_name}:{package_name}:{publisher}", who)
+    let target: Address = format!("{}@file_transfer:file_transfer:template.os", who)
         .parse()
         .unwrap();
 
