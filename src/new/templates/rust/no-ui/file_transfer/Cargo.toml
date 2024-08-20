@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = [
+    "file_transfer",
+    "file_transfer_worker_api",
+    "file_transfer_worker",
+    "download",
+    "list_files"
+]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true

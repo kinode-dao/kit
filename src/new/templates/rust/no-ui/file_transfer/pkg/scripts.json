@@ -4,10 +4,10 @@
         "public": false,
         "request_networking": false,
         "request_capabilities": [
-            "{package_name}:{package_name}:{publisher}"
+            "file_transfer:file_transfer:template.os"
         ],
         "grant_capabilities": [
-            "{package_name}:{package_name}:{publisher}"
+            "file_transfer:file_transfer:template.os"
         ],
         "wit_version": 0
     },
@@ -16,10 +16,10 @@
         "public": false,
         "request_networking": true,
         "request_capabilities": [
-            "{package_name}:{package_name}:{publisher}"
+            "file_transfer:file_transfer:template.os"
         ],
         "grant_capabilities": [
-            "{package_name}:{package_name}:{publisher}"
+            "file_transfer:file_transfer:template.os"
         ],
         "wit_version": 0
     }

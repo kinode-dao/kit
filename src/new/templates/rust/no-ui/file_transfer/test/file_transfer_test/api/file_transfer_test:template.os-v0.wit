@@ -1,0 +1,5 @@
+world file-transfer-test-template-dot-os-v0 {
+    import file-transfer;
+    import tester;
+    include process-v0;
+}
