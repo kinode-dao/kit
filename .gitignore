@@ -1,4 +1,7 @@
-/target
+**/target
 *.swp
 my_package/
 src/new/includes.rs
+src/new/templates/**/Cargo.lock
+src/new/templates/**/*.wasm
+src/new/templates/**/*.zip

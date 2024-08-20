@@ -94,8 +94,19 @@ fn is_only_empty_string(splitted: &Vec<&str>) -> bool {
 pub fn run_command(cmd: &mut Command, verbose: bool) -> Result<Option<(String, String)>> {
     if verbose {
         let mut child = cmd.spawn()?;
-        child.wait()?;
-        return Ok(None);
+        let result = child.wait()?;
+        if result.success() {
+            return Ok(None);
+        } else {
+            return Err(eyre!(
+                "Command `{} {:?}` failed with exit code {:?}",
+                cmd.get_program().to_str().unwrap(),
+                cmd.get_args()
+                    .map(|a| a.to_str().unwrap())
+                    .collect::<Vec<_>>(),
+                result.code(),
+            ));
+        }
     }
     let output = cmd.output()?;
     if output.status.success() {

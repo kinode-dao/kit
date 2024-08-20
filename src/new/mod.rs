@@ -7,7 +7,7 @@ use color_eyre::{eyre::eyre, Result};
 use fs_err as fs;
 use tracing::instrument;
 
-include!("includes.rs");
+include!("../../target/includes.rs");
 
 #[derive(Clone)]
 pub enum Language {
@@ -109,23 +109,31 @@ fn replace_dots(input: &str) -> (String, String) {
     }
 }
 
-fn replace_vars(input: &str, package_name: &str, publisher: &str) -> String {
+fn replace_vars(
+    input: &str,
+    template_package_name: &str,
+    package_name: &str,
+    publisher: &str,
+) -> String {
+    let template_package_name_kebab = template_package_name.replace("_", "-");
+    let template_package_name_upper_camel = snake_to_upper_camel_case(template_package_name);
+
     let package_name_kebab = package_name.replace("_", "-");
-    let (publisher_dotted_snake, publisher_dotted_kebab) = replace_dots(publisher);
     let package_name_upper_camel = snake_to_upper_camel_case(package_name);
+
+    let (publisher_dotted_snake, publisher_dotted_kebab) = replace_dots(publisher);
     let publisher_dotted_upper_camel = snake_to_upper_camel_case(&publisher_dotted_snake);
     input
-        .replace("{package_name}", package_name)
-        .replace("{package_name_kebab}", &package_name_kebab)
-        .replace("{package_name_upper_camel}", &package_name_upper_camel)
-        .replace("{publisher}", publisher)
-        .replace("{publisher_dotted_snake}", &publisher_dotted_snake)
-        .replace("{publisher_dotted_kebab}", &publisher_dotted_kebab)
+        .replace(template_package_name, package_name)
+        .replace(&template_package_name_kebab, &package_name_kebab)
         .replace(
-            "{publisher_dotted_upper_camel}",
-            &publisher_dotted_upper_camel,
+            &template_package_name_upper_camel,
+            &package_name_upper_camel,
         )
-        .replace("Cargo.toml_", "Cargo.toml")
+        .replace("template.os", publisher)
+        .replace("template_dot_os", &publisher_dotted_snake)
+        .replace("template-dot-os", &publisher_dotted_kebab)
+        .replace("TemplateDotOs", &publisher_dotted_upper_camel)
         .to_string()
 }
 
@@ -217,15 +225,14 @@ pub fn execute(
         ui_infix,
         template.to_string(),
     );
-    let ui_prefix = format!("{}/{}/", ui_infix, template.to_string(),);
-    let test_prefix = format!("test/{}/", template.to_string(),);
+    let ui_prefix = format!("{}/{}/", ui_infix, template.to_string());
+    let test_prefix = format!("test/{}/", template.to_string());
     let mut path_to_content: HashMap<String, String> = PATH_TO_CONTENT
         .iter()
         .filter_map(|(path, content)| {
             path.strip_prefix(&template_prefix)
                 .map(|p| p.to_string())
                 .or_else(|| path.strip_prefix(&ui_prefix).map(|p| p.to_string()))
-                .or_else(|| path.strip_prefix(&test_prefix).map(|p| format!("test/{p}")))
                 .or_else(|| {
                     if path.starts_with(&test_prefix) {
                         Some(path.to_string())
@@ -234,8 +241,10 @@ pub fn execute(
                     }
                 })
                 .and_then(|stripped| {
-                    let modified_path = replace_vars(&stripped, &package_name, &publisher);
-                    let modified_content = replace_vars(content, &package_name, &publisher);
+                    let modified_path =
+                        replace_vars(&stripped, &template.to_string(), &package_name, &publisher);
+                    let modified_content =
+                        replace_vars(content, &template.to_string(), &package_name, &publisher);
                     Some((modified_path, modified_content))
                 })
         })
@@ -269,7 +278,12 @@ pub fn execute(
         Language::Javascript => {
             path_to_content.insert(
                 format!("{}/{}", package_name, PATH_TO_CONTENT[0].0),
-                replace_vars(PATH_TO_CONTENT[0].1, &package_name, &publisher),
+                replace_vars(
+                    PATH_TO_CONTENT[0].1,
+                    &template.to_string(),
+                    &package_name,
+                    &publisher,
+                ),
             );
         }
         _ => {}

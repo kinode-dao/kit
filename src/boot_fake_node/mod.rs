@@ -237,6 +237,10 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> Result<
                         }
                     }
                 }
+                if s.contains("No server is currently available to service your request.") {
+                    warn!("Couldn't reach GitHub");
+                    return Ok(vec![]);
+                }
             }
             fs::create_dir_all(
                 cache_path

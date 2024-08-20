@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    "fibonacci_test",
+]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true

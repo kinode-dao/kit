@@ -1,11 +1,11 @@
 {
-    "name": "{package_name}",
+    "name": "echo",
     "description": "",
     "image": "",
     "properties": {
-        "package_name": "{package_name}",
+        "package_name": "echo",
         "current_version": "0.1.0",
-        "publisher": "{publisher}",
+        "publisher": "template.os",
         "mirrors": [],
         "code_hashes": {
             "0.1.0": ""

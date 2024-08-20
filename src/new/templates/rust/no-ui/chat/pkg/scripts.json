@@ -4,10 +4,10 @@
         "public": false,
         "request_networking": false,
         "request_capabilities": [
-            "{package_name}:{package_name}:{publisher}"
+            "chat:chat:template.os"
         ],
         "grant_capabilities": [
-            "{package_name}:{package_name}:{publisher}"
+            "chat:chat:template.os"
         ]
     }
 }
