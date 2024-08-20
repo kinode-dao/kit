@@ -1,6 +1,6 @@
 use sha2::{Digest, Sha256};
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use color_eyre::{eyre::eyre, Result, Section};
 use fs_err as fs;
@@ -9,7 +9,7 @@ use tracing::{info, instrument};
 use walkdir::WalkDir;
 use zip::write::FileOptions;
 
-use kinode_process_lib::kernel_types::PackageManifestEntry;
+use kinode_process_lib::kernel_types::{Erc721Metadata, PackageManifestEntry};
 
 use crate::{build::read_metadata, inject_message, KIT_LOG_PATH_DEFAULT};
 
@@ -35,6 +35,54 @@ fn new_package(
         None,
         Some(bytes_path),
     )
+}
+
+#[instrument(level = "trace", skip_all)]
+pub fn interact_with_package(
+    request_type: &str,
+    node: Option<&str>,
+    package_name: &str,
+    publisher_node: &str,
+) -> Result<serde_json::Value> {
+    let message = json!({
+        request_type: {
+            "package_name": package_name,
+            "publisher_node": publisher_node,
+        }
+    });
+
+    inject_message::make_message(
+        "main:app_store:sys",
+        Some(15),
+        &message.to_string(),
+        node,
+        None,
+        None,
+    )
+}
+
+pub fn make_pkg_publisher(metadata: &Erc721Metadata) -> String {
+    let package_name = metadata.properties.package_name.as_str();
+    let publisher = metadata.properties.publisher.as_str();
+    let pkg_publisher = format!("{}:{}", package_name, publisher);
+    pkg_publisher
+}
+
+#[instrument(level = "trace", skip_all)]
+pub fn zip_pkg(package_dir: &Path, pkg_publisher: &str) -> Result<(PathBuf, String)> {
+    let pkg_dir = package_dir.join("pkg");
+    let target_dir = package_dir.join("target");
+    fs::create_dir_all(&target_dir)?;
+    let zip_filename = target_dir.join(pkg_publisher).with_extension("zip");
+    zip_directory(&pkg_dir, &zip_filename.to_str().unwrap())?;
+
+    let mut file = fs::File::open(&zip_filename)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)?;
+    hasher.update(&buffer);
+    let hash_result = hasher.finalize();
+    Ok((zip_filename, format!("{hash_result:x}")))
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -83,7 +131,7 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     let metadata = read_metadata(package_dir)?;
     let package_name = metadata.properties.package_name.as_str();
     let publisher = metadata.properties.publisher.as_str();
-    let pkg_publisher = format!("{}:{}", package_name, publisher);
+    let pkg_publisher = make_pkg_publisher(&metadata);
 
     let manifest = fs::File::open(pkg_dir.join("manifest.json"))
         .with_suggestion(|| "Missing required manifest.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson")?;
@@ -103,19 +151,9 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
 
     info!("{}", pkg_publisher);
 
-    // Create zip and put it in /target
-    let target_dir = package_dir.join("target");
-    fs::create_dir_all(&target_dir)?;
-    let zip_filename = target_dir.join(&pkg_publisher).with_extension("zip");
-    zip_directory(&pkg_dir, &zip_filename.to_str().unwrap())?;
+    let (zip_filename, hash_string) = zip_pkg(package_dir, &pkg_publisher)?;
+    info!("package zip hash: {hash_string}");
 
-    let mut file = fs::File::open(&zip_filename)?;
-    let mut hasher = Sha256::new();
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)?;
-    hasher.update(&buffer);
-    let hash_string = format!("{:x}", hasher.finalize());
-    info!("package zip hash: {:?}", hash_string);
     // Create and send new package request
     let new_pkg_request = new_package(
         None,
