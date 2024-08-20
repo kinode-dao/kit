@@ -8,7 +8,6 @@ use tracing::{info, instrument};
 use kinode_process_lib::kernel_types::Erc721Metadata;
 
 use crate::inject_message;
-use crate::start_package::interact_with_package;
 
 #[instrument(level = "trace", skip_all)]
 pub async fn execute(
@@ -32,7 +31,19 @@ pub async fn execute(
     };
 
     // Create and send uninstall request
-    let uninstall_request = interact_with_package("Uninstall", None, &package_name, &publisher)?;
+    let body = serde_json::json!({
+        "Uninstall": {
+            "package_id": {"package_name": package_name, "publisher_node": publisher},
+        }
+    });
+    let uninstall_request = inject_message::make_message(
+        "main:app_store:sys",
+        Some(15),
+        &body.to_string(),
+        None,
+        None,
+        None,
+    )?;
     let response = inject_message::send_request(url, uninstall_request).await?;
     if response.status() != 200 {
         process::exit(1);
