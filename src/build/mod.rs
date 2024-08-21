@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::SystemTime;
@@ -12,7 +13,10 @@ use color_eyre::{
 };
 use fs_err as fs;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tracing::{debug, info, instrument, warn};
+use walkdir::WalkDir;
+use zip::write::FileOptions;
 
 use kinode_process_lib::{PackageId, kernel_types::Erc721Metadata};
 
@@ -20,7 +24,6 @@ use crate::setup::{
     check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version,
     get_python_version, REQUIRED_PY_PACKAGE,
 };
-use crate::start_package::zip_directory;
 use crate::view_api;
 use crate::KIT_CACHE;
 
@@ -44,6 +47,75 @@ struct CargoFile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoPackage {
     name: String,
+}
+
+pub fn make_pkg_publisher(metadata: &Erc721Metadata) -> String {
+    let package_name = metadata.properties.package_name.as_str();
+    let publisher = metadata.properties.publisher.as_str();
+    let pkg_publisher = format!("{}:{}", package_name, publisher);
+    pkg_publisher
+}
+
+pub fn make_zip_filename(package_dir: &Path, pkg_publisher: &str) -> PathBuf {
+    let zip_filename =  package_dir.join("target").join(pkg_publisher).with_extension("zip");
+    zip_filename
+}
+
+#[instrument(level = "trace", skip_all)]
+pub fn hash_zip_pkg(zip_path: &Path) -> Result<String> {
+    let mut file = fs::File::open(&zip_path)?;
+    let mut hasher = Sha256::new();
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)?;
+    hasher.update(&buffer);
+    let hash_result = hasher.finalize();
+    Ok(format!("{hash_result:x}"))
+}
+
+#[instrument(level = "trace", skip_all)]
+pub fn zip_pkg(package_dir: &Path, pkg_publisher: &str) -> Result<(PathBuf, String)> {
+    let pkg_dir = package_dir.join("pkg");
+    let target_dir = package_dir.join("target");
+    fs::create_dir_all(&target_dir)?;
+    let zip_filename = make_zip_filename(package_dir, pkg_publisher);
+    zip_directory(&pkg_dir, &zip_filename.to_str().unwrap())?;
+
+    let hash = hash_zip_pkg(&zip_filename)?;
+    Ok((zip_filename, hash))
+}
+
+#[instrument(level = "trace", skip_all)]
+fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
+    let file = fs::File::create(zip_filename)?;
+    let walkdir = WalkDir::new(directory);
+    let it = walkdir.into_iter();
+
+    let mut zip = zip::ZipWriter::new(file);
+
+    let options = FileOptions::default()
+        .compression_method(zip::CompressionMethod::Deflated)
+        .unix_permissions(0o755)
+        .last_modified_time(zip::DateTime::from_date_and_time(1980, 1, 1, 0, 0, 0).unwrap());
+
+    for entry in it {
+        let entry = entry?;
+        let path = entry.path();
+        let name = path.strip_prefix(Path::new(directory))?;
+
+        if path.is_file() {
+            zip.start_file(name.to_string_lossy(), options)?;
+            let mut f = fs::File::open(path)?;
+            let mut buffer = Vec::new();
+            f.read_to_end(&mut buffer)?;
+            zip.write_all(&*buffer)?;
+        } else if name.as_os_str().len() != 0 {
+            // Only if it is not the root directory
+            zip.add_directory(name.to_string_lossy(), options)?;
+        }
+    }
+
+    zip.finish()?;
+    Ok(())
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -1200,7 +1272,7 @@ pub async fn execute(
                 verbose,
                 ignore_deps,
             )
-            .await
+            .await?;
         }
     } else {
         if no_ui {
@@ -1225,7 +1297,7 @@ pub async fn execute(
         let valid_node = get_newest_valid_node_version(None, None)?;
 
         if ui_only {
-            compile_and_copy_ui(package_dir, valid_node, verbose).await
+            compile_and_copy_ui(package_dir, valid_node, verbose).await?;
         } else {
             compile_package_and_ui(
                 package_dir,
@@ -1241,7 +1313,14 @@ pub async fn execute(
                 verbose,
                 ignore_deps,
             )
-            .await
+            .await?;
         }
     }
+
+    let metadata = read_metadata(package_dir)?;
+    let pkg_publisher = make_pkg_publisher(&metadata);
+    let (_zip_filename, hash_string) = zip_pkg(package_dir, &pkg_publisher)?;
+    info!("package zip hash: {hash_string}");
+
+    Ok(())
 }
