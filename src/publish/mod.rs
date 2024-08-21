@@ -20,8 +20,7 @@ use tracing::{info, instrument};
 
 use kinode_process_lib::kernel_types::Erc721Metadata;
 
-use crate::build::{download_file, read_metadata};
-use crate::start_package::{make_pkg_publisher, zip_pkg};
+use crate::build::{download_file, make_pkg_publisher, read_metadata, zip_pkg};
 
 sol! {
     function mint (
