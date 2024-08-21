@@ -3,11 +3,10 @@
         "root": false,
         "public": false,
         "request_networking": false,
-        "request_capabilities": [
-            "fibonacci:fibonacci:template.os"
-        ],
+        "request_capabilities": [],
         "grant_capabilities": [
             "fibonacci:fibonacci:template.os"
-        ]
+        ],
+        "wit_version": 0
     }
 }
