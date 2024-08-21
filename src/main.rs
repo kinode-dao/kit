@@ -17,8 +17,8 @@ use tracing_subscriber::{
 
 use kit::{
     boot_fake_node, boot_real_node, build, build_start_package, chain, connect, dev_ui,
-    inject_message, new, remove_package, reset_cache, run_tests, setup, start_package, update,
-    view_api, KIT_LOG_PATH_DEFAULT,
+    inject_message, new, publish, remove_package, reset_cache, run_tests, setup, start_package,
+    update, view_api, KIT_LOG_PATH_DEFAULT,
 };
 
 const MAX_REMOTE_VALUES: usize = 3;
@@ -34,6 +34,11 @@ const RUST_LOG: &str = "RUST_LOG";
 #[derive(Debug, Deserialize)]
 struct Commit {
     sha: String,
+}
+
+fn parse_u128_with_underscores(s: &str) -> Result<u128, &'static str> {
+    let clean_string = s.replace('_', "");
+    clean_string.parse::<u128>().map_err(|_| "Invalid number format")
 }
 
 async fn get_latest_commit_sha_from_branch(
@@ -330,6 +335,39 @@ async fn execute(
                 *ui,
             )
         }
+        Some(("publish", matches)) => {
+            let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
+            let metadata_uri = matches.get_one::<String>("URI").unwrap();
+            let keystore_path = matches
+                .get_one::<String>("PATH")
+                .and_then(|kp| Some(PathBuf::from(kp)));
+            let ledger = matches.get_one::<bool>("LEDGER").unwrap();
+            let trezor = matches.get_one::<bool>("TREZOR").unwrap();
+            let rpc_uri = matches.get_one::<String>("RPC_URI").unwrap();
+            let real = matches.get_one::<bool>("REAL").unwrap();
+            let unpublish = matches.get_one::<bool>("UNPUBLISH").unwrap();
+            let gas_limit = matches.get_one::<u128>("GAS_LIMIT").unwrap();
+            let max_priority_fee = matches
+                .get_one::<u128>("MAX_PRIORITY_FEE_PER_GAS")
+                .and_then(|mpf| Some(mpf.clone()));
+            let max_fee_per_gas = matches
+                .get_one::<u128>("MAX_FEE_PER_GAS")
+                .and_then(|mfpg| Some(mfpg.clone()));
+
+            publish::execute(
+                &package_dir,
+                metadata_uri,
+                keystore_path,
+                ledger,
+                trezor,
+                rpc_uri,
+                real,
+                unpublish,
+                *gas_limit,
+                max_priority_fee,
+                max_fee_per_gas,
+            ).await
+        }
         Some(("remove-package", matches)) => {
             let package_name = matches
                 .get_one::<String>("PACKAGE")
@@ -483,7 +521,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
             .arg(Arg::new("RPC_ENDPOINT")
                 .action(ArgAction::Set)
                 .long("rpc")
-                .help("Ethereum RPC endpoint (wss://)")
+                .help("Ethereum Optimism mainnet RPC endpoint (wss://)")
                 .required(false)
             )
             .arg(Arg::new("PERSIST")
@@ -560,7 +598,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
             .arg(Arg::new("RPC_ENDPOINT")
                 .action(ArgAction::Set)
                 .long("rpc")
-                .help("Ethereum RPC endpoint (wss://)")
+                .help("Ethereum Optimism mainnet RPC endpoint (wss://)")
                 .required(false)
             )
             //.arg(Arg::new("PASSWORD")  // TODO: with develop 0.8.0
@@ -777,7 +815,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::SetTrue)
                 .short('d')
                 .long("disconnect")
-                .help("If set, disconnect an existing tunnel (default: connect a new tunnel)")
+                .help("If set, disconnect an existing tunnel [default: connect a new tunnel]")
                 .required(false)
             )
             .arg(Arg::new("HOST")
@@ -850,7 +888,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .short('n')
                 .long("node")
-                .help("Node ID (default: our)")
+                .help("Node ID [default: our]")
                 .required(false)
             )
             .arg(Arg::new("PATH")
@@ -908,6 +946,87 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::SetTrue)
                 .long("ui")
                 .help("If set, use the template with UI")
+                .required(false)
+            )
+        )
+        .subcommand(Command::new("publish")
+            .about("Publish or update a package")
+            .visible_alias("p")
+            .arg(Arg::new("DIR")
+                .action(ArgAction::Set)
+                .help("The package directory to publish")
+                .default_value(current_dir)
+            )
+            .arg(Arg::new("PATH")
+                .action(ArgAction::Set)
+                .short('k')
+                .long("keystore-path")
+                .help("Path to private key keystore (choose 1 of `k`, `l`, `t`)") // TODO: add link to docs?
+                .required(false)
+            )
+            .arg(Arg::new("LEDGER")
+                .action(ArgAction::SetTrue)
+                .short('l')
+                .long("ledger")
+                .help("Use Ledger private key (choose 1 of `k`, `l`, `t`)")
+                .required(false)
+            )
+            .arg(Arg::new("TREZOR")
+                .action(ArgAction::SetTrue)
+                .short('t')
+                .long("trezor")
+                .help("Use Trezor private key (choose 1 of `k`, `l`, `t`)")
+                .required(false)
+            )
+            .arg(Arg::new("URI")
+                .action(ArgAction::Set)
+                .short('u')
+                .long("metadata-uri")
+                .help("URI where metadata lives")
+                .required(true)
+            )
+            .arg(Arg::new("RPC_URI")
+                .action(ArgAction::Set)
+                .short('r')
+                .long("rpc")
+                .help("Ethereum Optimism mainnet RPC endpoint (wss://)")
+                .required(true)
+            )
+            .arg(Arg::new("REAL")
+                .action(ArgAction::SetTrue)
+                .short('e')
+                .long("real")
+                .help("If set, deploy to real network [default: fake node]")
+                .required(false)
+            )
+            .arg(Arg::new("UNPUBLISH")
+                .action(ArgAction::SetTrue)
+                .long("unpublish")
+                .help("If set, unpublish existing published package [default: publish a package]")
+            )
+            .arg(Arg::new("GAS_LIMIT")
+                .action(ArgAction::Set)
+                .short('g')
+                .long("gas-limit")
+                .help("The ETH transaction gas limit")
+                .default_value("1_000_000")
+                .value_parser(clap::builder::ValueParser::new(parse_u128_with_underscores))
+                .required(false)
+            )
+            .arg(Arg::new("MAX_PRIORITY_FEE_PER_GAS")
+                .action(ArgAction::Set)
+                .short('p')
+                .long("priority-fee")
+                .help("The ETH transaction max priority fee per gas [default: estimated from network conditions]")
+                .value_parser(clap::builder::ValueParser::new(parse_u128_with_underscores))
+                .required(false)
+            )
+            .arg(Arg::new("MAX_FEE_PER_GAS")
+                .action(ArgAction::Set)
+                .short('f')
+                .long("fee-per-gas")
+                .help("The ETH transaction max fee per gas [default: estimated from network conditions]")
+                .value_parser(clap::builder::ValueParser::new(parse_u128_with_underscores))
                 .required(false)
             )
         )
@@ -1000,7 +1119,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
             .visible_alias("v")
             .arg(Arg::new("PACKAGE_ID")
                 .action(ArgAction::Set)
-                .help("Get API of this package (default: list all APIs)")
+                .help("Get API of this package [default: list all APIs]")
                 .required(false)
             )
             .arg(Arg::new("NODE_PORT")

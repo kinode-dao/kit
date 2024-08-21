@@ -1,5 +1,5 @@
-use std::process::Command;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::Arc;
 
 use color_eyre::{eyre::eyre, Result, Section};
@@ -65,19 +65,26 @@ fn load_config(config_path: &Path) -> Result<(PathBuf, Config)> {
         } else {
             let possible_config_path = config_path.join("test").join("tests.toml");
             if !possible_config_path.exists() {
-                return Err(eyre!("Could not find `tests.toml within given path {config_path:?}"));
+                return Err(eyre!(
+                    "Could not find `tests.toml within given path {config_path:?}"
+                ));
             }
             if possible_config_path.is_file() {
                 // case 3
                 possible_config_path
             } else {
-                return Err(eyre!("Could not find `tests.toml within given path {config_path:?}"));
+                return Err(eyre!(
+                    "Could not find `tests.toml within given path {config_path:?}"
+                ));
             }
         }
     };
 
     let content = fs::read_to_string(&config_path)?;
-    Ok((config_path, toml::from_str::<Config>(&content)?.expand_home_paths()))
+    Ok((
+        config_path,
+        toml::from_str::<Config>(&content)?.expand_home_paths(),
+    ))
 }
 
 fn get_basename(file_path: &Path) -> Option<&str> {
@@ -110,7 +117,7 @@ fn make_node_names(nodes: Vec<Node>) -> Result<Vec<String>> {
             get_basename(&node.home)
                 .and_then(|base| Some(base.to_string()))
                 .and_then(|mut base| {
-                    if !base.ends_with(".dev") {
+                    if !base.contains(".") {
                         base.push_str(".dev");
                     }
                     Some(base)
@@ -198,13 +205,8 @@ async fn boot_nodes(
             args.extend_from_slice(&["--password".into(), password.clone()]);
         };
 
-        // TODO: change this to be less restrictive; currently leads to weirdness
-        //  like an input of `fake.os` -> `fake.os.dev`.
-        //  The reason we need it for now is that non-`.dev` nodes are not currently
-        //  addressable.
-        //  Once they are addressable, change this to, perhaps, `!name.contains(".")
         let mut name = node.fake_node_name.clone();
-        if !name.ends_with(".dev") {
+        if !name.contains(".") {
             name.push_str(".dev");
         }
 
@@ -286,11 +288,9 @@ async fn build_packages(
         .setup_packages
         .iter()
         .cloned()
-        .map(|s| {
-            SetupPackage {
-                path: test_dir_path.join(s.path).canonicalize().unwrap(),
-                run: s.run,
-            }
+        .map(|s| SetupPackage {
+            path: test_dir_path.join(s.path).canonicalize().unwrap(),
+            run: s.run,
         })
         .collect();
     let test_package_paths: Vec<PathBuf> = test
@@ -339,7 +339,8 @@ async fn build_packages(
         Arc::clone(&node_cleanup_infos),
         &send_to_kill,
         Arc::clone(&node_handles),
-    ).await?;
+    )
+    .await?;
     info!("Done starting node to host dependencies.");
 
     let url = format!("http://localhost:{port}");
@@ -363,7 +364,8 @@ async fn build_packages(
             false,
             false,
             false,
-        ).await?;
+        )
+        .await?;
         start_package::execute(&path, &url).await?;
     }
 
@@ -382,7 +384,8 @@ async fn build_packages(
             false,
             false,
             false,
-        ).await?;
+        )
+        .await?;
     }
     for test_package_path in &test_package_paths {
         build::execute(
@@ -399,7 +402,8 @@ async fn build_packages(
             false,
             false,
             false,
-        ).await?;
+        )
+        .await?;
     }
 
     info!("Cleaning up node to host dependencies.");
@@ -462,10 +466,7 @@ async fn load_setups(setup_paths: &Vec<SetupPackage>, port: u16) -> Result<()> {
 
     for setup_path in setup_paths {
         if setup_path.run {
-            start_package::execute(
-                &setup_path.path,
-                &format!("http://localhost:{}", port),
-            ).await?;
+            start_package::execute(&setup_path.path, &format!("http://localhost:{}", port)).await?;
         }
         load_process(&setup_path.path, "setup", &port).await?;
     }
@@ -530,7 +531,7 @@ async fn load_caps(test_package_paths: &Vec<PathBuf>, port: u16) -> Result<()> {
             serde_json::json!({
                 "request_capabilities": manifest.request_capabilities,
                 "grant_capabilities": manifest.grant_capabilities,
-            })
+            }),
         );
     }
     let caps = serde_json::to_vec(&caps)?;
@@ -557,7 +558,6 @@ async fn load_caps(test_package_paths: &Vec<PathBuf>, port: u16) -> Result<()> {
 
     Ok(())
 }
-
 
 #[instrument(level = "trace", skip_all)]
 async fn load_tests(test_package_paths: &Vec<PathBuf>, port: u16) -> Result<()> {
@@ -664,13 +664,8 @@ async fn handle_test(
     test_dir_path: &Path,
     persist_home: bool,
 ) -> Result<()> {
-    let (setup_packages, test_package_paths) = build_packages(
-        &test,
-        test_dir_path,
-        &detached,
-        &persist_home,
-        runtime_path,
-    ).await?;
+    let (setup_packages, test_package_paths) =
+        build_packages(&test, test_dir_path, &detached, &persist_home, runtime_path).await?;
 
     let SetupCleanupReturn {
         send_to_cleanup,
@@ -682,7 +677,8 @@ async fn handle_test(
         node_handles,
     } = setup_cleanup(&detached, &persist_home).await?;
 
-    let setup_scripts: Vec<i32> = test.setup_scripts
+    let setup_scripts: Vec<i32> = test
+        .setup_scripts
         .iter()
         .map(|s| {
             let p = test_dir_path.join(&s.path).canonicalize().unwrap();
@@ -712,7 +708,8 @@ async fn handle_test(
         Arc::clone(&node_cleanup_infos),
         &send_to_kill,
         Arc::clone(&node_handles),
-    ).await?;
+    )
+    .await?;
 
     for node in &test.nodes {
         load_setups(&setup_packages, node.port.clone()).await?;
@@ -738,10 +735,7 @@ async fn handle_test(
         } else {
             format!("{} {}", p, script.args)
         };
-        build::run_command(
-            Command::new("bash").args(["-c", &command]),
-            false,
-        )?;
+        build::run_command(Command::new("bash").args(["-c", &command]), false)?;
     }
 
     if tests_result.is_ok() {
@@ -767,18 +761,16 @@ pub async fn execute(config_path: PathBuf) -> Result<()> {
 
     // TODO: factor out with boot_fake_node?
     let runtime_path = match config.runtime {
-        Runtime::FetchVersion(ref version) => boot_fake_node::get_runtime_binary(version, true).await?,
+        Runtime::FetchVersion(ref version) => {
+            boot_fake_node::get_runtime_binary(version, true).await?
+        }
         Runtime::RepoPath(runtime_path) => {
             if !runtime_path.exists() {
                 return Err(eyre!("RepoPath {:?} does not exist.", runtime_path));
             }
             if runtime_path.is_dir() {
                 // Compile the runtime binary
-                boot_fake_node::compile_runtime(
-                    &runtime_path,
-                    config.runtime_build_release,
-                    true,
-                )?;
+                boot_fake_node::compile_runtime(&runtime_path, config.runtime_build_release, true)?;
                 runtime_path
                     .join("target")
                     .join(if config.runtime_build_release {
@@ -802,7 +794,8 @@ pub async fn execute(config_path: PathBuf) -> Result<()> {
             test,
             &test_dir_path,
             config.persist_home,
-        ).await?;
+        )
+        .await?;
     }
 
     Ok(())
