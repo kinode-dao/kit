@@ -1276,32 +1276,8 @@ pub async fn execute(
         }
     } else {
         if no_ui {
-            return compile_package(
+            compile_package(
                 package_dir,
-                skip_deps_check,
-                features,
-                url,
-                default_world,
-                download_from,
-                local_dependencies,
-                add_paths_to_api,
-                force,
-                verbose,
-                ignore_deps,
-            )
-            .await;
-        }
-
-        let deps = check_js_deps()?;
-        get_deps(deps, verbose)?;
-        let valid_node = get_newest_valid_node_version(None, None)?;
-
-        if ui_only {
-            compile_and_copy_ui(package_dir, valid_node, verbose).await?;
-        } else {
-            compile_package_and_ui(
-                package_dir,
-                valid_node,
                 skip_deps_check,
                 features,
                 url,
@@ -1314,6 +1290,30 @@ pub async fn execute(
                 ignore_deps,
             )
             .await?;
+        } else {
+            let deps = check_js_deps()?;
+            get_deps(deps, verbose)?;
+            let valid_node = get_newest_valid_node_version(None, None)?;
+
+            if ui_only {
+                compile_and_copy_ui(package_dir, valid_node, verbose).await?;
+            } else {
+                compile_package_and_ui(
+                    package_dir,
+                    valid_node,
+                    skip_deps_check,
+                    features,
+                    url,
+                    default_world,
+                    download_from,
+                    local_dependencies,
+                    add_paths_to_api,
+                    force,
+                    verbose,
+                    ignore_deps,
+                )
+                .await?;
+            }
         }
     }
 
