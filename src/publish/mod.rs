@@ -205,11 +205,11 @@ fn make_multicall(
     let calls = vec![
         Call {
             target: kimap,
-            callData: metadata_uri_call.into(),
+            callData: metadata_hash_call.into(),
         },
         Call {
             target: kimap,
-            callData: metadata_hash_call.into(),
+            callData: metadata_uri_call.into(),
         },
     ];
 
