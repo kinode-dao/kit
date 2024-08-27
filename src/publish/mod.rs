@@ -68,12 +68,15 @@ sol! {
 }
 
 const FAKE_KIMAP_ADDRESS: &str = "0xEce71a05B36CA55B895427cD9a440eEF7Cf3669D";
+const REAL_KIMAP_ADDRESS: &str = "0xcA92476B2483aBD5D82AEBF0b56701Bb2e9be658";
+
+const FAKE_KINO_ACCOUNT_IMPL: &str = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0";
+const REAL_KINO_ACCOUNT_IMPL: &str = "0x38766C70a4FB2f23137D9251a1aA12b1143fC716";
+
+const REAL_CHAIN_ID: u64 = 10;
 const FAKE_CHAIN_ID: u64 = 31337;
 
-const REAL_KIMAP_ADDRESS: &str = "0xcA92476B2483aBD5D82AEBF0b56701Bb2e9be658";
 const MULTICALL_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
-const KINO_ACCOUNT_IMPL: &str = "0x38766C70a4FB2f23137D9251a1aA12b1143fC716";
-const REAL_CHAIN_ID: u64 = 10;
 
 #[instrument(level = "trace", skip_all)]
 fn calculate_metadata_hash(package_dir: &Path) -> Result<String> {
@@ -355,7 +358,13 @@ pub async fn execute(
         }
     )?;
     let multicall_address = Address::from_str(MULTICALL_ADDRESS)?;
-    let kino_account_impl = Address::from_str(KINO_ACCOUNT_IMPL)?;
+    let kino_account_impl = Address::from_str(
+        if *real {
+            REAL_KINO_ACCOUNT_IMPL
+        } else {
+            FAKE_KINO_ACCOUNT_IMPL
+        }
+    )?;
 
     let (to, call) = if *unpublish {
         let app_node = format!("{}.{}", name, publisher);
@@ -386,22 +395,26 @@ pub async fn execute(
     };
 
     let nonce = provider.get_transaction_count(wallet_address).await?;
-    let gas_price = provider.get_gas_price().await?;
 
+    let estimate = provider.estimate_eip1559_fees(None).await?;
+
+    let suggested_max_fee_per_gas = estimate.max_fee_per_gas;
+    let suggested_max_priority_fee_per_gas = estimate.max_priority_fee_per_gas;
+    
     let tx = TransactionRequest::default()
         .to(to)
         .input(TransactionInput::new(call.into()))
         .nonce(nonce)
         .with_chain_id(chain_id)
         .with_gas_limit(gas_limit)
-        .with_max_priority_fee_per_gas(max_priority_fee_per_gas.unwrap_or_else(|| gas_price))
-        .with_max_fee_per_gas(max_fee_per_gas.unwrap_or_else(|| gas_price));
+        .with_max_priority_fee_per_gas(max_priority_fee_per_gas.unwrap_or_else(|| suggested_max_priority_fee_per_gas))
+        .with_max_fee_per_gas(max_fee_per_gas.unwrap_or_else(|| suggested_max_fee_per_gas));
 
     let tx_envelope = tx.build(&wallet).await?;
     let tx_encoded = tx_envelope.encoded_2718();
     let tx = provider.send_raw_transaction(&tx_encoded).await?;
-
-    let tx_hash = format!("{:?}", tx.tx_hash());
+    let receipt = tx.get_receipt().await?;
+    let tx_hash = format!("{:?}", receipt.transaction_hash);
     let link = format!(
         "\x1B]8;;https://optimistic.etherscan.io/tx/{}\x1B\\{}\x1B]8;;\x1B\\",
         tx_hash,
