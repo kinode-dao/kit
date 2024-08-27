@@ -75,6 +75,10 @@ const MULTICALL_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
 const KINO_ACCOUNT_IMPL: &str = "0x38766C70a4FB2f23137D9251a1aA12b1143fC716";
 const REAL_CHAIN_ID: u64 = 10;
 
+fn is_valid_kimap_package_name(s: &str) -> bool {
+    s.chars().all(|c| c.is_ascii_lowercase() || c == '-' || c.is_ascii_digit())
+}
+
 #[instrument(level = "trace", skip_all)]
 fn calculate_metadata_hash(package_dir: &Path) -> Result<String> {
     let metadata_text = fs::read_to_string(package_dir.join("metadata.json"))?;
@@ -338,11 +342,15 @@ pub async fn execute(
 
     let metadata = read_metadata(package_dir)?;
 
-    let metadata_hash = check_remote_metadata(&metadata, metadata_uri, package_dir).await?;
-    check_pkg_hash(&metadata, package_dir, metadata_uri)?;
-
     let name = metadata.name.clone().unwrap();
     let publisher = metadata.properties.publisher.clone();
+
+    if !is_valid_kimap_package_name(&name) {
+        return Err(eyre!("The App Store requires package names have only lowercase letters, digits, and `-`s"));
+    }
+
+    let metadata_hash = check_remote_metadata(&metadata, metadata_uri, package_dir).await?;
+    check_pkg_hash(&metadata, package_dir, metadata_uri)?;
 
     let ws = WsConnect::new(rpc_uri);
     let provider: RootProvider<PubSubFrontend> = ProviderBuilder::default().on_ws(ws).await?;
