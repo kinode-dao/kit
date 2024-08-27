@@ -57,7 +57,7 @@ pub async fn start_chain(
         .arg("--port")
         .arg(port.to_string())
         .arg("--block-time")
-        .arg("3")
+        .arg("1")
         .arg("--load-state")
         .arg(&state_path)
         .current_dir(KIT_CACHE)
