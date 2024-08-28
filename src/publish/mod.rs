@@ -421,8 +421,7 @@ pub async fn execute(
     let tx_envelope = tx.build(&wallet).await?;
     let tx_encoded = tx_envelope.encoded_2718();
     let tx = provider.send_raw_transaction(&tx_encoded).await?;
-    let receipt = tx.get_receipt().await?;
-    let tx_hash = format!("{:?}", receipt.transaction_hash);
+    let tx_hash = format!("{:?}", tx.tx_hash());
     let link = format!(
         "\x1B]8;;https://optimistic.etherscan.io/tx/{}\x1B\\{}\x1B]8;;\x1B\\",
         tx_hash,
