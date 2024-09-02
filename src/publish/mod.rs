@@ -68,12 +68,19 @@ sol! {
 }
 
 const FAKE_KIMAP_ADDRESS: &str = "0xEce71a05B36CA55B895427cD9a440eEF7Cf3669D";
+const REAL_KIMAP_ADDRESS: &str = "0xcA92476B2483aBD5D82AEBF0b56701Bb2e9be658";
+
+const FAKE_KINO_ACCOUNT_IMPL: &str = "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0";
+const REAL_KINO_ACCOUNT_IMPL: &str = "0x38766C70a4FB2f23137D9251a1aA12b1143fC716";
+
+const REAL_CHAIN_ID: u64 = 10;
 const FAKE_CHAIN_ID: u64 = 31337;
 
-const REAL_KIMAP_ADDRESS: &str = "0xcA92476B2483aBD5D82AEBF0b56701Bb2e9be658";
 const MULTICALL_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
-const KINO_ACCOUNT_IMPL: &str = "0x38766C70a4FB2f23137D9251a1aA12b1143fC716";
-const REAL_CHAIN_ID: u64 = 10;
+
+fn is_valid_kimap_package_name(s: &str) -> bool {
+    s.chars().all(|c| c.is_ascii_lowercase() || c == '-' || c.is_ascii_digit())
+}
 
 #[instrument(level = "trace", skip_all)]
 fn calculate_metadata_hash(package_dir: &Path) -> Result<String> {
@@ -205,11 +212,11 @@ fn make_multicall(
     let calls = vec![
         Call {
             target: kimap,
-            callData: metadata_uri_call.into(),
+            callData: metadata_hash_call.into(),
         },
         Call {
             target: kimap,
-            callData: metadata_hash_call.into(),
+            callData: metadata_uri_call.into(),
         },
     ];
 
@@ -338,11 +345,15 @@ pub async fn execute(
 
     let metadata = read_metadata(package_dir)?;
 
-    let metadata_hash = check_remote_metadata(&metadata, metadata_uri, package_dir).await?;
-    check_pkg_hash(&metadata, package_dir, metadata_uri)?;
-
     let name = metadata.name.clone().unwrap();
     let publisher = metadata.properties.publisher.clone();
+
+    if !is_valid_kimap_package_name(&name) {
+        return Err(eyre!("The App Store requires package names have only lowercase letters, digits, and `-`s"));
+    }
+
+    let metadata_hash = check_remote_metadata(&metadata, metadata_uri, package_dir).await?;
+    check_pkg_hash(&metadata, package_dir, metadata_uri)?;
 
     let ws = WsConnect::new(rpc_uri);
     let provider: RootProvider<PubSubFrontend> = ProviderBuilder::default().on_ws(ws).await?;
@@ -355,7 +366,13 @@ pub async fn execute(
         }
     )?;
     let multicall_address = Address::from_str(MULTICALL_ADDRESS)?;
-    let kino_account_impl = Address::from_str(KINO_ACCOUNT_IMPL)?;
+    let kino_account_impl = Address::from_str(
+        if *real {
+            REAL_KINO_ACCOUNT_IMPL
+        } else {
+            FAKE_KINO_ACCOUNT_IMPL
+        }
+    )?;
 
     let (to, call) = if *unpublish {
         let app_node = format!("{}.{}", name, publisher);
@@ -386,21 +403,24 @@ pub async fn execute(
     };
 
     let nonce = provider.get_transaction_count(wallet_address).await?;
-    let gas_price = provider.get_gas_price().await?;
 
+    let estimate = provider.estimate_eip1559_fees(None).await?;
+
+    let suggested_max_fee_per_gas = estimate.max_fee_per_gas;
+    let suggested_max_priority_fee_per_gas = estimate.max_priority_fee_per_gas;
+    
     let tx = TransactionRequest::default()
         .to(to)
         .input(TransactionInput::new(call.into()))
         .nonce(nonce)
         .with_chain_id(chain_id)
         .with_gas_limit(gas_limit)
-        .with_max_priority_fee_per_gas(max_priority_fee_per_gas.unwrap_or_else(|| gas_price))
-        .with_max_fee_per_gas(max_fee_per_gas.unwrap_or_else(|| gas_price));
+        .with_max_priority_fee_per_gas(max_priority_fee_per_gas.unwrap_or_else(|| suggested_max_priority_fee_per_gas))
+        .with_max_fee_per_gas(max_fee_per_gas.unwrap_or_else(|| suggested_max_fee_per_gas));
 
     let tx_envelope = tx.build(&wallet).await?;
     let tx_encoded = tx_envelope.encoded_2718();
     let tx = provider.send_raw_transaction(&tx_encoded).await?;
-
     let tx_hash = format!("{:?}", tx.tx_hash());
     let link = format!(
         "\x1B]8;;https://optimistic.etherscan.io/tx/{}\x1B\\{}\x1B]8;;\x1B\\",
