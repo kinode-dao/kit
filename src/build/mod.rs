@@ -203,12 +203,14 @@ pub fn run_command(cmd: &mut Command, verbose: bool) -> Result<Option<(String, S
 #[instrument(level = "trace", skip_all)]
 pub async fn download_file(url: &str, path: &Path) -> Result<()> {
     fs::create_dir_all(&KIT_CACHE)?;
-    let hex_url = hex::encode(url);
-    let hex_url_path = format!("{}/{}", KIT_CACHE, hex_url);
-    let hex_url_path = Path::new(&hex_url_path);
+    let mut hasher = Sha256::new();
+    hasher.update(url.as_bytes());
+    let hashed_url = hasher.finalize();
+    let hashed_url_path = Path::new(KIT_CACHE)
+        .join(format!("{hashed_url:x}"));
 
-    let content = if hex_url_path.exists() {
-        fs::read(hex_url_path)?
+    let content = if hashed_url_path.exists() {
+        fs::read(hashed_url_path)?
     } else {
         let response = reqwest::get(url).await?;
 
@@ -221,7 +223,7 @@ pub async fn download_file(url: &str, path: &Path) -> Result<()> {
         }
 
         let content = response.bytes().await?.to_vec();
-        fs::write(hex_url_path, &content)?;
+        fs::write(hashed_url_path, &content)?;
         content
     };
 
