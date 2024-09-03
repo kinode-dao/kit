@@ -37,16 +37,14 @@ fn new_package(
 #[instrument(level = "trace", skip_all)]
 fn install(
     node: Option<&str>,
-    package_name: &str,
-    publisher_node: &str,
     hash_string: &str,
     metadata: &Erc721Metadata,
 ) -> Result<serde_json::Value> {
     let body = json!({
         "Install": {
             "package_id": {
-                "package_name": package_name,
-                "publisher_node": publisher_node,
+                "package_name": metadata.properties.package_name,
+                "publisher_node": metadata.properties.publisher,
             },
             "version_hash": hash_string,
             "metadata": {
@@ -150,8 +148,6 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
 
     let install_request = install(
         None,
-        package_name,
-        publisher,
         &hash_string,
         &metadata,
     )?;

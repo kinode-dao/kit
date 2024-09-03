@@ -705,6 +705,9 @@ async fn build_wit_dir(
     wit_version: Option<u32>,
 ) -> Result<()> {
     let wit_dir = process_dir.join("target").join("wit");
+    if wit_dir.exists() {
+        fs::remove_dir_all(&wit_dir)?;
+    }
     let wit_url = match wit_version {
         None => KINODE_WIT_0_7_0_URL,
         Some(0) | _ => KINODE_WIT_0_8_0_URL,
@@ -712,13 +715,6 @@ async fn build_wit_dir(
     download_file(wit_url, &wit_dir.join("kinode.wit")).await?;
     for (file_name, contents) in apis {
         let destination = wit_dir.join(file_name);
-        if destination.exists() {
-            // check if contents have not changed -> no-op
-            let old_contents = fs::read(&destination)?;
-            if &old_contents == contents {
-                continue;
-            }
-        }
         fs::write(&destination, contents)?;
     }
     Ok(())
