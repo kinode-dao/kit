@@ -568,7 +568,11 @@ async fn compile_rust_wasm_process(
     // Adapt the module using wasm-tools
 
     // For use inside of process_dir
-    let wasm_file_name = process_dir.file_name().and_then(|s| s.to_str()).unwrap();
+    let wasm_file_name = process_dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap()
+        .replace("-", "_");
 
     let wasm_file_prefix = Path::new("target/wasm32-wasi/release");
     let wasm_file = wasm_file_prefix.join(&format!("{}.wasm", wasm_file_name));
