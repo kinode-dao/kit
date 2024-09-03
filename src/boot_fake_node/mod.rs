@@ -311,7 +311,10 @@ pub async fn find_releases_with_asset_if_online(
 fn get_local_versions_with_prefix(prefix: &str) -> Result<Vec<String>> {
     let mut versions = Vec::new();
 
-    for entry in fs::read_dir(Path::new(prefix).parent().unwrap())? {
+    let path = Path::new(prefix)
+        .parent()
+        .ok_or_else(|| eyre!("couldnt find directory with local runtimes"))?;
+    for entry in fs::read_dir(&path)? {
         let entry = entry?;
         let path = entry.path();
         if let Some(str_path) = path.to_str() {
