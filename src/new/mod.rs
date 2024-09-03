@@ -222,27 +222,6 @@ pub fn execute(
         return Err(eyre!("`publisher` '{}' must be URL safe.", publisher));
     }
 
-    // match language {
-    //     Language::Rust => {
-    //         if package_name.contains('-') {
-    //             let error = if !is_from_dir {
-    //                 eyre!(
-    //                     "rust `package_name`s cannot contain `-`s (given '{}')",
-    //                     package_name,
-    //                 )
-    //             } else {
-    //                 eyre!(
-    //                         "rust `package_name` (derived from given directory {:?}) cannot contain `-`s (given '{}')",
-    //                         new_dir,
-    //                         package_name,
-    //                     )
-    //             };
-    //             return Err(error);
-    //         }
-    //     }
-    //     _ => {}
-    // }
-
     let ui_infix = if ui {
         "ui".to_string()
     } else {
