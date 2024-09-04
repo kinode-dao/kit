@@ -136,6 +136,16 @@ fn replace_vars(
         .replace(
             &format!("{template_package_name_snake}::"),
             &format!("{package_name_snake}::"),
+        )
+        // manifest.json
+        .replace(
+            &format!("{template_package_name_kebab}.wasm"),
+            &format!("{package_name_snake}.wasm"),
+        )
+        // tests manifest.json
+        .replace(
+            &format!("{template_package_name_kebab}_test.wasm"),
+            &format!("{package_name_snake}_test.wasm"),
         );
     let input = if extension == "wit" {
         input
