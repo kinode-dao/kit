@@ -80,10 +80,7 @@ fn install(
 }
 
 #[instrument(level = "trace", skip_all)]
-fn check_manifest(pkg_dir: &Path, manifest_file_name: &str, is_required: bool) -> Result<()> {
-    if !is_required && !pkg_dir.join(manifest_file_name).exists() {
-        return Ok(());
-    }
+fn check_manifest(pkg_dir: &Path, manifest_file_name: &str) -> Result<()> {
     let manifest = fs::File::open(pkg_dir.join(manifest_file_name))
         .with_suggestion(|| format!("Missing required {} file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson", manifest_file_name))?;
     let manifest: Vec<PackageManifestEntry> = serde_json::from_reader(manifest)
@@ -109,15 +106,43 @@ fn check_manifest(pkg_dir: &Path, manifest_file_name: &str, is_required: bool) -
                 let cab_file_path = file_path.replace("-", "_");
                 let full_cab_file_path = pkg_dir.join(&cab_file_path);
                 if full_cab_file_path.exists() {
-                    return Err(eyre!("Found {:?} (with underscores) in pkg/ but {} expects {:?}.", cab_file_path, manifest_file_name, file_path)
-                        .with_suggestion(|| format!("Try updating {} to point to the correct file name {:?}.", make_local_file_link_path(&pkg_dir.join(manifest_file_name), manifest_file_name).unwrap(), cab_file_path)));
+                    return Err(eyre!(
+                        "Found {:?} (with underscores) in pkg/ but {} expects {:?}.",
+                        cab_file_path,
+                        manifest_file_name,
+                        file_path,
+                    )
+                    .with_suggestion(|| {
+                        format!(
+                            "Try updating {} to point to the correct file name {:?}.",
+                            make_local_file_link_path(
+                                &pkg_dir.join(manifest_file_name),
+                                manifest_file_name,
+                            ).unwrap(),
+                            cab_file_path,
+                        )
+                    }));
                 }
 
                 let hep_file_path = file_path.replace("-", "_");
                 let hep_file_path = pkg_dir.join(hep_file_path);
                 if hep_file_path.exists() {
-                    return Err(eyre!("Found {:?} (with hyphens) pkg/ but {} expects {:?}.", hep_file_path, manifest_file_name, file_path)
-                        .with_suggestion(|| format!("Try updating {} to point to the correct file name {:?}.", make_local_file_link_path(&pkg_dir.join(manifest_file_name), manifest_file_name).unwrap(), hep_file_path)));
+                    return Err(eyre!(
+                        "Found {:?} (with hyphens) pkg/ but {} expects {:?}.",
+                        hep_file_path,
+                        manifest_file_name,
+                        file_path,
+                    )
+                    .with_suggestion(|| {
+                        format!(
+                            "Try updating {} to point to the correct file name {:?}.",
+                            make_local_file_link_path(
+                                &pkg_dir.join(manifest_file_name),
+                                manifest_file_name,
+                            ).unwrap(),
+                            hep_file_path,
+                        )
+                    }));
                 }
             }
         }
@@ -147,8 +172,8 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
             .with_suggestion(|| "Try `kit build`ing package first."));
     }
 
-    check_manifest(&pkg_dir, "manifest.json", true)?;
-    check_manifest(&pkg_dir, "scripts.json", false)?;
+    check_manifest(&pkg_dir, "manifest.json")?;
+    // TODO: check scripts.json
 
     info!("{}", pkg_publisher);
     let hash_string = hash_zip_pkg(&zip_filename)?;
