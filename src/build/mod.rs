@@ -38,6 +38,7 @@ const KINODE_WIT_0_8_0_URL: &str =
 const WASI_VERSION: &str = "19.0.1"; // TODO: un-hardcode
 const DEFAULT_WORLD_0_7_0: &str = "process";
 const DEFAULT_WORLD_0_8_0: &str = "process-v0";
+const KINODE_PROCESS_LIB_CRATE_NAME: &str = "kinode_process_lib";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
@@ -331,6 +332,78 @@ fn file_with_extension_exists(dir: &Path, extension: &str) -> bool {
         }
     }
     false
+}
+
+#[instrument(level = "trace", skip_all)]
+fn parse_version_from_url(url: &str) -> Result<semver::VersionReq> {
+    let re = regex::Regex::new(r"\?tag=v([0-9]+\.[0-9]+\.[0-9]+)$").unwrap();
+    if let Some(caps) = re.captures(url) {
+        if let Some(version) = caps.get(1) {
+            return Ok(semver::VersionReq::parse(&format!("^{}", version.as_str()))?);
+        }
+    }
+    Err(eyre!("No valid version found in the URL"))
+}
+
+#[instrument(level = "trace", skip_all)]
+fn find_crate_versions(
+    crate_name: &str,
+    packages: &HashMap<cargo_metadata::PackageId, &cargo_metadata::Package>,
+) -> Result<HashMap<semver::VersionReq, Vec<String>>> {
+    let mut versions = HashMap::new();
+
+    // Iterate over all packages
+    for package in packages.values() {
+        // Check each dependency of the package
+        for dependency in &package.dependencies {
+            if dependency.name == crate_name {
+                let version = if dependency.req != semver::VersionReq::default() {
+                    dependency.req.clone()
+                } else {
+                    if let Some(ref source) = dependency.source {
+                        parse_version_from_url(source)?
+                    } else {
+                        semver::VersionReq::default()
+                    }
+                };
+                versions
+                    .entry(version)
+                    .or_insert_with(Vec::new)
+                    .push(package.name.clone());
+            }
+        }
+    }
+
+    Ok(versions)
+}
+
+#[instrument(level = "trace", skip_all)]
+fn check_process_lib_version(cargo_toml_path: &Path) -> Result<()> {
+    let metadata = cargo_metadata::MetadataCommand::new()
+        .manifest_path(cargo_toml_path)
+        .exec()?;
+    let packages: HashMap<cargo_metadata::PackageId, &cargo_metadata::Package> = metadata
+        .packages
+        .iter()
+        .map(|package| (package.id.clone(), package))
+        .collect();
+    let versions = find_crate_versions(KINODE_PROCESS_LIB_CRATE_NAME, &packages)?;
+    if versions.len() > 1 {
+        return Err(
+            eyre!(
+                "Found different versions of {} in different crates:{}",
+                KINODE_PROCESS_LIB_CRATE_NAME,
+                versions.iter().fold(String::new(), |s, (version, crates)| {
+                    format!("{s}\n{version}\t{crates:?}")
+                })
+            )
+            .with_suggestion(|| format!(
+                "Set all {} versions to be the same to avoid hard-to-debug errors.",
+                KINODE_PROCESS_LIB_CRATE_NAME,
+            ))
+        );
+    }
+    Ok(())
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -1255,6 +1328,8 @@ pub async fn execute(
     }
     fs::create_dir_all(package_dir.join("target"))?;
     fs::write(&build_with_features_path, features)?;
+
+    check_process_lib_version(&package_dir.join("Cargo.toml"))?;
 
     let ui_dir = package_dir.join("ui");
     if !ui_dir.exists() {
