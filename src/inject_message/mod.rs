@@ -87,6 +87,7 @@ pub async fn send_request_inner(url: &str, json_data: Value) -> Result<reqwest::
         format!("{}{}", url, ENDPOINT)
     };
     let client = reqwest::Client::new();
+    debug!("POSTing to {url}:\n{json_data:#?}");
     let response = client.post(&url).json(&json_data).send().await?;
 
     Ok(response)
@@ -154,11 +155,13 @@ pub async fn parse_response(response: reqwest::Response) -> Result<Response> {
             .transpose()?
             .and_then(|b| decode(b).ok());
 
-        Ok(Response {
+        let parsed_response = Response {
             body,
             lazy_load_blob_utf8: blob.clone().map(|b| String::from_utf8(b).ok()),
             lazy_load_blob: blob,
-        })
+        };
+        debug!("Got response: {parsed_response}");
+        Ok(parsed_response)
     }
 }
 
