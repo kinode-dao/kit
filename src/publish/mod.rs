@@ -78,6 +78,32 @@ const FAKE_CHAIN_ID: u64 = 31337;
 
 const MULTICALL_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
 
+pub fn make_local_file_link(path: &str, text: &str) -> String {
+    format!(
+        "\x1B]8;;file://{}\x1B\\{}\x1B]8;;\x1B\\",
+        path,
+        text,
+    )
+}
+
+#[instrument(level = "trace", skip_all)]
+pub fn make_local_file_link_path(path: &Path, text: &str) -> Result<String> {
+    let path = path
+        .canonicalize()
+        .ok()
+        .and_then(|p| p.to_str().map(|s| s.to_string()))
+        .unwrap_or_default();
+    Ok(make_local_file_link(&path, text))
+}
+
+pub fn make_remote_link(url: &str, text: &str) -> String {
+    format!(
+        "\x1B]8;;{}\x1B\\{}\x1B]8;;\x1B\\",
+        url,
+        text,
+    )
+}
+
 fn is_valid_kimap_package_name(s: &str) -> bool {
     s.chars().all(|c| c.is_ascii_lowercase() || c == '-' || c.is_ascii_digit())
 }
@@ -150,16 +176,10 @@ async fn check_remote_metadata(metadata: &Erc721Metadata, metadata_uri: &str, pa
 
     // TODO: add derive(PartialEq) to Erc721
     if serde_json::to_string(&metadata)? != serde_json::to_string(&remote_metadata)? {
-        let local_path = package_dir
-            .join("metadata.json")
-            .canonicalize()
-            .ok()
-            .and_then(|p| p.to_str().map(|s| s.to_string()))
-            .unwrap_or_default();
         return Err(eyre!(
-            "\x1B]8;;file://{}\x1B\\Local\x1B]8;;\x1B\\ and \x1B]8;;{}\x1B\\remote\x1B]8;;\x1B\\ metadata do not match",
-            local_path,
-            metadata_uri,
+            "{} and {} metadata do not match",
+            make_local_file_link_path(&package_dir.join("metadata.json"), "Local").unwrap_or_default(),
+            make_remote_link(metadata_uri, "remote"),
         ));
     }
     let metadata_hash = calculate_metadata_hash(package_dir)?;
@@ -179,12 +199,11 @@ fn check_pkg_hash(metadata: &Erc721Metadata, package_dir: &Path, metadata_uri: &
         .unwrap_or_default();
     if pkg_hash != expected_pkg_hash {
         return Err(eyre!(
-            "Zipped pkg hashes to '{}' not '{}' as expected for current_version {} based on published metadata at \x1B]8;;{}\x1B\\{}\x1B]8;;\x1B\\",
+            "Zipped pkg hashes to '{}' not '{}' as expected for current_version {} based on published metadata at {}",
             pkg_hash,
             expected_pkg_hash,
             current_version,
-            metadata_uri,
-            metadata_uri,
+            make_remote_link(metadata_uri, metadata_uri),
         ));
     }
     Ok(())
@@ -408,7 +427,7 @@ pub async fn execute(
 
     let suggested_max_fee_per_gas = estimate.max_fee_per_gas;
     let suggested_max_priority_fee_per_gas = estimate.max_priority_fee_per_gas;
-    
+
     let tx = TransactionRequest::default()
         .to(to)
         .input(TransactionInput::new(call.into()))
@@ -422,10 +441,9 @@ pub async fn execute(
     let tx_encoded = tx_envelope.encoded_2718();
     let tx = provider.send_raw_transaction(&tx_encoded).await?;
     let tx_hash = format!("{:?}", tx.tx_hash());
-    let link = format!(
-        "\x1B]8;;https://optimistic.etherscan.io/tx/{}\x1B\\{}\x1B]8;;\x1B\\",
-        tx_hash,
-        tx_hash,
+    let link = make_remote_link(
+        &format!("https://optimistic.etherscan.io/tx/{tx_hash}"),
+        &tx_hash,
     );
     info!("{} {name} tx sent: {link}", if *unpublish { "unpublish" } else { "publish" });
     Ok(())

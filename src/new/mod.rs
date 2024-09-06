@@ -114,18 +114,57 @@ fn replace_vars(
     template_package_name: &str,
     package_name: &str,
     publisher: &str,
+    extension: &str,
 ) -> String {
     let template_package_name_kebab = template_package_name.replace("_", "-");
-    let template_package_name_upper_camel = snake_to_upper_camel_case(template_package_name);
+    let template_package_name_snake = template_package_name.replace("-", "_");
+    let template_package_name_upper_camel = snake_to_upper_camel_case(&template_package_name_snake);
 
     let package_name_kebab = package_name.replace("_", "-");
-    let package_name_upper_camel = snake_to_upper_camel_case(package_name);
+    let package_name_snake = package_name.replace("-", "_");
+    let package_name_upper_camel = snake_to_upper_camel_case(&package_name_snake);
 
     let (publisher_dotted_snake, publisher_dotted_kebab) = replace_dots(publisher);
     let publisher_dotted_upper_camel = snake_to_upper_camel_case(&publisher_dotted_snake);
+    let input = input
+        // wit
+        .replace(
+            &format!("{template_package_name_kebab}-"),
+            &format!("{package_name_kebab}-"),
+        )
+        // rust imports
+        .replace(
+            &format!("{template_package_name_snake}::"),
+            &format!("{package_name_snake}::"),
+        )
+        // manifest.json
+        .replace(
+            &format!("{template_package_name_kebab}.wasm"),
+            &format!("{package_name_snake}.wasm"),
+        )
+        // tests manifest.json
+        .replace(
+            &format!("{template_package_name_kebab}_test.wasm"),
+            &format!("{package_name_snake}_test.wasm"),
+        );
+    let input = if extension == "wit" {
+        input
+            .replace(
+                &format!("{template_package_name}-"),
+                &format!("{package_name_kebab}-"),
+            )
+            .replace(&template_package_name_kebab, &package_name_kebab)
+            .replace(template_package_name, package_name)
+    } else {
+        input
+            .replace(
+                &format!("{template_package_name}-"),
+                &format!("{package_name_kebab}-"),
+            )
+            .replace(template_package_name, package_name)
+            .replace(&template_package_name_kebab, &package_name_kebab)
+    };
     input
-        .replace(template_package_name, package_name)
-        .replace(&template_package_name_kebab, &package_name_kebab)
         .replace(
             &template_package_name_upper_camel,
             &package_name_upper_camel,
@@ -193,27 +232,6 @@ pub fn execute(
         return Err(eyre!("`publisher` '{}' must be URL safe.", publisher));
     }
 
-    match language {
-        Language::Rust => {
-            if package_name.contains('-') {
-                let error = if !is_from_dir {
-                    eyre!(
-                        "rust `package_name`s cannot contain `-`s (given '{}')",
-                        package_name,
-                    )
-                } else {
-                    eyre!(
-                            "rust `package_name` (derived from given directory {:?}) cannot contain `-`s (given '{}')",
-                            new_dir,
-                            package_name,
-                        )
-                };
-                return Err(error);
-            }
-        }
-        _ => {}
-    }
-
     let ui_infix = if ui {
         "ui".to_string()
     } else {
@@ -241,10 +259,25 @@ pub fn execute(
                     }
                 })
                 .and_then(|stripped| {
-                    let modified_path =
-                        replace_vars(&stripped, &template.to_string(), &package_name, &publisher);
-                    let modified_content =
-                        replace_vars(content, &template.to_string(), &package_name, &publisher);
+                    let extension = PathBuf::from(path);
+                    let extension = extension
+                        .extension()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or_default();
+                    let modified_path = replace_vars(
+                        &stripped,
+                        &template.to_string(),
+                        &package_name,
+                        &publisher,
+                        extension,
+                    );
+                    let modified_content = replace_vars(
+                        content,
+                        &template.to_string(),
+                        &package_name,
+                        &publisher,
+                        extension,
+                    );
                     Some((modified_path, modified_content))
                 })
         })
@@ -283,6 +316,7 @@ pub fn execute(
                     &template.to_string(),
                     &package_name,
                     &publisher,
+                    "js",
                 ),
             );
         }

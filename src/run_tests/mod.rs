@@ -620,7 +620,7 @@ async fn run_tests(
                 "input_node_names": node_names,
                 "test_names": test_package_paths
                     .iter()
-                    .map(|p| p.to_str().unwrap())
+                    .map(|p| p.file_name().and_then(|s| s.to_str()).unwrap())
                     .collect::<Vec<&str>>(),
                 "test_timeout": test_timeout,
             }
