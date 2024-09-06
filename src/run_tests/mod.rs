@@ -25,11 +25,17 @@ pub mod types;
 use types::*;
 
 impl Config {
-    fn expand_home_paths(mut self: Config) -> Config {
+    fn expand_home_paths(mut self: Config, config_path: &Path) -> Config {
+        let config_path = config_path.parent().unwrap();
         self.runtime = match self.runtime {
             Runtime::FetchVersion(version) => Runtime::FetchVersion(version),
             Runtime::RepoPath(runtime_path) => {
-                Runtime::RepoPath(expand_home_path(&runtime_path).unwrap_or(runtime_path))
+                Runtime::RepoPath(expand_home_path(&runtime_path)
+                    .unwrap_or_else(|| {
+                        fs::canonicalize(config_path.join(&runtime_path))
+                            .unwrap_or_else(|_| runtime_path)
+                    })
+                )
             }
         };
         for test in self.tests.iter_mut() {
@@ -39,7 +45,11 @@ impl Config {
                 .map(|p| expand_home_path(&p).unwrap_or_else(|| p.clone()))
                 .collect();
             for node in test.nodes.iter_mut() {
-                node.home = expand_home_path(&node.home).unwrap_or_else(|| node.home.clone());
+                node.home = expand_home_path(&node.home)
+                    .unwrap_or_else(|| {
+                        fs::canonicalize(config_path.join(&node.home))
+                            .unwrap_or_else(|_| node.home.clone())
+                    });
             }
         }
         self
@@ -82,8 +92,8 @@ fn load_config(config_path: &Path) -> Result<(PathBuf, Config)> {
 
     let content = fs::read_to_string(&config_path)?;
     Ok((
-        config_path,
-        toml::from_str::<Config>(&content)?.expand_home_paths(),
+        config_path.clone(),
+        toml::from_str::<Config>(&content)?.expand_home_paths(&config_path),
     ))
 }
 
@@ -757,6 +767,7 @@ pub async fn execute(config_path: PathBuf) -> Result<()> {
 
     let (config_path, config) = load_config(&config_path)?;
 
+    println!("{:?}", std::env::current_dir());
     debug!("{:?}", config);
 
     // TODO: factor out with boot_fake_node?
