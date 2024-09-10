@@ -325,7 +325,7 @@ async fn build_packages(
     let SetupCleanupReturn {
         send_to_cleanup,
         send_to_kill,
-        task_handles: _,
+        task_handles,
         cleanup_context: _cleanup_context,
         mut master_node_port,
         node_cleanup_infos,
@@ -418,6 +418,9 @@ async fn build_packages(
 
     info!("Cleaning up node to host dependencies.");
     let _ = send_to_cleanup.send(false);
+    for handle in task_handles {
+        handle.await.unwrap();
+    }
 
     Ok((setup_packages, test_package_paths))
 }

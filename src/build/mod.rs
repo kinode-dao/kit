@@ -886,15 +886,21 @@ async fn fetch_dependencies(
         true,
     )).await {
         debug!("Failed to build self as dependency: {e:?}");
-    } else  if let Err(e) = fetch_local_built_dependency(
+    } else if let Err(e) = fetch_local_built_dependency(
         apis,
         wasm_paths,
         package_dir,
     ) {
         debug!("Failed to fetch self as dependency: {e:?}");
     };
+    let canon_package_dir = package_dir.canonicalize()?;
     for local_dependency in &local_dependencies {
         // build dependency
+        let local_dep_deps = local_dependencies
+            .clone()
+            .into_iter()
+            .filter(|d| *d != canon_package_dir)
+            .collect();
         Box::pin(execute(
             local_dependency,
             true,
@@ -904,7 +910,7 @@ async fn fetch_dependencies(
             url.clone(),
             download_from,
             default_world,
-            vec![],  // TODO: what about deps-of-deps?
+            local_dep_deps,
             vec![],
             force,
             verbose,
@@ -1246,7 +1252,11 @@ async fn compile_package(
 
     // zip & place API inside of pkg/ to publish API
     if target_api_dir.exists() {
-        for path in add_paths_to_api {
+        let mut api_includes = add_paths_to_api.clone();
+        if let Some(ref metadata_includes) = metadata.properties.api_includes {
+            api_includes.extend_from_slice(metadata_includes);
+        }
+        for path in api_includes {
             let path = if path.exists() {
                 path
             } else {
