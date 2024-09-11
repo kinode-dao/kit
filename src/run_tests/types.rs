@@ -25,9 +25,9 @@ pub enum Runtime {
 pub struct Test {
     pub dependency_package_paths: Vec<PathBuf>,
     pub setup_packages: Vec<SetupPackage>,
-    pub setup_scripts: Vec<Script>,
+    pub setup_scripts: Vec<String>,
     pub test_package_paths: Vec<PathBuf>,
-    pub test_scripts: Vec<Script>,
+    pub test_scripts: Vec<String>,
     pub timeout_secs: u64,
     pub fakechain_router: u16,
     pub nodes: Vec<Node>,
@@ -37,12 +37,6 @@ pub struct Test {
 pub struct SetupPackage {
     pub path: PathBuf,
     pub run: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Script {
-    pub path: PathBuf,
-    pub args: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

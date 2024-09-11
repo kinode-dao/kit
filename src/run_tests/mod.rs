@@ -337,7 +337,6 @@ async fn build_packages(
     let anvil_process =
         chain::start_chain(test.fakechain_router, true, recv_kill_in_start_chain, false).await?;
 
-    // Process each node
     boot_nodes(
         &nodes,
         &test.fakechain_router,
@@ -693,11 +692,21 @@ async fn handle_test(
     let setup_scripts: Vec<i32> = test
         .setup_scripts
         .iter()
-        .map(|s| {
-            let p = test_dir_path.join(&s.path).canonicalize().unwrap();
-            let p = p.to_str().unwrap();
+        .map(|script| {
+            let command = script
+                .split_whitespace()
+                .map(|item| {
+                    test_dir_path
+                        .join(&item)
+                        .canonicalize()
+                        .ok()
+                        .and_then(|p| p.to_str().map(|s| s.to_string()))
+                        .unwrap_or_else(|| item.to_string())
+                })
+                .collect::<Vec<String>>()
+                .join(" ");
             Command::new("bash")
-                .args(["-c", &format!("{} {}", p, &s.args)])
+                .args(["-c", &command])
                 .spawn()
                 .expect("")
                 .id() as i32
@@ -741,13 +750,18 @@ async fn handle_test(
     .await;
 
     for script in test.test_scripts {
-        let p = test_dir_path.join(&script.path).canonicalize().unwrap();
-        let p = p.to_str().unwrap();
-        let command = if script.args.is_empty() {
-            p.to_string()
-        } else {
-            format!("{} {}", p, script.args)
-        };
+        let command = script
+            .split_whitespace()
+            .map(|item| {
+                test_dir_path
+                    .join(&item)
+                    .canonicalize()
+                    .ok()
+                    .and_then(|p| p.to_str().map(|s| s.to_string()))
+                    .unwrap_or_else(|| item.to_string())
+            })
+            .collect::<Vec<String>>()
+            .join(" ");
         build::run_command(Command::new("bash").args(["-c", &command]), false)?;
     }
 
