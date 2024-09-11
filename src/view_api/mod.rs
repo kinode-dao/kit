@@ -3,14 +3,18 @@ use std::path::PathBuf;
 use color_eyre::{eyre::eyre, Result, Section};
 use fs_err as fs;
 use serde_json::json;
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 
 use crate::{boot_fake_node::extract_zip, inject_message, KIT_CACHE, KIT_LOG_PATH_DEFAULT};
 
 #[instrument(level = "trace", skip_all)]
-fn make_app_store_message(node: Option<&str>, message: &serde_json::Value) -> Result<serde_json::Value> {
+fn make_app_store_message(
+    process_name: &str,
+    node: Option<&str>,
+    message: &serde_json::Value,
+) -> Result<serde_json::Value> {
     inject_message::make_message(
-        "main:app_store:sys",
+        &format!("{process_name}:app_store:sys"),
         Some(5),
         &message.to_string(),
         node,
@@ -22,7 +26,22 @@ fn make_app_store_message(node: Option<&str>, message: &serde_json::Value) -> Re
 #[instrument(level = "trace", skip_all)]
 fn make_list_apis(node: Option<&str>) -> Result<serde_json::Value> {
     let message = json!("Apis");
-    make_app_store_message(node, &message)
+    make_app_store_message("main", node, &message)
+}
+
+#[instrument(level = "trace", skip_all)]
+fn make_get_app(
+    node: Option<&str>,
+    package_name: &str,
+    publisher_node: &str,
+) -> Result<serde_json::Value> {
+    let message = json!({
+        "GetApp": {
+            "package_name": package_name,
+            "publisher_node": publisher_node,
+        },
+    });
+    make_app_store_message("chain", node, &message)
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -37,7 +56,7 @@ fn make_get_api(
             "publisher_node": publisher_node,
         },
     });
-    make_app_store_message(node, &message)
+    make_app_store_message("main", node, &message)
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -46,22 +65,20 @@ fn make_download(
     package_name: &str,
     publisher_node: &str,
     download_from: Option<&str>,
-    desired_version_hash: Option<&str>,
+    desired_version_hash: &str,
 ) -> Result<serde_json::Value> {
     let download_from = download_from.unwrap_or_else(|| publisher_node);
     let message = json!({
-        "Download": {
+        "LocalDownload": {
             "package_id": {
                 "package_name": package_name,
                 "publisher_node": publisher_node,
             },
             "download_from": download_from,
-            "mirror": false,
-            "auto_update": false,
             "desired_version_hash": desired_version_hash,
         },
     });
-    make_app_store_message(node, &message)
+    make_app_store_message("downloads", node, &message)
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -77,7 +94,35 @@ fn split_package_id(package_id: &str) -> Result<(String, String)> {
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn parse_response(response: reqwest::Response) -> Result<(String, Option<Vec<u8>>)> {
+async fn get_version_hash(
+    node: Option<&str>,
+    url: &str,
+    package_name: &str,
+    publisher_node: &str,
+) -> Result<String> {
+    let request = make_get_app(node, package_name, publisher_node)?;
+    let response = inject_message::send_request(url, request).await?;
+    let (body, _) = parse_response(response, url).await?;
+    let body: serde_json::Value = serde_json::from_str(&body)?;
+    let Some(result) = body.get("GetApp") else {
+        return Err(eyre!("Couldn't get version hash: bad response from node at {url}: {body}"));
+    };
+    return match result {
+        serde_json::Value::String(s) => Ok(s.clone()),
+        serde_json::Value::Null => {
+            warn!("Couldn't get version hash: got Null from node at {url}: {body}");
+            Ok(String::new())
+        }
+        _ => {
+            Err(eyre!(
+                "Couldn't get version hash: got unexpected result from node at {url}: {body}"
+            ))
+        }
+    };
+}
+
+#[instrument(level = "trace", skip_all)]
+async fn parse_response(response: reqwest::Response, url: &str) -> Result<(String, Option<Vec<u8>>)> {
     let inject_message::Response { body, lazy_load_blob, .. } =
         inject_message::parse_response(response)
             .await
@@ -85,7 +130,7 @@ async fn parse_response(response: reqwest::Response) -> Result<(String, Option<V
                 let e_string = e.to_string();
                 if e_string.contains("Failed with status code:") {
                     eyre!("{e_string}\ncheck logs (default at {KIT_LOG_PATH_DEFAULT}) for full http response")
-                        .with_suggestion(|| "is Kinode running at url {url}?")
+                        .with_suggestion(|| format!("is Kinode running at url {url}?"))
                 } else {
                     eyre!(e_string)
                 }
@@ -148,15 +193,19 @@ async fn download(
     desired_version_hash: Option<&str>,
 ) -> Result<()> {
     let (package_name, publisher_node) = split_package_id(package_id)?;
+    let desired_version_hash = match desired_version_hash {
+        Some(hash) => hash.to_string(),
+        None => get_version_hash(node, url, &package_name, &publisher_node).await?,
+    };
     let request = make_download(
         node,
         &package_name,
         &publisher_node,
         download_from,
-        desired_version_hash,
+        &desired_version_hash,
     )?;
     let response = inject_message::send_request(url, request).await?;
-    let (body, _) = parse_response(response).await?;
+    let (body, _) = parse_response(response, url).await?;
     if body.contains("Success") {
         Ok(())
     } else if body.contains("Started") {
@@ -177,7 +226,7 @@ async fn download(
 async fn list_apis(node: Option<&str>, url: &str, verbose: bool) -> Result<serde_json::Value> {
     let request = make_list_apis(node)?;
     let response = inject_message::send_request(url, request).await?;
-    let (body, _) = parse_response(response).await?;
+    let (body, _) = parse_response(response, url).await?;
     let body = serde_json::from_str::<serde_json::Value>(&body)?;
     let body = rewrite_list_apis(body)?;
     if verbose {
@@ -198,7 +247,7 @@ async fn get_api(
     let (package_name, publisher_node) = split_package_id(package_id)?;
     let request = make_get_api(node, &package_name, &publisher_node)?;
     let response = inject_message::send_request(url, request).await?;
-    let (body, blob) = parse_response(response).await?;
+    let (body, blob) = parse_response(response, url).await?;
     let zip_dir = if let Some(blob) = blob {
         // get_api success
         let api_name = format!("{}-api", package_id);

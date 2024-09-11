@@ -25,11 +25,17 @@ pub mod types;
 use types::*;
 
 impl Config {
-    fn expand_home_paths(mut self: Config) -> Config {
+    fn expand_home_paths(mut self: Config, config_path: &Path) -> Config {
+        let config_path = config_path.parent().unwrap();
         self.runtime = match self.runtime {
             Runtime::FetchVersion(version) => Runtime::FetchVersion(version),
             Runtime::RepoPath(runtime_path) => {
-                Runtime::RepoPath(expand_home_path(&runtime_path).unwrap_or(runtime_path))
+                Runtime::RepoPath(expand_home_path(&runtime_path)
+                    .unwrap_or_else(|| {
+                        fs::canonicalize(config_path.join(&runtime_path))
+                            .unwrap_or_else(|_| runtime_path)
+                    })
+                )
             }
         };
         for test in self.tests.iter_mut() {
@@ -39,7 +45,11 @@ impl Config {
                 .map(|p| expand_home_path(&p).unwrap_or_else(|| p.clone()))
                 .collect();
             for node in test.nodes.iter_mut() {
-                node.home = expand_home_path(&node.home).unwrap_or_else(|| node.home.clone());
+                node.home = expand_home_path(&node.home)
+                    .unwrap_or_else(|| {
+                        fs::canonicalize(config_path.join(&node.home))
+                            .unwrap_or_else(|_| node.home.clone())
+                    });
             }
         }
         self
@@ -82,8 +92,8 @@ fn load_config(config_path: &Path) -> Result<(PathBuf, Config)> {
 
     let content = fs::read_to_string(&config_path)?;
     Ok((
-        config_path,
-        toml::from_str::<Config>(&content)?.expand_home_paths(),
+        config_path.clone(),
+        toml::from_str::<Config>(&content)?.expand_home_paths(&config_path),
     ))
 }
 
@@ -315,7 +325,7 @@ async fn build_packages(
     let SetupCleanupReturn {
         send_to_cleanup,
         send_to_kill,
-        task_handles: _,
+        task_handles,
         cleanup_context: _cleanup_context,
         mut master_node_port,
         node_cleanup_infos,
@@ -327,7 +337,6 @@ async fn build_packages(
     let anvil_process =
         chain::start_chain(test.fakechain_router, true, recv_kill_in_start_chain, false).await?;
 
-    // Process each node
     boot_nodes(
         &nodes,
         &test.fakechain_router,
@@ -408,6 +417,9 @@ async fn build_packages(
 
     info!("Cleaning up node to host dependencies.");
     let _ = send_to_cleanup.send(false);
+    for handle in task_handles {
+        handle.await.unwrap();
+    }
 
     Ok((setup_packages, test_package_paths))
 }
@@ -680,11 +692,21 @@ async fn handle_test(
     let setup_scripts: Vec<i32> = test
         .setup_scripts
         .iter()
-        .map(|s| {
-            let p = test_dir_path.join(&s.path).canonicalize().unwrap();
-            let p = p.to_str().unwrap();
+        .map(|script| {
+            let command = script
+                .split_whitespace()
+                .map(|item| {
+                    test_dir_path
+                        .join(&item)
+                        .canonicalize()
+                        .ok()
+                        .and_then(|p| p.to_str().map(|s| s.to_string()))
+                        .unwrap_or_else(|| item.to_string())
+                })
+                .collect::<Vec<String>>()
+                .join(" ");
             Command::new("bash")
-                .args(["-c", &format!("{} {}", p, &s.args)])
+                .args(["-c", &command])
                 .spawn()
                 .expect("")
                 .id() as i32
@@ -728,13 +750,18 @@ async fn handle_test(
     .await;
 
     for script in test.test_scripts {
-        let p = test_dir_path.join(&script.path).canonicalize().unwrap();
-        let p = p.to_str().unwrap();
-        let command = if script.args.is_empty() {
-            p.to_string()
-        } else {
-            format!("{} {}", p, script.args)
-        };
+        let command = script
+            .split_whitespace()
+            .map(|item| {
+                test_dir_path
+                    .join(&item)
+                    .canonicalize()
+                    .ok()
+                    .and_then(|p| p.to_str().map(|s| s.to_string()))
+                    .unwrap_or_else(|| item.to_string())
+            })
+            .collect::<Vec<String>>()
+            .join(" ");
         build::run_command(Command::new("bash").args(["-c", &command]), false)?;
     }
 
@@ -757,6 +784,7 @@ pub async fn execute(config_path: PathBuf) -> Result<()> {
 
     let (config_path, config) = load_config(&config_path)?;
 
+    println!("{:?}", std::env::current_dir());
     debug!("{:?}", config);
 
     // TODO: factor out with boot_fake_node?

@@ -160,8 +160,13 @@ pub fn get_newest_valid_node_version(
         if fields.len() == 1 {
             versions.push(fields[0].to_string());
         } else if fields.len() == 2 {
-            assert_eq!("->", fields[0]);
-            versions.push(fields[1].to_string());
+            if "->" == fields[0] {
+                versions.push(fields[1].to_string());
+            } else if fields[1] == "*" {
+                versions.push(fields[0].to_string());
+            } else {
+                warn!("unexpected line {line} in `nvm ls --no-alias`; skipping:\n{nvm_ls}");
+            }
         }
     }
 
