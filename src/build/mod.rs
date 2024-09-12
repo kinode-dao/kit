@@ -602,7 +602,7 @@ async fn compile_rust_wasm_process(
         "--release",
         "--no-default-features",
         "--target",
-        "wasm32-wasi",
+        "wasm32-wasip1",
         "--target-dir",
         "target",
         "--color=always",
@@ -649,7 +649,7 @@ async fn compile_rust_wasm_process(
         .unwrap()
         .replace("-", "_");
 
-    let wasm_file_prefix = Path::new("target/wasm32-wasi/release");
+    let wasm_file_prefix = Path::new("target/wasm32-wasip1/release");
     let wasm_file = wasm_file_prefix.join(&format!("{}.wasm", wasm_file_name));
 
     let wasm_path = format!("../pkg/{}.wasm", wasm_file_name);
