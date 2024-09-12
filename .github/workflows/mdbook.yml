@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v3
       - name: Set up nvm, node, npm p0
         run: |
           echo "$HOME" >> $GITHUB_PATH
@@ -70,8 +72,6 @@ jobs:
       - name: Add Foundry to path
         run: echo "$PWD" >> $GITHUB_PATH
 
-      - name: Check out repository
-        uses: actions/checkout@v3
       - name: Build the release
         run: ./scripts/build-release.py
       - name: Unzip the build output
@@ -102,4 +102,9 @@ jobs:
         run: unzip kinode.zip
 
       - name: Run tests
-        run: ./kit t src/new/templates/tests.toml
+        run: |
+          pwd
+          ls -la
+          echo $PATHA
+          echo $NVM_DIR
+          { ./kit t src/new/templates/tests.toml; } 2>&1
