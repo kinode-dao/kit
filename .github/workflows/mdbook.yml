@@ -13,6 +13,63 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Set up nvm, node, npm p0
+        run: |
+          echo "$HOME" >> $GITHUB_PATH
+          echo "NVM_DIR=$HOME/.nvm" >> $GITHUB_ENV
+      - name: Set up nvm, node, npm p1
+        run: |
+          source $NVM_DIR/nvm.sh
+          nvm install 20.0.0
+          nvm --version
+      - name: Set up cargo
+        run: |
+          curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf -y | sh
+          rustup update
+          cargo install wasm-tools
+          rustup install nightly
+          rustup target add wasm32-wasi
+          rustup target add wasm32-wasi --toolchain nightly
+          cargo install cargo-wasi
+      #- name: Get latest release from foundry-rs/foundry
+      #  id: get-latest-foundry-release
+      #  uses: actions/github-script@v6
+      #  with:
+      #    script: |
+      #      const repo = {
+      #        owner: 'foundry-rs',
+      #        repo: 'foundry',
+      #        per_page: 1,
+      #        page: 1,
+      #      };
+      #      const releases = await github.rest.repos.listReleases(repo);
+      #      const preReleases = releases.data.filter(release => release.prerelease);
+
+      #      // Sort pre-releases by created_at date in descending order
+      #      preReleases.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+      #      if (preReleases.length === 0) {
+      #        throw new Error('No pre-releases found');
+      #      }
+
+      #      const latestPreRelease = preReleases[0];
+      #      const asset = latestPreRelease.assets.find(asset => asset.name.match(/foundry_nightly_linux_amd64\.tar\.gz/));
+
+      #      if (!asset) {
+      #        throw new Error('Asset not found');
+      #      }
+      #      return asset.browser_download_url;
+      #    result-encoding: string
+      - name: Download the Foundry release
+        run: wget -q https://github.com/foundry-rs/foundry/releases/download/nightly-de596a4db781933f0c95805bd1c8c05e65f03d4f/foundry_nightly_linux_amd64.tar.gz -O foundry.tar.gz
+        #run: wget -q ${DOWNLOAD_URL} -O foundry.tar.gz
+        #env:
+        #  DOWNLOAD_URL: ${{ steps.get-latest-foundry-release.outputs.result }}
+      - name: Untar the release
+        run: tar zxf foundry.tar.gz
+      - name: Add Foundry to path
+        run: echo "$PWD" >> $GITHUB_PATH
+
       - name: Check out repository
         uses: actions/checkout@v3
       - name: Build the release
