@@ -118,7 +118,8 @@ fn check_manifest(pkg_dir: &Path, manifest_file_name: &str) -> Result<()> {
                             make_local_file_link_path(
                                 &pkg_dir.join(manifest_file_name),
                                 manifest_file_name,
-                            ).unwrap(),
+                            )
+                            .unwrap(),
                             cab_file_path,
                         )
                     }));
@@ -139,15 +140,24 @@ fn check_manifest(pkg_dir: &Path, manifest_file_name: &str) -> Result<()> {
                             make_local_file_link_path(
                                 &pkg_dir.join(manifest_file_name),
                                 manifest_file_name,
-                            ).unwrap(),
+                            )
+                            .unwrap(),
                             hep_file_path,
                         )
                     }));
                 }
             }
         }
-        return Err(eyre!("Missing a .wasm file declared by {}.", manifest_file_name)
-            .with_suggestion(|| format!("Try `kit build`ing package first, or updating {}.", manifest_file_name)));
+        return Err(
+            eyre!("Missing a .wasm file declared by {}.", manifest_file_name).with_suggestion(
+                || {
+                    format!(
+                        "Try `kit build`ing package first, or updating {}.",
+                        manifest_file_name
+                    )
+                },
+            ),
+        );
     }
     Ok(())
 }
@@ -168,8 +178,9 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
     let zip_filename = make_zip_filename(package_dir, &pkg_publisher);
 
     if !zip_filename.exists() {
-        return Err(eyre!("Missing pkg zip.")
-            .with_suggestion(|| "Try `kit build`ing package first."));
+        return Err(
+            eyre!("Missing pkg zip.").with_suggestion(|| "Try `kit build`ing package first.")
+        );
     }
 
     check_manifest(&pkg_dir, "manifest.json")?;
@@ -207,11 +218,7 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
         ));
     }
 
-    let install_request = install(
-        None,
-        &hash_string,
-        &metadata,
-    )?;
+    let install_request = install(None, &hash_string, &metadata)?;
     let response = inject_message::send_request(url, install_request).await?;
     let inject_message::Response { ref body, .. } =
         inject_message::parse_response(response).await?;

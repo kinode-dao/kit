@@ -38,7 +38,9 @@ struct Commit {
 
 fn parse_u128_with_underscores(s: &str) -> Result<u128, &'static str> {
     let clean_string = s.replace('_', "");
-    clean_string.parse::<u128>().map_err(|_| "Invalid number format")
+    clean_string
+        .parse::<u128>()
+        .map_err(|_| "Invalid number format")
 }
 
 async fn get_latest_commit_sha_from_branch(
@@ -366,7 +368,8 @@ async fn execute(
                 *gas_limit,
                 max_priority_fee,
                 max_fee_per_gas,
-            ).await
+            )
+            .await
         }
         Some(("remove-package", matches)) => {
             let package_name = matches

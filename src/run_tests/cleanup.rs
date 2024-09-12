@@ -88,9 +88,7 @@ pub async fn cleanup(
         }
     };
 
-    let _ = send_to_kill.send(
-        should_print_std.is_none() || should_print_std.is_some_and(|b| b)
-    );
+    let _ = send_to_kill.send(should_print_std.is_none() || should_print_std.is_some_and(|b| b));
 
     for NodeCleanupInfo {
         master_fd,
