@@ -45,4 +45,7 @@ jobs:
         run: unzip kinode.zip
 
       - name: Run tests
-        run: ./kit t src/new/templates/test.toml
+        run: |
+          pwd
+          ls -la
+          ./kit t src/new/templates/test.toml
