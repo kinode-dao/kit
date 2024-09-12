@@ -103,8 +103,4 @@ jobs:
 
       - name: Run tests
         run: |
-          pwd
-          ls -la
-          echo $PATHA
-          echo $NVM_DIR
           { ./kit t src/new/templates/tests.toml; } 2>&1
