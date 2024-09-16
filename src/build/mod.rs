@@ -494,6 +494,39 @@ fn get_file_modified_time(file_path: &Path) -> Result<SystemTime> {
 }
 
 #[instrument(level = "trace", skip_all)]
+fn is_up_to_date(
+    build_with_features_path: &Path,
+    features: &str,
+    package_dir: &Path,
+) -> Result<bool> {
+    let old_features = fs::read_to_string(&build_with_features_path).ok();
+    if old_features == Some(features.to_string())
+        && package_dir.join("Cargo.lock").exists()
+        && package_dir.join("pkg").exists()
+        && package_dir.join("pkg").join("api.zip").exists()
+        && file_with_extension_exists(&package_dir.join("pkg"), "wasm")
+    {
+        let (source_time, build_time) = get_most_recent_modified_time(
+            package_dir,
+            &HashSet::from(["Cargo.lock", "api.zip"]),
+            &HashSet::from(["wasm"]),
+            &HashSet::from(["target"]),
+        )?;
+        if let Some(source_time) = source_time {
+            if let Some(build_time) = build_time {
+                if build_time.duration_since(source_time).is_ok() {
+                    // build_time - source_time >= 0
+                    //  -> current build is up-to-date: don't rebuild
+                    info!("Build up-to-date.");
+                    return Ok(true);
+                }
+            }
+        }
+    }
+    Ok(false)
+}
+
+#[instrument(level = "trace", skip_all)]
 async fn compile_javascript_wasm_process(
     process_dir: &Path,
     valid_node: Option<String>,
@@ -1331,31 +1364,8 @@ pub async fn execute(
         .with_suggestion(|| "Please re-run targeting a package."));
     }
     let build_with_features_path = package_dir.join("target").join("build_with_features.txt");
-    if !force {
-        let old_features = fs::read_to_string(&build_with_features_path).ok();
-        if old_features == Some(features.to_string())
-            && package_dir.join("Cargo.lock").exists()
-            && package_dir.join("pkg").exists()
-            && package_dir.join("pkg").join("api.zip").exists()
-            && file_with_extension_exists(&package_dir.join("pkg"), "wasm")
-        {
-            let (source_time, build_time) = get_most_recent_modified_time(
-                package_dir,
-                &HashSet::from(["Cargo.lock", "api.zip"]),
-                &HashSet::from(["wasm"]),
-                &HashSet::from(["target"]),
-            )?;
-            if let Some(source_time) = source_time {
-                if let Some(build_time) = build_time {
-                    if build_time.duration_since(source_time).is_ok() {
-                        // build_time - source_time >= 0
-                        //  -> current build is up-to-date: don't rebuild
-                        info!("Build up-to-date.");
-                        return Ok(());
-                    }
-                }
-            }
-        }
+    if !force && is_up_to_date(&build_with_features_path, features, package_dir)? {
+        return Ok(());
     }
     fs::create_dir_all(package_dir.join("target"))?;
     fs::write(&build_with_features_path, features)?;
