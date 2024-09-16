@@ -494,6 +494,14 @@ fn get_file_modified_time(file_path: &Path) -> Result<SystemTime> {
 }
 
 #[instrument(level = "trace", skip_all)]
+fn get_cargo_package_path(package: &cargo_metadata::Package) -> Result<PathBuf> {
+    match package.manifest_path.parent().map(|p| p.as_std_path().to_path_buf()) {
+        Some(p) => Ok(p),
+        None => Err(eyre!("Cargo manifest path {} has no parent", package.manifest_path)),
+    }
+}
+
+#[instrument(level = "trace", skip_all)]
 fn is_up_to_date(
     build_with_features_path: &Path,
     features: &str,
@@ -506,25 +514,56 @@ fn is_up_to_date(
         && package_dir.join("pkg").join("api.zip").exists()
         && file_with_extension_exists(&package_dir.join("pkg"), "wasm")
     {
-        let (source_time, build_time) = get_most_recent_modified_time(
+        let (mut source_time, build_time) = get_most_recent_modified_time(
             package_dir,
             &HashSet::from(["Cargo.lock", "api.zip"]),
             &HashSet::from(["wasm"]),
             &HashSet::from(["target"]),
         )?;
-        if let Some(source_time) = source_time {
-            if let Some(build_time) = build_time {
-                if build_time.duration_since(source_time).is_ok() {
-                    // build_time - source_time >= 0
-                    //  -> current build is up-to-date: don't rebuild
-                    info!("Build up-to-date.");
-                    return Ok(true);
+        let Some(build_time) = build_time else {
+            return Ok(false);
+        };
+
+        // update source to most recent of package_dir
+        //  or package_dir's local deps
+        let metadata = cargo_metadata::MetadataCommand::new()
+            .manifest_path(package_dir.join("Cargo.toml"))
+            .exec()?;
+        for package in metadata.packages.iter().filter(|p| p.source.is_none()) {
+            let dep_package_dir = get_cargo_package_path(&package)?;
+            let (dep_source_time, _) = get_most_recent_modified_time(
+                &dep_package_dir,
+                &HashSet::from(["Cargo.lock", "api.zip"]),
+                &HashSet::from(["wasm"]),
+                &HashSet::from(["target"]),
+            )?;
+            match source_time {
+                None => source_time = dep_source_time,
+                Some(ref st) => {
+                    if let Some(ref dst) = dep_source_time {
+                        if dst.duration_since(st.clone()).is_ok() {
+                            // dep has more recent changes than source
+                            //  -> update source_time to dep_source_time
+                            source_time = dep_source_time;
+                        }
+                    }
                 }
+            }
+        }
+
+        if let Some(source_time) = source_time {
+            if build_time.duration_since(source_time).is_ok() {
+                // build_time - source_time >= 0
+                //  -> current build is up-to-date: don't rebuild
+                info!("Build up-to-date.");
+                return Ok(true);
             }
         }
     }
     Ok(false)
 }
+
+
 
 #[instrument(level = "trace", skip_all)]
 async fn compile_javascript_wasm_process(
