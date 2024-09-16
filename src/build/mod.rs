@@ -495,9 +495,16 @@ fn get_file_modified_time(file_path: &Path) -> Result<SystemTime> {
 
 #[instrument(level = "trace", skip_all)]
 fn get_cargo_package_path(package: &cargo_metadata::Package) -> Result<PathBuf> {
-    match package.manifest_path.parent().map(|p| p.as_std_path().to_path_buf()) {
+    match package
+        .manifest_path
+        .parent()
+        .map(|p| p.as_std_path().to_path_buf())
+    {
         Some(p) => Ok(p),
-        None => Err(eyre!("Cargo manifest path {} has no parent", package.manifest_path)),
+        None => Err(eyre!(
+            "Cargo manifest path {} has no parent",
+            package.manifest_path
+        )),
     }
 }
 
@@ -562,8 +569,6 @@ fn is_up_to_date(
     }
     Ok(false)
 }
-
-
 
 #[instrument(level = "trace", skip_all)]
 async fn compile_javascript_wasm_process(
