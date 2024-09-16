@@ -30,8 +30,8 @@ jobs:
           rustup update
           cargo install wasm-tools
           rustup install nightly
-          rustup target add wasm32-wasi
-          rustup target add wasm32-wasi --toolchain nightly
+          rustup target add wasm32-wasip1
+          rustup target add wasm32-wasip1 --toolchain nightly
           cargo install cargo-wasi
       #- name: Get latest release from foundry-rs/foundry
       #  id: get-latest-foundry-release
