@@ -18,7 +18,7 @@ use tracing::{debug, info, instrument, warn};
 use walkdir::WalkDir;
 use zip::write::FileOptions;
 
-use kinode_process_lib::{PackageId, kernel_types::Erc721Metadata};
+use kinode_process_lib::{kernel_types::Erc721Metadata, PackageId};
 
 use crate::setup::{
     check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version,
@@ -58,7 +58,10 @@ pub fn make_pkg_publisher(metadata: &Erc721Metadata) -> String {
 }
 
 pub fn make_zip_filename(package_dir: &Path, pkg_publisher: &str) -> PathBuf {
-    let zip_filename =  package_dir.join("target").join(pkg_publisher).with_extension("zip");
+    let zip_filename = package_dir
+        .join("target")
+        .join(pkg_publisher)
+        .with_extension("zip");
     zip_filename
 }
 
@@ -132,10 +135,7 @@ pub fn has_feature(cargo_toml_path: &str, feature: &str) -> Result<bool> {
 }
 
 #[instrument(level = "trace", skip_all)]
-pub fn remove_missing_features(
-    cargo_toml_path: &Path,
-    features: Vec<&str>,
-) -> Result<Vec<String>> {
+pub fn remove_missing_features(cargo_toml_path: &Path, features: Vec<&str>) -> Result<Vec<String>> {
     let cargo_toml_content = fs::read_to_string(cargo_toml_path)?;
     let cargo_toml: toml::Value = cargo_toml_content.parse()?;
     let Some(cargo_features) = cargo_toml.get("features").and_then(|f| f.as_table()) else {
@@ -152,8 +152,7 @@ pub fn remove_missing_features(
                 None
             }
         })
-        .collect()
-    )
+        .collect())
 }
 
 /// Check if the first element is empty and there are no more elements
@@ -181,7 +180,19 @@ pub fn run_command(cmd: &mut Command, verbose: bool) -> Result<Option<(String, S
             ));
         }
     }
-    let output = cmd.output()?;
+    let output = match cmd.output() {
+        Ok(o) => o,
+        Err(e) => {
+            return Err(eyre!(
+                "Command `{} {:?}` failed with error {:?}",
+                cmd.get_program().to_str().unwrap(),
+                cmd.get_args()
+                    .map(|a| a.to_str().unwrap())
+                    .collect::<Vec<_>>(),
+                e,
+            ));
+        }
+    };
     if output.status.success() {
         Ok(Some((
             String::from_utf8_lossy(&output.stdout).to_string(),
@@ -207,8 +218,7 @@ pub async fn download_file(url: &str, path: &Path) -> Result<()> {
     let mut hasher = Sha256::new();
     hasher.update(url.as_bytes());
     let hashed_url = hasher.finalize();
-    let hashed_url_path = Path::new(KIT_CACHE)
-        .join(format!("{hashed_url:x}"));
+    let hashed_url_path = Path::new(KIT_CACHE).join(format!("{hashed_url:x}"));
 
     let content = if hashed_url_path.exists() {
         fs::read(hashed_url_path)?
@@ -339,7 +349,10 @@ fn parse_version_from_url(url: &str) -> Result<semver::VersionReq> {
     let re = regex::Regex::new(r"\?tag=v([0-9]+\.[0-9]+\.[0-9]+)$").unwrap();
     if let Some(caps) = re.captures(url) {
         if let Some(version) = caps.get(1) {
-            return Ok(semver::VersionReq::parse(&format!("^{}", version.as_str()))?);
+            return Ok(semver::VersionReq::parse(&format!(
+                "^{}",
+                version.as_str()
+            ))?);
         }
     }
     Err(eyre!("No valid version found in the URL"))
@@ -389,19 +402,19 @@ fn check_process_lib_version(cargo_toml_path: &Path) -> Result<()> {
         .collect();
     let versions = find_crate_versions(KINODE_PROCESS_LIB_CRATE_NAME, &packages)?;
     if versions.len() > 1 {
-        return Err(
-            eyre!(
-                "Found different versions of {} in different crates:{}",
-                KINODE_PROCESS_LIB_CRATE_NAME,
-                versions.iter().fold(String::new(), |s, (version, crates)| {
-                    format!("{s}\n{version}\t{crates:?}")
-                })
-            )
-            .with_suggestion(|| format!(
+        return Err(eyre!(
+            "Found different versions of {} in different crates:{}",
+            KINODE_PROCESS_LIB_CRATE_NAME,
+            versions.iter().fold(String::new(), |s, (version, crates)| {
+                format!("{s}\n{version}\t{crates:?}")
+            })
+        )
+        .with_suggestion(|| {
+            format!(
                 "Set all {} versions to be the same to avoid hard-to-debug errors.",
                 KINODE_PROCESS_LIB_CRATE_NAME,
-            ))
-        );
+            )
+        }));
     }
     Ok(())
 }
@@ -420,16 +433,25 @@ fn get_most_recent_modified_time(
         let entry = entry?;
         let path = entry.path();
 
-        let file_name = path.file_name().unwrap_or_default().to_str().unwrap_or_default();
+        let file_name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_str()
+            .unwrap_or_default();
 
         if exclude_files.contains(file_name) {
             let file_time = get_file_modified_time(&path)?;
-            most_recent_excluded = Some(most_recent_excluded.map_or(file_time, |t| t.max(file_time)));
+            most_recent_excluded =
+                Some(most_recent_excluded.map_or(file_time, |t| t.max(file_time)));
             continue;
         }
 
         if path.is_dir() {
-            let dir_name = path.file_name().unwrap_or_default().to_str().unwrap_or_default();
+            let dir_name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_str()
+                .unwrap_or_default();
             if exclude_dirs.contains(dir_name) {
                 continue;
             }
@@ -451,7 +473,8 @@ fn get_most_recent_modified_time(
             if let Some(extension) = path.extension() {
                 if exclude_extensions.contains(&extension.to_str().unwrap_or_default()) {
                     let file_time = get_file_modified_time(&path)?;
-                    most_recent_excluded = Some(most_recent_excluded.map_or(file_time, |t| t.max(file_time)));
+                    most_recent_excluded =
+                        Some(most_recent_excluded.map_or(file_time, |t| t.max(file_time)));
                     continue;
                 }
             }
@@ -468,6 +491,83 @@ fn get_most_recent_modified_time(
 fn get_file_modified_time(file_path: &Path) -> Result<SystemTime> {
     let metadata = fs::metadata(file_path)?;
     Ok(metadata.modified()?)
+}
+
+#[instrument(level = "trace", skip_all)]
+fn get_cargo_package_path(package: &cargo_metadata::Package) -> Result<PathBuf> {
+    match package
+        .manifest_path
+        .parent()
+        .map(|p| p.as_std_path().to_path_buf())
+    {
+        Some(p) => Ok(p),
+        None => Err(eyre!(
+            "Cargo manifest path {} has no parent",
+            package.manifest_path
+        )),
+    }
+}
+
+#[instrument(level = "trace", skip_all)]
+fn is_up_to_date(
+    build_with_features_path: &Path,
+    features: &str,
+    package_dir: &Path,
+) -> Result<bool> {
+    let old_features = fs::read_to_string(&build_with_features_path).ok();
+    if old_features == Some(features.to_string())
+        && package_dir.join("Cargo.lock").exists()
+        && package_dir.join("pkg").exists()
+        && package_dir.join("pkg").join("api.zip").exists()
+        && file_with_extension_exists(&package_dir.join("pkg"), "wasm")
+    {
+        let (mut source_time, build_time) = get_most_recent_modified_time(
+            package_dir,
+            &HashSet::from(["Cargo.lock", "api.zip"]),
+            &HashSet::from(["wasm"]),
+            &HashSet::from(["target"]),
+        )?;
+        let Some(build_time) = build_time else {
+            return Ok(false);
+        };
+
+        // update source to most recent of package_dir
+        //  or package_dir's local deps
+        let metadata = cargo_metadata::MetadataCommand::new()
+            .manifest_path(package_dir.join("Cargo.toml"))
+            .exec()?;
+        for package in metadata.packages.iter().filter(|p| p.source.is_none()) {
+            let dep_package_dir = get_cargo_package_path(&package)?;
+            let (dep_source_time, _) = get_most_recent_modified_time(
+                &dep_package_dir,
+                &HashSet::from(["Cargo.lock", "api.zip"]),
+                &HashSet::from(["wasm"]),
+                &HashSet::from(["target"]),
+            )?;
+            match source_time {
+                None => source_time = dep_source_time,
+                Some(ref st) => {
+                    if let Some(ref dst) = dep_source_time {
+                        if dst.duration_since(st.clone()).is_ok() {
+                            // dep has more recent changes than source
+                            //  -> update source_time to dep_source_time
+                            source_time = dep_source_time;
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Some(source_time) = source_time {
+            if build_time.duration_since(source_time).is_ok() {
+                // build_time - source_time >= 0
+                //  -> current build is up-to-date: don't rebuild
+                info!("Build up-to-date.");
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -602,7 +702,7 @@ async fn compile_rust_wasm_process(
         "--release",
         "--no-default-features",
         "--target",
-        "wasm32-wasi",
+        "wasm32-wasip1",
         "--target-dir",
         "target",
         "--color=always",
@@ -614,12 +714,12 @@ async fn compile_rust_wasm_process(
     } else {
         features.len()
     };
-    let features = remove_missing_features(
-        &process_dir.join("Cargo.toml"),
-        features,
-    )?;
+    let features = remove_missing_features(&process_dir.join("Cargo.toml"), features)?;
     if !test_only && original_length != features.len() {
-        info!("process {:?} missing features; using {:?}", process_dir, features);
+        info!(
+            "process {:?} missing features; using {:?}",
+            process_dir, features
+        );
     };
     let features = features.join(",");
     if !features.is_empty() {
@@ -649,7 +749,7 @@ async fn compile_rust_wasm_process(
         .unwrap()
         .replace("-", "_");
 
-    let wasm_file_prefix = Path::new("target/wasm32-wasi/release");
+    let wasm_file_prefix = Path::new("target/wasm32-wasip1/release");
     let wasm_file = wasm_file_prefix.join(&format!("{}.wasm", wasm_file_name));
 
     let wasm_path = format!("../pkg/{}.wasm", wasm_file_name);
@@ -879,18 +979,16 @@ async fn fetch_dependencies(
         url.clone(),
         download_from,
         default_world,
-        vec![],  // TODO: what about deps-of-deps?
+        vec![], // TODO: what about deps-of-deps?
         vec![],
         force,
         verbose,
         true,
-    )).await {
+    ))
+    .await
+    {
         debug!("Failed to build self as dependency: {e:?}");
-    } else if let Err(e) = fetch_local_built_dependency(
-        apis,
-        wasm_paths,
-        package_dir,
-    ) {
+    } else if let Err(e) = fetch_local_built_dependency(apis, wasm_paths, package_dir) {
         debug!("Failed to fetch self as dependency: {e:?}");
     };
     let canon_package_dir = package_dir.canonicalize()?;
@@ -915,7 +1013,8 @@ async fn fetch_dependencies(
             force,
             verbose,
             false,
-        )).await?;
+        ))
+        .await?;
         fetch_local_built_dependency(apis, wasm_paths, &local_dependency)?;
     }
     let Some(ref url) = url else {
@@ -935,13 +1034,9 @@ async fn fetch_dependencies(
         if local_dependencies.contains(dep.package()) {
             continue;
         }
-        let Some(zip_dir) = view_api::execute(
-            None,
-            Some(dependency),
-            url,
-            download_from,
-            false,
-        ).await? else {
+        let Some(zip_dir) =
+            view_api::execute(None, Some(dependency), url, download_from, false).await?
+        else {
             return Err(eyre!(
                 "Got unexpected result from fetching API for {dependency}"
             ));
@@ -968,12 +1063,14 @@ async fn fetch_dependencies(
 fn extract_imports_exports_from_wit(input: &str) -> (Vec<String>, Vec<String>) {
     let import_re = regex::Regex::new(r"import\s+([^\s;]+)").unwrap();
     let export_re = regex::Regex::new(r"export\s+([^\s;]+)").unwrap();
-    let imports: Vec<String> = import_re.captures_iter(input)
+    let imports: Vec<String> = import_re
+        .captures_iter(input)
         .map(|cap| cap[1].to_string())
         .filter(|s| !(s.contains("wasi") || s.contains("kinode:process/standard")))
         .collect();
 
-    let exports: Vec<String> = export_re.captures_iter(input)
+    let exports: Vec<String> = export_re
+        .captures_iter(input)
         .map(|cap| cap[1].to_string())
         .filter(|s| !s.contains("init"))
         .collect();
@@ -989,8 +1086,7 @@ fn get_imports_exports_from_wasm(
     should_move_export: bool,
 ) -> Result<()> {
     let wit = run_command(
-        Command::new("wasm-tools")
-            .args(["component", "wit", path.to_str().unwrap()]),
+        Command::new("wasm-tools").args(["component", "wit", path.to_str().unwrap()]),
         false,
     )?;
     let Some((ref wit, _)) = wit else {
@@ -1176,13 +1272,16 @@ async fn compile_package(
             default_world,
             force,
             verbose,
-        ).await?;
+        )
+        .await?;
     }
 
-    let wit_world = default_world.unwrap_or_else(|| match metadata.properties.wit_version {
-        None => DEFAULT_WORLD_0_7_0,
-        Some(0) | _ => DEFAULT_WORLD_0_8_0,
-    }).to_string();
+    let wit_world = default_world
+        .unwrap_or_else(|| match metadata.properties.wit_version {
+            None => DEFAULT_WORLD_0_7_0,
+            Some(0) | _ => DEFAULT_WORLD_0_8_0,
+        })
+        .to_string();
 
     let mut tasks = tokio::task::JoinSet::new();
     let features = features.to_string();
@@ -1225,15 +1324,14 @@ async fn compile_package(
             for import_path in import_paths {
                 let import_path_str = import_path.to_str().unwrap();
                 run_command(
-                    Command::new("wasm-tools")
-                        .args([
-                            "compose",
-                            import_path_str,
-                            "-d",
-                            export_path,
-                            "-o",
-                            import_path_str,
-                        ]),
+                    Command::new("wasm-tools").args([
+                        "compose",
+                        import_path_str,
+                        "-d",
+                        export_path,
+                        "-o",
+                        import_path_str,
+                    ]),
                     false,
                 )?;
             }
@@ -1245,7 +1343,7 @@ async fn compile_package(
                 path,
                 package_dir
                     .join("pkg")
-                    .join(path.file_name().and_then(|f| f.to_str()).unwrap())
+                    .join(path.file_name().and_then(|f| f.to_str()).unwrap()),
             )?;
         }
     }
@@ -1296,7 +1394,7 @@ pub async fn execute(
     add_paths_to_api: Vec<PathBuf>,
     force: bool,
     verbose: bool,
-    ignore_deps: bool,  // for internal use; may cause problems when adding recursive deps
+    ignore_deps: bool, // for internal use; may cause problems when adding recursive deps
 ) -> Result<()> {
     if !package_dir.join("pkg").exists() {
         if Some(".DS_Store") == package_dir.file_name().and_then(|s| s.to_str()) {
@@ -1310,31 +1408,8 @@ pub async fn execute(
         .with_suggestion(|| "Please re-run targeting a package."));
     }
     let build_with_features_path = package_dir.join("target").join("build_with_features.txt");
-    if !force {
-        let old_features = fs::read_to_string(&build_with_features_path).ok();
-        if old_features == Some(features.to_string())
-            && package_dir.join("Cargo.lock").exists()
-            && package_dir.join("pkg").exists()
-            && package_dir.join("pkg").join("api.zip").exists()
-            && file_with_extension_exists(&package_dir.join("pkg"), "wasm")
-        {
-            let (source_time, build_time) = get_most_recent_modified_time(
-                package_dir,
-                &HashSet::from(["Cargo.lock", "api.zip"]),
-                &HashSet::from(["wasm"]),
-                &HashSet::from(["target"]),
-            )?;
-            if let Some(source_time) = source_time {
-                if let Some(build_time) = build_time {
-                    if build_time.duration_since(source_time).is_ok() {
-                        // build_time - source_time >= 0
-                        //  -> current build is up-to-date: don't rebuild
-                        info!("Build up-to-date.");
-                        return Ok(());
-                    }
-                }
-            }
-        }
+    if !force && is_up_to_date(&build_with_features_path, features, package_dir)? {
+        return Ok(());
     }
     fs::create_dir_all(package_dir.join("target"))?;
     fs::write(&build_with_features_path, features)?;

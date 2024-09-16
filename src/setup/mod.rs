@@ -43,8 +43,8 @@ impl std::fmt::Display for Dependency {
             Dependency::Node => write!(f, "node {}.{}", REQUIRED_NODE_MAJOR, MINIMUM_NODE_MINOR),
             Dependency::Rust => write!(f, "rust"),
             Dependency::RustNightly => write!(f, "rust nightly"),
-            Dependency::RustWasm32Wasi => write!(f, "rust wasm32-wasi target"),
-            Dependency::RustNightlyWasm32Wasi => write!(f, "rust nightly wasm32-wasi target"),
+            Dependency::RustWasm32Wasi => write!(f, "rust wasm32-wasip1 target"),
+            Dependency::RustNightlyWasm32Wasi => write!(f, "rust nightly wasm32-wasip1 target"),
             Dependency::WasmTools => write!(f, "wasm-tools"),
         }
     }
@@ -272,7 +272,7 @@ fn check_rust_toolchains_targets() -> Result<Vec<Dependency>> {
 
     let has_wasm32_wasi = output
         .split('\n')
-        .fold(false, |acc, item| acc || item == "wasm32-wasi");
+        .fold(false, |acc, item| acc || item == "wasm32-wasip1");
     if !has_wasm32_wasi {
         missing_deps.push(Dependency::RustWasm32Wasi);
     }
@@ -287,7 +287,7 @@ fn check_rust_toolchains_targets() -> Result<Vec<Dependency>> {
             Dependency::RustNightlyWasm32Wasi,
         ]);
     } else {
-        // check for nightly wasm32-wasi
+        // check for nightly wasm32-wasip1
         run_command(
             Command::new("rustup")
                 .args(&["default", "nightly"])
@@ -300,7 +300,7 @@ fn check_rust_toolchains_targets() -> Result<Vec<Dependency>> {
 
         let has_wasm32_wasi = output
             .split('\n')
-            .fold(false, |acc, item| acc || item == "wasm32-wasi");
+            .fold(false, |acc, item| acc || item == "wasm32-wasip1");
         if !has_wasm32_wasi {
             missing_deps.push(Dependency::RustNightlyWasm32Wasi);
         }
@@ -468,9 +468,9 @@ pub fn get_deps(deps: Vec<Dependency>, verbose: bool) -> Result<()> {
                     )?,
                     Dependency::Rust => install_rust(verbose)?,
                     Dependency::RustNightly => call_rustup("install nightly", verbose)?,
-                    Dependency::RustWasm32Wasi => call_rustup("target add wasm32-wasi", verbose)?,
+                    Dependency::RustWasm32Wasi => call_rustup("target add wasm32-wasip1", verbose)?,
                     Dependency::RustNightlyWasm32Wasi => {
-                        call_rustup("target add wasm32-wasi --toolchain nightly", verbose)?
+                        call_rustup("target add wasm32-wasip1 --toolchain nightly", verbose)?
                     }
                     Dependency::WasmTools => call_cargo("install wasm-tools", verbose)?,
                     Dependency::Forge | Dependency::Anvil => install_foundry()?,

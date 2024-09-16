@@ -79,11 +79,7 @@ const FAKE_CHAIN_ID: u64 = 31337;
 const MULTICALL_ADDRESS: &str = "0xcA11bde05977b3631167028862bE2a173976CA11";
 
 pub fn make_local_file_link(path: &str, text: &str) -> String {
-    format!(
-        "\x1B]8;;file://{}\x1B\\{}\x1B]8;;\x1B\\",
-        path,
-        text,
-    )
+    format!("\x1B]8;;file://{}\x1B\\{}\x1B]8;;\x1B\\", path, text,)
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -97,15 +93,12 @@ pub fn make_local_file_link_path(path: &Path, text: &str) -> Result<String> {
 }
 
 pub fn make_remote_link(url: &str, text: &str) -> String {
-    format!(
-        "\x1B]8;;{}\x1B\\{}\x1B]8;;\x1B\\",
-        url,
-        text,
-    )
+    format!("\x1B]8;;{}\x1B\\{}\x1B]8;;\x1B\\", url, text,)
 }
 
 fn is_valid_kimap_package_name(s: &str) -> bool {
-    s.chars().all(|c| c.is_ascii_lowercase() || c == '-' || c.is_ascii_digit())
+    s.chars()
+        .all(|c| c.is_ascii_lowercase() || c == '-' || c.is_ascii_digit())
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -126,10 +119,7 @@ fn read_keystore(keystore_path: &Path) -> Result<(Address, EthereumWallet)> {
 
 #[instrument(level = "trace", skip_all)]
 async fn read_ledger(chain_id: u64) -> Result<(Address, EthereumWallet)> {
-    let signer = ledger::LedgerSigner::new(
-        ledger::HDPath::LedgerLive(0),
-        Some(chain_id),
-    ).await?;
+    let signer = ledger::LedgerSigner::new(ledger::HDPath::LedgerLive(0), Some(chain_id)).await?;
     let address = signer.get_address().await?;
     let wallet = EthereumWallet::from(signer);
     Ok((address, wallet))
@@ -137,10 +127,7 @@ async fn read_ledger(chain_id: u64) -> Result<(Address, EthereumWallet)> {
 
 #[instrument(level = "trace", skip_all)]
 async fn read_trezor(chain_id: u64) -> Result<(Address, EthereumWallet)> {
-    let signer = trezor::TrezorSigner::new(
-        trezor::HDPath::TrezorLive(0),
-        Some(chain_id),
-    ).await?;
+    let signer = trezor::TrezorSigner::new(trezor::HDPath::TrezorLive(0), Some(chain_id)).await?;
     let address = signer.get_address().await?;
     let wallet = EthereumWallet::from(signer);
     Ok((address, wallet))
@@ -162,7 +149,11 @@ fn namehash(name: &str) -> [u8; 32] {
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn check_remote_metadata(metadata: &Erc721Metadata, metadata_uri: &str, package_dir: &Path) -> Result<String> {
+async fn check_remote_metadata(
+    metadata: &Erc721Metadata,
+    metadata_uri: &str,
+    package_dir: &Path,
+) -> Result<String> {
     let remote_metadata_dir = PathBuf::from(format!(
         "/tmp/kinode-kit-cache/{}",
         metadata.name.as_ref().unwrap(),
@@ -178,7 +169,8 @@ async fn check_remote_metadata(metadata: &Erc721Metadata, metadata_uri: &str, pa
     if serde_json::to_string(&metadata)? != serde_json::to_string(&remote_metadata)? {
         return Err(eyre!(
             "{} and {} metadata do not match",
-            make_local_file_link_path(&package_dir.join("metadata.json"), "Local").unwrap_or_default(),
+            make_local_file_link_path(&package_dir.join("metadata.json"), "Local")
+                .unwrap_or_default(),
             make_remote_link(metadata_uri, "remote"),
         ));
     }
@@ -259,13 +251,9 @@ async fn kimap_get(
     provider: &RootProvider<PubSubFrontend>,
 ) -> Result<(Address, Address, Option<Bytes>)> {
     let node = namehash(&node);
-    let get_tx = TransactionRequest::default().to(kimap).input(
-        getCall {
-            node: node.into(),
-        }
-        .abi_encode()
-        .into(),
-    );
+    let get_tx = TransactionRequest::default()
+        .to(kimap)
+        .input(getCall { node: node.into() }.abi_encode().into());
 
     let get_call = provider.call(&get_tx).await?;
     let decoded = getCall::abi_decode_returns(&get_call, false)?;
@@ -292,24 +280,14 @@ async fn prepare_kimap_put(
 ) -> Result<(Address, Vec<u8>)> {
     // if app_tba exists, update existing state;
     // else mint it & add new state
-    let (app_tba, owner, _) = kimap_get(
-        &format!("{}.{}", name, publisher),
-        kimap,
-        &provider,
-    ).await?;
+    let (app_tba, owner, _) =
+        kimap_get(&format!("{}.{}", name, publisher), kimap, &provider).await?;
     let is_update = app_tba != Address::default() && owner == wallet_address;
 
     let (to, call) = if is_update {
-        (
-            app_tba,
-            multicall,
-        )
+        (app_tba, multicall)
     } else {
-        let (publisher_tba, _, _) = kimap_get(
-            &publisher,
-            kimap,
-            &provider,
-        ).await?;
+        let (publisher_tba, _, _) = kimap_get(&publisher, kimap, &provider).await?;
         let mint_call = mintCall {
             who: wallet_address,
             label: name.into(),
@@ -325,10 +303,7 @@ async fn prepare_kimap_put(
             operation: 0,
         }
         .abi_encode();
-        (
-            publisher_tba,
-            call,
-        )
+        (publisher_tba, call)
     };
     Ok((to, call))
 }
@@ -359,7 +334,11 @@ pub async fn execute(
         (Some(ref kp), false, false) => read_keystore(kp)?,
         (None, true, false) => read_ledger(chain_id).await?,
         (None, false, true) => read_trezor(chain_id).await?,
-        _ => return Err(eyre!("Must supply one and only one of `--keystore_path`, `--ledger`, or `--trezor`")),
+        _ => {
+            return Err(eyre!(
+                "Must supply one and only one of `--keystore_path`, `--ledger`, or `--trezor`"
+            ))
+        }
     };
 
     let metadata = read_metadata(package_dir)?;
@@ -368,7 +347,9 @@ pub async fn execute(
     let publisher = metadata.properties.publisher.clone();
 
     if !is_valid_kimap_package_name(&name) {
-        return Err(eyre!("The App Store requires package names have only lowercase letters, digits, and `-`s"));
+        return Err(eyre!(
+            "The App Store requires package names have only lowercase letters, digits, and `-`s"
+        ));
     }
 
     let metadata_hash = check_remote_metadata(&metadata, metadata_uri, package_dir).await?;
@@ -377,29 +358,21 @@ pub async fn execute(
     let ws = WsConnect::new(rpc_uri);
     let provider: RootProvider<PubSubFrontend> = ProviderBuilder::default().on_ws(ws).await?;
 
-    let kimap = Address::from_str(
-        if *real {
-            REAL_KIMAP_ADDRESS
-        } else {
-            FAKE_KIMAP_ADDRESS
-        }
-    )?;
+    let kimap = Address::from_str(if *real {
+        REAL_KIMAP_ADDRESS
+    } else {
+        FAKE_KIMAP_ADDRESS
+    })?;
     let multicall_address = Address::from_str(MULTICALL_ADDRESS)?;
-    let kino_account_impl = Address::from_str(
-        if *real {
-            REAL_KINO_ACCOUNT_IMPL
-        } else {
-            FAKE_KINO_ACCOUNT_IMPL
-        }
-    )?;
+    let kino_account_impl = Address::from_str(if *real {
+        REAL_KINO_ACCOUNT_IMPL
+    } else {
+        FAKE_KINO_ACCOUNT_IMPL
+    })?;
 
     let (to, call) = if *unpublish {
         let app_node = format!("{}.{}", name, publisher);
-        let (app_tba, owner, _) = kimap_get(
-            &app_node,
-            kimap,
-            &provider,
-        ).await?;
+        let (app_tba, owner, _) = kimap_get(&app_node, kimap, &provider).await?;
         let exists = app_tba != Address::default() && owner == wallet_address;
         if !exists {
             return Err(eyre!("Can't find {app_node} to unpublish."));
@@ -418,7 +391,8 @@ pub async fn execute(
             &provider,
             wallet_address,
             kino_account_impl,
-        ).await?
+        )
+        .await?
     };
 
     let nonce = provider.get_transaction_count(wallet_address).await?;
@@ -434,7 +408,9 @@ pub async fn execute(
         .nonce(nonce)
         .with_chain_id(chain_id)
         .with_gas_limit(gas_limit)
-        .with_max_priority_fee_per_gas(max_priority_fee_per_gas.unwrap_or_else(|| suggested_max_priority_fee_per_gas))
+        .with_max_priority_fee_per_gas(
+            max_priority_fee_per_gas.unwrap_or_else(|| suggested_max_priority_fee_per_gas),
+        )
         .with_max_fee_per_gas(max_fee_per_gas.unwrap_or_else(|| suggested_max_fee_per_gas));
 
     let tx_envelope = tx.build(&wallet).await?;
@@ -445,6 +421,9 @@ pub async fn execute(
         &format!("https://optimistic.etherscan.io/tx/{tx_hash}"),
         &tx_hash,
     );
-    info!("{} {name} tx sent: {link}", if *unpublish { "unpublish" } else { "publish" });
+    info!(
+        "{} {name} tx sent: {link}",
+        if *unpublish { "unpublish" } else { "publish" }
+    );
     Ok(())
 }

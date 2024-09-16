@@ -30,12 +30,10 @@ impl Config {
         self.runtime = match self.runtime {
             Runtime::FetchVersion(version) => Runtime::FetchVersion(version),
             Runtime::RepoPath(runtime_path) => {
-                Runtime::RepoPath(expand_home_path(&runtime_path)
-                    .unwrap_or_else(|| {
-                        fs::canonicalize(config_path.join(&runtime_path))
-                            .unwrap_or_else(|_| runtime_path)
-                    })
-                )
+                Runtime::RepoPath(expand_home_path(&runtime_path).unwrap_or_else(|| {
+                    fs::canonicalize(config_path.join(&runtime_path))
+                        .unwrap_or_else(|_| runtime_path)
+                }))
             }
         };
         for test in self.tests.iter_mut() {
@@ -45,11 +43,10 @@ impl Config {
                 .map(|p| expand_home_path(&p).unwrap_or_else(|| p.clone()))
                 .collect();
             for node in test.nodes.iter_mut() {
-                node.home = expand_home_path(&node.home)
-                    .unwrap_or_else(|| {
-                        fs::canonicalize(config_path.join(&node.home))
-                            .unwrap_or_else(|_| node.home.clone())
-                    });
+                node.home = expand_home_path(&node.home).unwrap_or_else(|| {
+                    fs::canonicalize(config_path.join(&node.home))
+                        .unwrap_or_else(|_| node.home.clone())
+                });
             }
         }
         self
@@ -287,11 +284,9 @@ async fn build_packages(
         .dependency_package_paths
         .iter()
         .cloned()
-        .map(|p| {
-            match expand_home_path(&p) {
-                Some(p) => p,
-                None => test_dir_path.join(&p).canonicalize().unwrap(),
-            }
+        .map(|p| match expand_home_path(&p) {
+            Some(p) => p,
+            None => test_dir_path.join(&p).canonicalize().unwrap(),
         })
         .collect();
     let setup_packages: Vec<SetupPackage> = test
@@ -355,9 +350,11 @@ async fn build_packages(
     let url = format!("http://localhost:{port}");
 
     for dependency_package_path in &test.dependency_package_paths {
-        let path =  match expand_home_path(&dependency_package_path) {
+        let path = match expand_home_path(&dependency_package_path) {
             Some(p) => p,
-            None => test_dir_path.join(&dependency_package_path).canonicalize()?,
+            None => test_dir_path
+                .join(&dependency_package_path)
+                .canonicalize()?,
         };
         build::execute(
             &path,
@@ -511,10 +508,9 @@ async fn load_process(path: &Path, drive: &str, port: &u16) -> Result<()> {
                 path.to_str(),
             )?;
 
-            let response = inject_message::send_request(
-                &format!("http://localhost:{}", port),
-                request,
-            ).await?;
+            let response =
+                inject_message::send_request(&format!("http://localhost:{}", port), request)
+                    .await?;
             match inject_message::parse_response(response).await {
                 Ok(_) => {}
                 Err(e) => return Err(eyre!("Failed to load test {path:?}: {}", e)),

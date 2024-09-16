@@ -105,7 +105,9 @@ async fn get_version_hash(
     let (body, _) = parse_response(response, url).await?;
     let body: serde_json::Value = serde_json::from_str(&body)?;
     let Some(result) = body.get("GetApp") else {
-        return Err(eyre!("Couldn't get version hash: bad response from node at {url}: {body}"));
+        return Err(eyre!(
+            "Couldn't get version hash: bad response from node at {url}: {body}"
+        ));
     };
     return match result {
         serde_json::Value::String(s) => Ok(s.clone()),
@@ -113,16 +115,17 @@ async fn get_version_hash(
             warn!("Couldn't get version hash: got Null from node at {url}: {body}");
             Ok(String::new())
         }
-        _ => {
-            Err(eyre!(
-                "Couldn't get version hash: got unexpected result from node at {url}: {body}"
-            ))
-        }
+        _ => Err(eyre!(
+            "Couldn't get version hash: got unexpected result from node at {url}: {body}"
+        )),
     };
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn parse_response(response: reqwest::Response, url: &str) -> Result<(String, Option<Vec<u8>>)> {
+async fn parse_response(
+    response: reqwest::Response,
+    url: &str,
+) -> Result<(String, Option<Vec<u8>>)> {
     let inject_message::Response { body, lazy_load_blob, .. } =
         inject_message::parse_response(response)
             .await
@@ -143,15 +146,20 @@ fn rewrite_list_apis(mut output: serde_json::Value) -> Result<serde_json::Value>
     if let serde_json::Value::Object(ref mut obj) = output {
         if let Some(serde_json::Value::Object(apis_response)) = obj.get_mut("ApisResponse") {
             if let Some(serde_json::Value::Array(apis)) = apis_response.get_mut("apis") {
-                let transformed_apis: Vec<_> = apis.iter().map(|api| {
-                    if let serde_json::Value::Object(api_map) = api {
-                        let package_name = api_map.get("package_name").unwrap().as_str().unwrap();
-                        let publisher_node = api_map.get("publisher_node").unwrap().as_str().unwrap();
-                        serde_json::Value::String(format!("{package_name}:{publisher_node}"))
-                    } else {
-                        serde_json::Value::String(String::new())
-                    }
-                }).collect();
+                let transformed_apis: Vec<_> = apis
+                    .iter()
+                    .map(|api| {
+                        if let serde_json::Value::Object(api_map) = api {
+                            let package_name =
+                                api_map.get("package_name").unwrap().as_str().unwrap();
+                            let publisher_node =
+                                api_map.get("publisher_node").unwrap().as_str().unwrap();
+                            serde_json::Value::String(format!("{package_name}:{publisher_node}"))
+                        } else {
+                            serde_json::Value::String(String::new())
+                        }
+                    })
+                    .collect();
 
                 // Replace the old array with the new one
                 *apis = transformed_apis;
@@ -275,7 +283,15 @@ async fn get_api(
         if is_first_call && body.contains("Failure") {
             // try to download the package & try again
             download(node, url, package_id, download_from, None).await?;
-            Box::pin(get_api(node, url, package_id, download_from, verbose, false)).await?
+            Box::pin(get_api(
+                node,
+                url,
+                package_id,
+                download_from,
+                verbose,
+                false,
+            ))
+            .await?
         } else {
             // unexpected case
             let body = serde_json::from_str::<serde_json::Value>(&body)?;
@@ -295,7 +311,9 @@ pub async fn execute(
     verbose: bool,
 ) -> Result<Option<PathBuf>> {
     if let Some(package_id) = package_id {
-        Ok(Some(get_api(node, url, &package_id, download_from, verbose, true).await?))
+        Ok(Some(
+            get_api(node, url, &package_id, download_from, verbose, true).await?,
+        ))
     } else {
         list_apis(node, url, verbose).await?;
         Ok(None)
