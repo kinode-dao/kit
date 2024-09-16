@@ -180,7 +180,19 @@ pub fn run_command(cmd: &mut Command, verbose: bool) -> Result<Option<(String, S
             ));
         }
     }
-    let output = cmd.output()?;
+    let output = match cmd.output() {
+        Ok(o) => o,
+        Err(e) => {
+            return Err(eyre!(
+                "Command `{} {:?}` failed with error {:?}",
+                cmd.get_program().to_str().unwrap(),
+                cmd.get_args()
+                    .map(|a| a.to_str().unwrap())
+                    .collect::<Vec<_>>(),
+                e,
+            ));
+        }
+    };
     if output.status.success() {
         Ok(Some((
             String::from_utf8_lossy(&output.stdout).to_string(),
