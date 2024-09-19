@@ -159,7 +159,7 @@ fn handle_message(our: &Address, message: &Message, files_dir: &Directory) -> an
 
 call_init!(init);
 fn init(our: Address) {
-    init_logging(&our, Level::DEBUG, Level::INFO);
+    init_logging(&our, Level::DEBUG, Level::INFO).unwrap();
     info!("begin");
 
     let drive_path = create_drive(our.package_id(), "files", None).unwrap();
