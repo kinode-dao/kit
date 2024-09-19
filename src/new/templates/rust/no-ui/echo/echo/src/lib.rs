@@ -1,3 +1,4 @@
+use kinode_process_lib::logging::{error, info, init_logging, Level};
 use kinode_process_lib::{await_message, call_init, println, Address, Message, Response};
 
 wit_bindgen::generate!({
@@ -21,14 +22,15 @@ fn handle_message(message: &Message) -> anyhow::Result<()> {
 
 call_init!(init);
 fn init(_our: Address) {
-    println!("begin");
+    init_logging(&our, Level::DEBUG, Level::INFO);
+    info!("begin");
 
     loop {
         match await_message() {
-            Err(send_error) => println!("got SendError: {send_error}"),
+            Err(send_error) => error!("got SendError: {send_error}"),
             Ok(ref message) => match handle_message(message) {
                 Ok(_) => {}
-                Err(e) => println!("got error while handling message: {e:?}"),
+                Err(e) => error!("got error while handling message: {e:?}"),
             },
         }
     }

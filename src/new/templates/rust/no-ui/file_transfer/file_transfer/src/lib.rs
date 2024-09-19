@@ -1,6 +1,12 @@
+use crate::kinode::process::file_transfer::{
+    FileInfo, Request as TransferRequest, Response as TransferResponse,
+};
+use crate::kinode::process::file_transfer_worker::{
+    start_download, DownloadRequest, ProgressRequest, Request as WorkerRequest,
+    Response as WorkerResponse,
+};
 use crate::kinode::process::standard::{Address as WitAddress, ProcessId as WitProcessId};
-use crate::kinode::process::file_transfer_worker::{start_download, Request as WorkerRequest, Response as WorkerResponse, DownloadRequest, ProgressRequest};
-use crate::kinode::process::file_transfer::{Request as TransferRequest, Response as TransferResponse, FileInfo};
+use kinode_process_lib::logging::{error, info, init_logging, Level};
 use kinode_process_lib::{
     await_message, call_init, println,
     vfs::{create_drive, metadata, open_dir, Directory, FileType},
@@ -63,10 +69,7 @@ fn ls_files(files_dir: &Directory) -> anyhow::Result<Vec<FileInfo>> {
     Ok(files)
 }
 
-fn handle_transfer_request(
-    request: &TransferRequest,
-    files_dir: &Directory,
-) -> anyhow::Result<()> {
+fn handle_transfer_request(request: &TransferRequest, files_dir: &Directory) -> anyhow::Result<()> {
     match request {
         TransferRequest::ListFiles => {
             let files = ls_files(files_dir)?;
@@ -84,7 +87,11 @@ fn handle_worker_request(
     request: &WorkerRequest,
 ) -> anyhow::Result<()> {
     match request {
-        WorkerRequest::Download(DownloadRequest { ref name, ref target, is_requestor }) => {
+        WorkerRequest::Download(DownloadRequest {
+            ref name,
+            ref target,
+            is_requestor,
+        }) => {
             match start_download(
                 &our.clone().into(),
                 &source.clone().into(),
@@ -97,10 +104,8 @@ fn handle_worker_request(
             }
         }
         WorkerRequest::Progress(ProgressRequest { name, progress }) => {
-            println!("{} progress: {}%", name, progress);
-            Response::new()
-                .body(WorkerResponse::Progress)
-                .send()?;
+            info!("{} progress: {}%", name, progress);
+            Response::new().body(WorkerResponse::Progress).send()?;
         }
     }
     Ok(())
@@ -111,14 +116,17 @@ fn handle_transfer_response(source: &Address, response: &TransferResponse) -> an
         TransferResponse::ListFiles(ref files) => {
             println!(
                 "{}",
-                files.iter().
-                    fold(format!("{source} available files:\nFile\t\tSize (bytes)\n"), |mut msg, file| {
+                files.iter().fold(
+                    format!("{source} available files:\nFile\t\tSize (bytes)\n"),
+                    |mut msg, file| {
                         msg.push_str(&format!(
-                            "{}\t\t{}", file.name.split('/').last().unwrap(),
+                            "{}\t\t{}",
+                            file.name.split('/').last().unwrap(),
                             file.size,
                         ));
                         msg
-                    })
+                    }
+                )
             );
         }
     }
@@ -129,7 +137,7 @@ fn handle_worker_response(response: &WorkerResponse) -> anyhow::Result<()> {
     match response {
         WorkerResponse::Download(ref result) => {
             if let Err(e) = result {
-                return Err(anyhow::anyhow!("{e}"))
+                return Err(anyhow::anyhow!("{e}"));
             }
         }
         WorkerResponse::Progress => {}
@@ -137,11 +145,7 @@ fn handle_worker_response(response: &WorkerResponse) -> anyhow::Result<()> {
     Ok(())
 }
 
-fn handle_message(
-    our: &Address,
-    message: &Message,
-    files_dir: &Directory,
-) -> anyhow::Result<()> {
+fn handle_message(our: &Address, message: &Message, files_dir: &Directory) -> anyhow::Result<()> {
     match message.body().try_into()? {
         // requests
         Msg::TransferRequest(ref tr) => handle_transfer_request(tr, files_dir),
@@ -155,18 +159,19 @@ fn handle_message(
 
 call_init!(init);
 fn init(our: Address) {
-    println!("begin");
+    init_logging(&our, Level::DEBUG, Level::INFO);
+    info!("begin");
 
     let drive_path = create_drive(our.package_id(), "files", None).unwrap();
     let files_dir = open_dir(&drive_path, false, None).unwrap();
 
     loop {
         match await_message() {
-            Err(send_error) => println!("got SendError: {send_error}"),
+            Err(send_error) => error!("got SendError: {send_error}"),
             Ok(ref message) => match handle_message(&our, message, &files_dir) {
                 Ok(_) => {}
-                Err(e) => println!("got error while handling message: {e:?}"),
-            }
+                Err(e) => error!("got error while handling message: {e:?}"),
+            },
         }
     }
 }
