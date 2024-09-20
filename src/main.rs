@@ -69,12 +69,12 @@ fn init_tracing(log_path: PathBuf) -> tracing_appender::non_blocking::WorkerGuar
         .ok()
         .and_then(|l| Level::from_str(&l).ok())
         .unwrap_or_else(|| STDOUT_LOG_LEVEL_DEFAULT);
-    let allowed_levels: Vec<Level> = vec![Level::INFO, Level::WARN]
+    let allowed_levels: std::collections::HashSet<Level> = vec![Level::INFO, Level::WARN]
         .into_iter()
         .filter(|&l| l <= level)
         .collect();
     let stdout_filter = filter::filter_fn(move |metadata: &tracing::Metadata<'_>| {
-        allowed_levels.iter().any(|l| metadata.level() == l)
+        allowed_levels.contains(metadata.level())
     });
 
     let stderr_filter = EnvFilter::try_from_default_env()

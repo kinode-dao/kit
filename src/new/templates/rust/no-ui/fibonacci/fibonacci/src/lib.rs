@@ -1,5 +1,8 @@
-use crate::kinode::process::fibonacci::{Request as FibonacciRequest, Response as FibonacciResponse};
-use kinode_process_lib::{await_message, call_init, println, Address, Message, Response};
+use crate::kinode::process::fibonacci::{
+    Request as FibonacciRequest, Response as FibonacciResponse,
+};
+use kinode_process_lib::logging::{error, info, init_logging, Level};
+use kinode_process_lib::{await_message, call_init, Address, Message, Response};
 
 wit_bindgen::generate!({
     path: "target/wit",
@@ -36,7 +39,7 @@ fn handle_message(message: &Message) -> anyhow::Result<()> {
             let start = std::time::Instant::now();
             let result = fibonacci(number);
             let duration = start.elapsed();
-            println!(
+            info!(
                 "fibonacci({}) = {}; {}ns",
                 number,
                 result,
@@ -66,7 +69,7 @@ fn handle_message(message: &Message) -> anyhow::Result<()> {
                     trial - mean
                 }
             }) / number_trials as u128;
-            println!(
+            info!(
                 "fibonacci({}) = {}; {}±{}ns averaged over {} trials",
                 number, result, mean, absolute_deviation, number_trials,
             );
@@ -80,16 +83,17 @@ fn handle_message(message: &Message) -> anyhow::Result<()> {
 }
 
 call_init!(init);
-fn init(_our: Address) {
-    println!("begin");
+fn init(our: Address) {
+    init_logging(&our, Level::DEBUG, Level::INFO, None).unwrap();
+    info!("begin");
 
     loop {
         match await_message() {
-            Err(send_error) => println!("got SendError: {send_error}"),
+            Err(send_error) => error!("got SendError: {send_error}"),
             Ok(ref message) => match handle_message(message) {
                 Ok(_) => {}
-                Err(e) => println!("got error while handling message: {e:?}"),
-            }
+                Err(e) => error!("got error while handling message: {e:?}"),
+            },
         }
     }
 }
