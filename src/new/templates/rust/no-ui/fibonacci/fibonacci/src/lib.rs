@@ -84,7 +84,7 @@ fn handle_message(message: &Message) -> anyhow::Result<()> {
 
 call_init!(init);
 fn init(our: Address) {
-    init_logging(&our, Level::DEBUG, Level::INFO).unwrap();
+    init_logging(&our, Level::DEBUG, Level::INFO, None).unwrap();
     info!("begin");
 
     loop {

@@ -78,7 +78,7 @@ fn handle_message(
 
 call_init!(init);
 fn init(our: Address) {
-    init_logging(&our, Level::DEBUG, Level::INFO).unwrap();
+    init_logging(&our, Level::DEBUG, Level::INFO, None).unwrap();
     info!("begin");
 
     let mut message_archive = HashMap::new();
