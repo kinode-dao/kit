@@ -1,6 +1,6 @@
 [package]
 name = "kit"
-version = "0.7.4"
+version = "0.7.5"
 edition = "2021"
 
 [build-dependencies]
@@ -40,7 +40,6 @@ kinode_process_lib = { git = "https://github.com/kinode-dao/process_lib.git", re
 nix = { version = "0.27", features = ["process", "signal", "term"] }
 regex = "1"
 reqwest = { version = "0.12", features = ["json"] }
-# rmp-serde = "1.1.2"
 rpassword = "7"
 semver = "1.0"
 serde = { version = "1.0", features = ["derive"] }

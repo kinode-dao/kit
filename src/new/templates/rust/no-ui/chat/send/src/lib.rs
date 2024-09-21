@@ -1,7 +1,5 @@
 use crate::kinode::process::chat::{Request as ChatRequest, Response as ChatResponse, SendRequest};
-use kinode_process_lib::{
-    await_next_message_body, call_init, println, Address, Message, Request,
-};
+use kinode_process_lib::{await_next_message_body, call_init, println, Address, Message, Request};
 
 wit_bindgen::generate!({
     path: "target/wit",

@@ -1,6 +1,9 @@
 use std::collections::HashMap;
 
-use crate::kinode::process::chat::{ChatMessage, Request as ChatRequest, Response as ChatResponse, SendRequest};
+use crate::kinode::process::chat::{
+    ChatMessage, Request as ChatRequest, Response as ChatResponse, SendRequest,
+};
+use kinode_process_lib::logging::{error, info, init_logging, Level};
 use kinode_process_lib::{await_message, call_init, println, Address, Message, Request, Response};
 
 wit_bindgen::generate!({
@@ -56,10 +59,7 @@ fn handle_message(
                     .and_modify(|e| e.push(message.clone()))
                     .or_insert(vec![message]);
             }
-            Response::new()
-                .body(ChatResponse::Send)
-                .send()
-                .unwrap();
+            Response::new().body(ChatResponse::Send).send().unwrap();
         }
         ChatRequest::History(ref node) => {
             Response::new()
@@ -67,7 +67,7 @@ fn handle_message(
                     message_archive
                         .get(node)
                         .map(|msgs| msgs.clone())
-                        .unwrap_or_default()
+                        .unwrap_or_default(),
                 ))
                 .send()
                 .unwrap();
@@ -78,17 +78,18 @@ fn handle_message(
 
 call_init!(init);
 fn init(our: Address) {
-    println!("begin");
+    init_logging(&our, Level::DEBUG, Level::INFO, None).unwrap();
+    info!("begin");
 
     let mut message_archive = HashMap::new();
 
     loop {
         match await_message() {
-            Err(send_error) => println!("got SendError: {send_error}"),
+            Err(send_error) => error!("got SendError: {send_error}"),
             Ok(ref message) => match handle_message(&our, message, &mut message_archive) {
                 Ok(_) => {}
-                Err(e) => println!("got error while handling message: {e:?}"),
-            }
+                Err(e) => error!("got error while handling message: {e:?}"),
+            },
         }
     }
 }

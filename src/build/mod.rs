@@ -374,7 +374,13 @@ fn find_crate_versions(
                     dependency.req.clone()
                 } else {
                     if let Some(ref source) = dependency.source {
-                        parse_version_from_url(source)?
+                        match parse_version_from_url(source) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                warn!("Error parsing import version: {e}");
+                                continue;
+                            }
+                        }
                     } else {
                         semver::VersionReq::default()
                     }

@@ -3,8 +3,9 @@ use crate::kinode::process::file_transfer_worker::{
     Response as WorkerResponse,
 };
 use crate::kinode::process::standard::{Address as WitAddress, ProcessId as WitProcessId};
+use kinode_process_lib::logging::{error, info, init_logging, Level};
 use kinode_process_lib::{
-    await_message, call_init, get_blob, println,
+    await_message, call_init, get_blob,
     vfs::{open_dir, open_file, Directory, File, SeekFrom},
     Address, Message, ProcessId, Request, Response,
 };
@@ -212,7 +213,8 @@ fn handle_message(
 
 call_init!(init);
 fn init(our: Address) {
-    println!("worker: begin");
+    init_logging(&our, Level::DEBUG, Level::INFO, None).unwrap();
+    info!("worker: begin");
     let start = std::time::Instant::now();
 
     let drive_path = format!("{}/files", our.package_id());
@@ -224,16 +226,16 @@ fn init(our: Address) {
 
     loop {
         match await_message() {
-            Err(send_error) => println!("worker: got SendError: {send_error}"),
+            Err(send_error) => error!("worker: got SendError: {send_error}"),
             Ok(ref message) => {
                 match handle_message(message, &mut file, &files_dir, &mut size, &mut parent) {
                     Ok(exit) => {
                         if exit {
-                            println!("worker: done: exiting, took {:?}", start.elapsed());
+                            info!("worker: done: exiting, took {:?}", start.elapsed());
                             break;
                         }
                     }
-                    Err(e) => println!("worker: got error while handling message: {e:?}"),
+                    Err(e) => error!("worker: got error while handling message: {e:?}"),
                 }
             }
         }
