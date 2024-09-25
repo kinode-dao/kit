@@ -398,9 +398,19 @@ fn find_crate_versions(
 
 #[instrument(level = "trace", skip_all)]
 fn check_process_lib_version(cargo_toml_path: &Path) -> Result<()> {
-    let metadata = cargo_metadata::MetadataCommand::new()
+    let metadata = match cargo_metadata::MetadataCommand::new()
         .manifest_path(cargo_toml_path)
-        .exec()?;
+        .exec()
+    {
+        Ok(m) => m,
+        Err(_) => {
+            warn!(
+                "Couldn't find Cargo.toml where expected: {:?}; continuing.",
+                cargo_toml_path,
+            );
+            return Ok(());
+        }
+    };
     let packages: HashMap<cargo_metadata::PackageId, &cargo_metadata::Package> = metadata
         .packages
         .iter()
