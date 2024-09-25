@@ -1,4 +1,0 @@
-world echo-test-template-dot-os-v0 {
-    import tester;
-    include process-v0;
-}
