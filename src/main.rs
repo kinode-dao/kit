@@ -16,9 +16,8 @@ use tracing_subscriber::{
 };
 
 use kit::{
-    build, build_start_package, dev_ui,
-    inject_message, new, publish, remove_package, reset_cache, setup, start_package,
-    update, KIT_LOG_PATH_DEFAULT,
+    build, build_start_package, dev_ui, inject_message, new, publish, remove_package, reset_cache,
+    setup, start_package, update, KIT_LOG_PATH_DEFAULT,
 };
 
 const MAX_REMOTE_VALUES: usize = 3;
