@@ -16,9 +16,9 @@ use tracing_subscriber::{
 };
 
 use kit::{
-    boot_fake_node, boot_real_node, build, build_start_package, chain, connect, dev_ui,
-    inject_message, new, publish, remove_package, reset_cache, run_tests, setup, start_package,
-    update, view_api, KIT_LOG_PATH_DEFAULT,
+    build, build_start_package, dev_ui,
+    inject_message, new, publish, remove_package, reset_cache, setup, start_package,
+    update, KIT_LOG_PATH_DEFAULT,
 };
 
 const MAX_REMOTE_VALUES: usize = 3;
@@ -41,18 +41,6 @@ fn parse_u128_with_underscores(s: &str) -> Result<u128, &'static str> {
     clean_string
         .parse::<u128>()
         .map_err(|_| "Invalid number format")
-}
-
-async fn get_latest_commit_sha_from_branch(
-    owner: &str,
-    repo: &str,
-    branch: &str,
-) -> Result<Option<Commit>> {
-    let bytes = boot_fake_node::get_from_github(owner, repo, &format!("commits/{branch}")).await?;
-    if bytes.is_empty() {
-        return Ok(None);
-    }
-    Ok(Some(serde_json::from_slice(&bytes)?))
 }
 
 fn init_tracing(log_path: PathBuf) -> tracing_appender::non_blocking::WorkerGuard {
@@ -125,66 +113,6 @@ async fn execute(
     matches: Option<(&str, &clap::ArgMatches)>,
 ) -> Result<()> {
     match matches {
-        Some(("boot-fake-node", matches)) => {
-            let runtime_path = matches
-                .get_one::<String>("PATH")
-                .and_then(|p| Some(PathBuf::from(p)));
-            let version = matches.get_one::<String>("VERSION").unwrap();
-            let node_home = PathBuf::from(matches.get_one::<String>("HOME").unwrap());
-            let node_port = matches.get_one::<u16>("NODE_PORT").unwrap();
-            let fakechain_port = matches.get_one::<u16>("FAKECHAIN_PORT").unwrap();
-            let rpc = matches
-                .get_one::<String>("RPC_ENDPOINT")
-                .and_then(|s| Some(s.as_str()));
-            let fake_node_name = matches.get_one::<String>("NODE_NAME").unwrap();
-            let password = matches.get_one::<String>("PASSWORD").unwrap();
-            let is_persist = matches.get_one::<bool>("PERSIST").unwrap();
-            let release = matches.get_one::<bool>("RELEASE").unwrap();
-            let verbosity = matches.get_one::<u8>("VERBOSITY").unwrap();
-
-            boot_fake_node::execute(
-                runtime_path,
-                version.clone(),
-                node_home,
-                *node_port,
-                *fakechain_port,
-                rpc,
-                fake_node_name.clone(),
-                password,
-                *is_persist,
-                *release,
-                *verbosity,
-                vec![],
-            )
-            .await
-        }
-        Some(("boot-real-node", matches)) => {
-            let runtime_path = matches
-                .get_one::<String>("PATH")
-                .and_then(|p| Some(PathBuf::from(p)));
-            let version = matches.get_one::<String>("VERSION").unwrap();
-            let node_home = PathBuf::from(matches.get_one::<String>("HOME").unwrap());
-            let node_port = matches.get_one::<u16>("NODE_PORT").unwrap();
-            let rpc = matches
-                .get_one::<String>("RPC_ENDPOINT")
-                .and_then(|s| Some(s.as_str()));
-            // let password = matches.get_one::<String>("PASSWORD").unwrap(); // TODO: with develop 0.8.0
-            let release = matches.get_one::<bool>("RELEASE").unwrap();
-            let verbosity = matches.get_one::<u8>("VERBOSITY").unwrap();
-
-            boot_real_node::execute(
-                runtime_path,
-                version.clone(),
-                node_home,
-                *node_port,
-                rpc,
-                // password, // TODO: with develop 0.8.0
-                *release,
-                *verbosity,
-                vec![],
-            )
-            .await
-        }
         Some(("build", matches)) => {
             let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
             let no_ui = matches.get_one::<bool>("NO_UI").unwrap();
@@ -276,18 +204,6 @@ async fn execute(
                 *verbose,
             )
             .await
-        }
-        Some(("chain", matches)) => {
-            let port = matches.get_one::<u16>("PORT").unwrap();
-            let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
-            chain::execute(*port, *verbose).await
-        }
-        Some(("connect", matches)) => {
-            let local_port = matches.get_one::<u16>("LOCAL_PORT").unwrap();
-            let disconnect = matches.get_one::<bool>("IS_DISCONNECT").unwrap();
-            let host = matches.get_one::<String>("HOST").map(|s| s.as_ref());
-            let host_port = matches.get_one::<u16>("HOST_PORT").map(|hp| hp.clone());
-            connect::execute(*local_port, *disconnect, host, host_port)
         }
         Some(("dev-ui", matches)) => {
             let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
@@ -386,22 +302,6 @@ async fn execute(
             remove_package::execute(&package_dir, &url, package_name, publisher).await
         }
         Some(("reset-cache", _matches)) => reset_cache::execute(),
-        Some(("run-tests", matches)) => {
-            let config_path = match matches.get_one::<String>("PATH") {
-                Some(path) => PathBuf::from(path),
-                None => std::env::current_dir()?.join("tests.toml"),
-            };
-
-            if !config_path.exists() {
-                let error = format!(
-                    "Configuration path does not exist: {:?}\nUsage:\n{}",
-                    config_path, usage,
-                );
-                return Err(eyre!(error));
-            }
-
-            run_tests::execute(config_path).await
-        }
         Some(("setup", matches)) => {
             let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
 
@@ -425,21 +325,6 @@ async fn execute(
 
             update::execute(args, branch)
         }
-        Some(("view-api", matches)) => {
-            let package_id = matches
-                .get_one::<String>("PACKAGE_ID")
-                .and_then(|s: &String| Some(s.as_str()));
-            let url = format!(
-                "http://localhost:{}",
-                matches.get_one::<u16>("NODE_PORT").unwrap(),
-            );
-            let download_from = matches
-                .get_one::<String>("NODE")
-                .and_then(|s: &String| Some(s.as_str()));
-
-            view_api::execute(None, package_id, &url, download_from, true).await?;
-            Ok(())
-        }
         _ => {
             warn!("Invalid subcommand. Usage:\n{}", usage);
             Ok(())
@@ -460,169 +345,6 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
             .long("version")
             .action(ArgAction::Version)
             .help("Print version")
-        )
-        .subcommand(Command::new("boot-fake-node")
-            .about("Boot a fake node for development")
-            .visible_alias("f")
-            .arg(Arg::new("PATH")
-                .action(ArgAction::Set)
-                .short('r')
-                .long("runtime-path")
-                .help("Path to Kinode core repo (overrides --version)")
-            )
-            .arg(Arg::new("VERSION")
-                .action(ArgAction::Set)
-                .short('v')
-                .long("version")
-                .help("Version of Kinode binary to use (overridden by --runtime-path)")
-                .default_value("latest")
-                .value_parser(PossibleValuesParser::new({
-                    let mut possible_values = vec!["latest".to_string()];
-                    let mut remote_values = boot_fake_node::find_releases_with_asset_if_online(
-                        None,
-                        None,
-                        &boot_fake_node::get_platform_runtime_name(true)?
-                    ).await?;
-                    remote_values.truncate(MAX_REMOTE_VALUES);
-                    if remote_values.len() == 0 {
-                        possible_values = vec![];
-                    }
-                    possible_values.append(&mut remote_values);
-                    possible_values
-                }))
-            )
-            .arg(Arg::new("NODE_PORT")
-                .action(ArgAction::Set)
-                .short('p')
-                .long("port")
-                .help("The port to run the fake node on")
-                .default_value("8080")
-                .value_parser(value_parser!(u16))
-            )
-            .arg(Arg::new("HOME")
-                .action(ArgAction::Set)
-                .short('o')
-                .long("home")
-                .help("Path to home directory for fake node")
-                .default_value("/tmp/kinode-fake-node")
-            )
-            .arg(Arg::new("NODE_NAME")
-                .action(ArgAction::Set)
-                .short('f')
-                .long("fake-node-name")
-                .help("Name for fake node")
-                .default_value("fake.dev")
-            )
-            .arg(Arg::new("FAKECHAIN_PORT")
-                .action(ArgAction::Set)
-                .short('c')
-                .long("fakechain-port")
-                .help("The port to run the fakechain on (or to connect to)")
-                .default_value("8545")
-                .value_parser(value_parser!(u16))
-            )
-            .arg(Arg::new("RPC_ENDPOINT")
-                .action(ArgAction::Set)
-                .long("rpc")
-                .help("Ethereum Optimism mainnet RPC endpoint (wss://)")
-                .required(false)
-            )
-            .arg(Arg::new("PERSIST")
-                .action(ArgAction::SetTrue)
-                .long("persist")
-                .help("If set, do not delete node home after exit")
-                .required(false)
-            )
-            .arg(Arg::new("PASSWORD")
-                .action(ArgAction::Set)
-                .long("password")
-                .help("Password to login")
-                .default_value("secret")
-            )
-            .arg(Arg::new("RELEASE")
-                .action(ArgAction::SetTrue)
-                .long("release")
-                .help("If set and given --runtime-path, compile release build [default: debug build]")
-                .required(false)
-            )
-            .arg(Arg::new("VERBOSITY")
-                .action(ArgAction::Set)
-                .long("verbosity")
-                .help("Verbosity of node: higher is more verbose")
-                .default_value("0")
-                .value_parser(value_parser!(u8))
-            )
-        )
-        .subcommand(Command::new("boot-real-node")
-            .about("Boot a real node")
-            .visible_alias("e")
-            .arg(Arg::new("PATH")
-                .action(ArgAction::Set)
-                .short('r')
-                .long("runtime-path")
-                .help("Path to Kinode core repo (overrides --version)")
-            )
-            .arg(Arg::new("VERSION")
-                .action(ArgAction::Set)
-                .short('v')
-                .long("version")
-                .help("Version of Kinode binary to use (overridden by --runtime-path)")
-                .default_value("latest")
-                .value_parser(PossibleValuesParser::new({
-                    let mut possible_values = vec!["latest".to_string()];
-                    let mut remote_values = boot_fake_node::find_releases_with_asset_if_online(
-                        None,
-                        None,
-                        &boot_fake_node::get_platform_runtime_name(false)?
-                    ).await?;
-                    remote_values.truncate(MAX_REMOTE_VALUES);
-                    if remote_values.len() == 0 {
-                        possible_values = vec![];
-                    }
-                    possible_values.append(&mut remote_values);
-                    possible_values
-                }))
-            )
-            .arg(Arg::new("NODE_PORT")
-                .action(ArgAction::Set)
-                .short('p')
-                .long("port")
-                .help("The port to run the real node on")
-                .default_value("8080")
-                .value_parser(value_parser!(u16))
-            )
-            .arg(Arg::new("HOME")
-                .action(ArgAction::Set)
-                .short('o')
-                .long("home")
-                .help("Path to home directory for real node")
-                .required(true)
-            )
-            .arg(Arg::new("RPC_ENDPOINT")
-                .action(ArgAction::Set)
-                .long("rpc")
-                .help("Ethereum Optimism mainnet RPC endpoint (wss://)")
-                .required(false)
-            )
-            //.arg(Arg::new("PASSWORD")  // TODO: with develop 0.8.0
-            //    .action(ArgAction::Set)
-            //    .long("password")
-            //    .help("Password to login")
-            //    .required(false)
-            //)
-            .arg(Arg::new("RELEASE")
-                .action(ArgAction::SetTrue)
-                .long("release")
-                .help("If set and given --runtime-path, compile release build [default: debug build]")
-                .required(false)
-            )
-            .arg(Arg::new("VERBOSITY")
-                .action(ArgAction::Set)
-                .long("verbosity")
-                .help("Verbosity of node: higher is more verbose")
-                .default_value("0")
-                .value_parser(value_parser!(u8))
-            )
         )
         .subcommand(Command::new("build")
             .about("Build a Kinode package")
@@ -784,56 +506,6 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('v')
                 .long("verbose")
                 .help("If set, output stdout and stderr")
-                .required(false)
-            )
-        )
-        .subcommand(Command::new("chain")
-            .about("Start a local chain for development")
-            .visible_alias("c")
-            .arg(Arg::new("PORT")
-                .action(ArgAction::Set)
-                .short('p')
-                .long("port")
-                .help("Port to run the chain on")
-                .default_value("8545")
-                .value_parser(value_parser!(u16))
-            )
-            .arg(Arg::new("VERBOSE")
-                .action(ArgAction::SetTrue)
-                .short('v')
-                .long("verbose")
-                .help("If set, output stdout and stderr")
-                .required(false)
-            )
-        )
-        .subcommand(Command::new("connect")
-            .about("Connect (or disconnect) a ssh tunnel to a remote server")
-            .arg(Arg::new("LOCAL_PORT")
-                .action(ArgAction::Set)
-                .help("Local port to bind")
-                .default_value("9090")
-                .value_parser(value_parser!(u16))
-            )
-            .arg(Arg::new("IS_DISCONNECT")
-                .action(ArgAction::SetTrue)
-                .short('d')
-                .long("disconnect")
-                .help("If set, disconnect an existing tunnel [default: connect a new tunnel]")
-                .required(false)
-            )
-            .arg(Arg::new("HOST")
-                .action(ArgAction::Set)
-                .short('o')
-                .long("host")
-                .help("Host URL/IP Kinode is running on (not required for disconnect)")
-                .required(false)
-            )
-            .arg(Arg::new("HOST_PORT")
-                .action(ArgAction::Set)
-                .short('p')
-                .long("port")
-                .help("Remote (host) port Kinode is running on")
-                .value_parser(value_parser!(u16))
                 .required(false)
             )
         )
@@ -1067,15 +739,6 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
         .subcommand(Command::new("reset-cache")
             .about("Reset kit cache (Kinode core binaries, logs, etc.)")
         )
-        .subcommand(Command::new("run-tests")
-            .about("Run Kinode tests")
-            .visible_alias("t")
-            .arg(Arg::new("PATH")
-                .action(ArgAction::Set)
-                .help("Path to tests configuration file (or test dir)")
-                .default_value(current_dir)
-            )
-        )
         .subcommand(Command::new("setup")
             .about("Fetch & setup kit dependencies")
             .arg(Arg::new("VERBOSE")
@@ -1117,30 +780,6 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .default_value("master")
             )
         )
-        .subcommand(Command::new("view-api")
-            .about("Fetch the list of APIs or a specific API")
-            .visible_alias("v")
-            .arg(Arg::new("PACKAGE_ID")
-                .action(ArgAction::Set)
-                .help("Get API of this package [default: list all APIs]")
-                .required(false)
-            )
-            .arg(Arg::new("NODE_PORT")
-                .action(ArgAction::Set)
-                .short('p')
-                .long("port")
-                .help("localhost node port; for remote see https://book.kinode.org/hosted-nodes.html#using-kit-with-your-hosted-node")
-                .default_value("8080")
-                .value_parser(value_parser!(u16))
-            )
-            .arg(Arg::new("NODE")
-                .action(ArgAction::Set)
-                .short('d')
-                .long("download-from")
-                .help("Download API from this node if not found")
-                .required(false)
-            )
-        )
     )
 }
 
@@ -1177,22 +816,6 @@ async fn main() -> Result<()> {
             Err(e)
         }
     };
-
-    if let Some((subcommand, _)) = matches {
-        if subcommand != "update" && GIT_BRANCH_NAME == "master" {
-            if let Some(latest) = get_latest_commit_sha_from_branch(
-                boot_fake_node::KINODE_OWNER,
-                KIT_REPO,
-                KIT_MASTER_BRANCH,
-            )
-            .await?
-            {
-                if GIT_COMMIT_HASH != latest.sha {
-                    warn!("kit is out of date! Run:\n```\nkit update\n```\nto update to the latest version.");
-                }
-            }
-        }
-    }
 
     if let Err(e) = result {
         error!("{:?}", e);

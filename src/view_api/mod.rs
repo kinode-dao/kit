@@ -1,11 +1,46 @@
-use std::path::PathBuf;
+use std::io;
+use std::path::{Path, PathBuf};
+use zip::read::ZipArchive;
 
 use color_eyre::{eyre::eyre, Result, Section};
 use fs_err as fs;
 use serde_json::json;
 use tracing::{info, instrument, warn};
 
-use crate::{boot_fake_node::extract_zip, inject_message, KIT_CACHE, KIT_LOG_PATH_DEFAULT};
+use crate::{inject_message, KIT_CACHE, KIT_LOG_PATH_DEFAULT};
+
+#[instrument(level = "trace", skip_all)]
+pub fn extract_zip(archive_path: &Path) -> Result<()> {
+    let file = fs::File::open(archive_path)?;
+    let mut archive = ZipArchive::new(file)?;
+
+    let archive_dir = archive_path.parent().unwrap_or_else(|| Path::new(""));
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let outpath = match file.enclosed_name() {
+            Some(path) => path.to_owned(),
+            None => continue,
+        };
+        let outpath = archive_dir.join(outpath);
+
+        if file.name().ends_with('/') {
+            fs::create_dir_all(&outpath)?;
+        } else {
+            if let Some(p) = outpath.parent() {
+                if !p.exists() {
+                    fs::create_dir_all(&p)?;
+                }
+            }
+            let mut outfile = fs::File::create(&outpath)?;
+            io::copy(&mut file, &mut outfile)?;
+        }
+    }
+
+    fs::remove_file(archive_path)?;
+
+    Ok(())
+}
 
 #[instrument(level = "trace", skip_all)]
 fn make_app_store_message(
