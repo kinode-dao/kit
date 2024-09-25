@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::time::SystemTime;
+use std::time::{Duration, SystemTime};
 
 use color_eyre::{
     Section,
@@ -39,6 +39,7 @@ const WASI_VERSION: &str = "19.0.1"; // TODO: un-hardcode
 const DEFAULT_WORLD_0_7_0: &str = "process";
 const DEFAULT_WORLD_0_8_0: &str = "process-v0";
 const KINODE_PROCESS_LIB_CRATE_NAME: &str = "kinode_process_lib";
+pub const CACHE_EXPIRY_SECONDS: u64 = 300;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoFile {
@@ -48,6 +49,88 @@ struct CargoFile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoPackage {
     name: String,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Release {
+    pub tag_name: String,
+    pub assets: Vec<Asset>,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Asset {
+    pub name: String,
+}
+
+#[instrument(level = "trace", skip_all)]
+pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> Result<Vec<u8>> {
+    let cache_path = format!("{}/{}-{}-{}.bin", KIT_CACHE, owner, repo, endpoint);
+    let cache_path = Path::new(&cache_path);
+    if cache_path.exists() {
+        if let Some(local_bytes) = fs::metadata(&cache_path)
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|m| m.elapsed().ok())
+            .and_then(|since_modified| {
+                if since_modified < Duration::from_secs(CACHE_EXPIRY_SECONDS) {
+                    fs::read(&cache_path).ok()
+                } else {
+                    None
+                }
+            })
+        {
+            return Ok(local_bytes);
+        }
+    }
+
+    let url = format!("https://api.github.com/repos/{owner}/{repo}/{endpoint}");
+    let client = reqwest::Client::new();
+    match client
+        .get(url)
+        .header("User-Agent", "request")
+        .send()
+        .await?
+        .bytes()
+        .await
+    {
+        Ok(v) => {
+            let v = v.to_vec();
+            if let Ok(s) = String::from_utf8(v.clone()) {
+                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&s) {
+                    if let serde_json::Value::String(ref s) = json["message"] {
+                        if s.contains("API rate limit exceeded") {
+                            warn!("GitHub throttled: can't fetch {owner}/{repo}/{endpoint}");
+                            return Ok(vec![]);
+                        }
+                    }
+                }
+                if s.contains("No server is currently available to service your request.") {
+                    warn!("Couldn't reach GitHub");
+                    return Ok(vec![]);
+                }
+            }
+            fs::create_dir_all(
+                cache_path
+                    .parent()
+                    .ok_or_else(|| eyre!("path doesn't have parent"))?,
+            )?;
+            fs::write(&cache_path, &v)?;
+            return Ok(v);
+        }
+        Err(_) => {
+            warn!("GitHub throttled: can't fetch {owner}/{repo}/{endpoint}");
+            return Ok(vec![]);
+        }
+    };
+}
+
+#[instrument(level = "trace", skip_all)]
+pub async fn fetch_releases(owner: &str, repo: &str) -> Result<Vec<Release>> {
+    let bytes = get_from_github(owner, repo, "releases").await?;
+    if bytes.is_empty() {
+        return Ok(vec![]);
+    }
+    Ok(serde_json::from_slice(&bytes)?)
 }
 
 pub fn make_pkg_publisher(metadata: &Erc721Metadata) -> String {
