@@ -403,7 +403,13 @@ fn check_process_lib_version(cargo_toml_path: &Path) -> Result<()> {
         .exec()
     {
         Ok(m) => m,
-        Err(_) => return Ok(()),
+        Err(_) => {
+            warn!(
+                "Couldn't find Cargo.toml where expected: {:?}; continuing.",
+                cargo_toml_path,
+            );
+            return Ok(());
+        }
     };
     let packages: HashMap<cargo_metadata::PackageId, &cargo_metadata::Package> = metadata
         .packages
