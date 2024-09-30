@@ -997,6 +997,7 @@ async fn fetch_dependencies(
         default_world,
         vec![], // TODO: what about deps-of-deps?
         vec![],
+        false,
         force,
         verbose,
         true,
@@ -1026,6 +1027,7 @@ async fn fetch_dependencies(
             default_world,
             local_dep_deps,
             vec![],
+            false,
             force,
             verbose,
             false,
@@ -1408,6 +1410,7 @@ pub async fn execute(
     default_world: Option<&str>,
     local_dependencies: Vec<PathBuf>,
     add_paths_to_api: Vec<PathBuf>,
+    reproducible: bool,
     force: bool,
     verbose: bool,
     ignore_deps: bool, // for internal use; may cause problems when adding recursive deps
@@ -1427,6 +1430,25 @@ pub async fn execute(
     if !force && is_up_to_date(&build_with_features_path, features, package_dir)? {
         return Ok(());
     }
+
+    if reproducible {
+        let version = env!("CARGO_PKG_VERSION");
+        let source = package_dir.canonicalize().unwrap();
+        let source = source.to_str().unwrap();
+        run_command(
+            Command::new("docker")
+                .args(&[
+                    "run",
+                    "--rm",
+                    "--mount",
+                    &format!("type=bind,source={source},target=/input"),
+                    &format!("nick1udwig/buildpackage:{version}"),
+                ]),
+            true,
+        )?;
+        return Ok(());
+    }
+
     fs::create_dir_all(package_dir.join("target"))?;
     fs::write(&build_with_features_path, features)?;
 
