@@ -1436,14 +1436,13 @@ pub async fn execute(
         let source = package_dir.canonicalize().unwrap();
         let source = source.to_str().unwrap();
         run_command(
-            Command::new("docker")
-                .args(&[
-                    "run",
-                    "--rm",
-                    "--mount",
-                    &format!("type=bind,source={source},target=/input"),
-                    &format!("nick1udwig/buildpackage:{version}"),
-                ]),
+            Command::new("docker").args(&[
+                "run",
+                "--rm",
+                "--mount",
+                &format!("type=bind,source={source},target=/input"),
+                &format!("nick1udwig/buildpackage:{version}"),
+            ]),
             true,
         )?;
         return Ok(());
