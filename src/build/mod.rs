@@ -1439,10 +1439,7 @@ pub async fn execute(
         let source = source.to_str().unwrap();
         // get latest version of image
         run_command(
-            Command::new("docker").args(&[
-                "pull",
-                &format!("nick1udwig/buildpackage:{version}"),
-            ]),
+            Command::new("docker").args(&["pull", &format!("nick1udwig/buildpackage:{version}")]),
             true,
         )?;
         run_command(
