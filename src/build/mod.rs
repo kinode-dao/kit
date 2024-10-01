@@ -1437,6 +1437,14 @@ pub async fn execute(
         let version = env!("CARGO_PKG_VERSION");
         let source = package_dir.canonicalize().unwrap();
         let source = source.to_str().unwrap();
+        // get latest version of image
+        run_command(
+            Command::new("docker").args(&[
+                "pull",
+                &format!("nick1udwig/buildpackage:{version}"),
+            ]),
+            true,
+        )?;
         run_command(
             Command::new("docker").args(&[
                 "run",
