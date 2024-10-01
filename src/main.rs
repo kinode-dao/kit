@@ -211,6 +211,7 @@ async fn execute(
                 .unwrap_or_default()
                 .map(|s| PathBuf::from(s))
                 .collect();
+            let reproducible = matches.get_one::<bool>("REPRODUCIBLE").unwrap();
             let force = matches.get_one::<bool>("FORCE").unwrap();
             let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
 
@@ -225,6 +226,7 @@ async fn execute(
                 default_world.map(|w| w.as_str()),
                 local_dependencies,
                 add_paths_to_api,
+                *reproducible,
                 *force,
                 *verbose,
                 false,
@@ -258,6 +260,7 @@ async fn execute(
                 .unwrap_or_default()
                 .map(|s| PathBuf::from(s))
                 .collect();
+            let reproducible = matches.get_one::<bool>("REPRODUCIBLE").unwrap();
             let force = matches.get_one::<bool>("FORCE").unwrap();
             let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
 
@@ -272,6 +275,7 @@ async fn execute(
                 default_world.map(|w| w.as_str()),
                 local_dependencies,
                 add_paths_to_api,
+                *reproducible,
                 *force,
                 *verbose,
             )
@@ -690,6 +694,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .long("add-to-api")
                 .help("Path to file to add to api.zip (can specify multiple times)")
             )
+            .arg(Arg::new("REPRODUCIBLE")
+                .action(ArgAction::SetTrue)
+                .short('r')
+                .long("reproducible")
+                .help("Make a reproducible build using Docker")
+                .required(false)
+            )
             .arg(Arg::new("FORCE")
                 .action(ArgAction::SetTrue)
                 .short('f')
@@ -770,6 +781,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .long("features")
                 .help("Pass these comma-delimited feature flags to Rust cargo builds")
+                .required(false)
+            )
+            .arg(Arg::new("REPRODUCIBLE")
+                .action(ArgAction::SetTrue)
+                .short('r')
+                .long("reproducible")
+                .help("Make a reproducible build using Docker")
                 .required(false)
             )
             .arg(Arg::new("FORCE")

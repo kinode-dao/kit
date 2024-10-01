@@ -9,6 +9,7 @@ use fs_err as fs;
 use tracing::{info, instrument, warn};
 
 use crate::build::run_command;
+use crate::publish::make_remote_link;
 
 const FETCH_NVM_VERSION: &str = "v0.39.7";
 const REQUIRED_NODE_MAJOR: u32 = 20;
@@ -31,6 +32,7 @@ pub enum Dependency {
     RustWasm32Wasi,
     RustNightlyWasm32Wasi,
     WasmTools,
+    Docker,
 }
 
 impl std::fmt::Display for Dependency {
@@ -46,6 +48,7 @@ impl std::fmt::Display for Dependency {
             Dependency::RustWasm32Wasi => write!(f, "rust wasm32-wasip1 target"),
             Dependency::RustNightlyWasm32Wasi => write!(f, "rust nightly wasm32-wasip1 target"),
             Dependency::WasmTools => write!(f, "wasm-tools"),
+            Dependency::Docker => write!(f, "docker"),
         }
     }
 }
@@ -430,6 +433,21 @@ pub fn check_rust_deps() -> Result<Vec<Dependency>> {
     Ok(missing_deps)
 }
 
+// Check for Foundry deps, returning a Vec of not found: can be automatically fetched?
+#[instrument(level = "trace", skip_all)]
+pub fn check_docker_deps() -> Result<Vec<Dependency>> {
+    let mut missing_deps = Vec::new();
+    if !is_command_installed("docker")? {
+        missing_deps.push(Dependency::Docker);
+        // TODO: automated get docker
+        return Err(eyre!(
+            "docker not found: please {} and try again",
+            make_remote_link("https://docs.docker.com/engine/install", "install Docker"),
+        ));
+    }
+    Ok(missing_deps)
+}
+
 #[instrument(level = "trace", skip_all)]
 pub fn get_deps(deps: Vec<Dependency>, verbose: bool) -> Result<()> {
     if deps.is_empty() {
@@ -474,6 +492,7 @@ pub fn get_deps(deps: Vec<Dependency>, verbose: bool) -> Result<()> {
                     }
                     Dependency::WasmTools => call_cargo("install wasm-tools", verbose)?,
                     Dependency::Forge | Dependency::Anvil => install_foundry()?,
+                    Dependency::Docker => {}
                 }
             }
         }
@@ -489,6 +508,7 @@ pub fn execute(verbose: bool) -> Result<()> {
     check_py_deps()?;
     let mut missing_deps = check_js_deps()?;
     missing_deps.append(&mut check_rust_deps()?);
+    missing_deps.append(&mut check_docker_deps()?);
     get_deps(missing_deps, verbose)?;
 
     info!("Done setting up.");

@@ -91,8 +91,6 @@ pub fn zip_pkg(package_dir: &Path, pkg_publisher: &str) -> Result<(PathBuf, Stri
 #[instrument(level = "trace", skip_all)]
 fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
     let file = fs::File::create(zip_filename)?;
-    let walkdir = WalkDir::new(directory);
-    let it = walkdir.into_iter();
 
     let mut zip = zip::ZipWriter::new(file);
 
@@ -101,8 +99,12 @@ fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
         .unix_permissions(0o755)
         .last_modified_time(zip::DateTime::from_date_and_time(1980, 1, 1, 0, 0, 0).unwrap());
 
-    for entry in it {
-        let entry = entry?;
+    let mut walk_dir = WalkDir::new(directory)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .collect::<Vec<_>>();
+    walk_dir.sort_by_key(|entry| entry.path().to_owned());
+    for entry in walk_dir {
         let path = entry.path();
         let name = path.strip_prefix(Path::new(directory))?;
 
@@ -997,6 +999,7 @@ async fn fetch_dependencies(
         default_world,
         vec![], // TODO: what about deps-of-deps?
         vec![],
+        false,
         force,
         verbose,
         true,
@@ -1026,6 +1029,7 @@ async fn fetch_dependencies(
             default_world,
             local_dep_deps,
             vec![],
+            false,
             force,
             verbose,
             false,
@@ -1408,6 +1412,7 @@ pub async fn execute(
     default_world: Option<&str>,
     local_dependencies: Vec<PathBuf>,
     add_paths_to_api: Vec<PathBuf>,
+    reproducible: bool,
     force: bool,
     verbose: bool,
     ignore_deps: bool, // for internal use; may cause problems when adding recursive deps
@@ -1427,6 +1432,29 @@ pub async fn execute(
     if !force && is_up_to_date(&build_with_features_path, features, package_dir)? {
         return Ok(());
     }
+
+    if reproducible {
+        let version = env!("CARGO_PKG_VERSION");
+        let source = package_dir.canonicalize().unwrap();
+        let source = source.to_str().unwrap();
+        // get latest version of image
+        run_command(
+            Command::new("docker").args(&["pull", &format!("nick1udwig/buildpackage:{version}")]),
+            true,
+        )?;
+        run_command(
+            Command::new("docker").args(&[
+                "run",
+                "--rm",
+                "--mount",
+                &format!("type=bind,source={source},target=/input"),
+                &format!("nick1udwig/buildpackage:{version}"),
+            ]),
+            true,
+        )?;
+        return Ok(());
+    }
+
     fs::create_dir_all(package_dir.join("target"))?;
     fs::write(&build_with_features_path, features)?;
 
