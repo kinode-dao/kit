@@ -91,8 +91,6 @@ pub fn zip_pkg(package_dir: &Path, pkg_publisher: &str) -> Result<(PathBuf, Stri
 #[instrument(level = "trace", skip_all)]
 fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
     let file = fs::File::create(zip_filename)?;
-    let walkdir = WalkDir::new(directory);
-    let it = walkdir.into_iter();
 
     let mut zip = zip::ZipWriter::new(file);
 
@@ -101,8 +99,12 @@ fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
         .unix_permissions(0o755)
         .last_modified_time(zip::DateTime::from_date_and_time(1980, 1, 1, 0, 0, 0).unwrap());
 
-    for entry in it {
-        let entry = entry?;
+    let mut walk_dir = WalkDir::new(directory)
+        .into_iter()
+        .filter_map(|entry| entry.ok())
+        .collect::<Vec<_>>();
+    walk_dir.sort_by_key(|entry| entry.path().to_owned());
+    for entry in walk_dir {
         let path = entry.path();
         let name = path.strip_prefix(Path::new(directory))?;
 
