@@ -29,7 +29,6 @@ pub enum Dependency {
     Node,
     Rust,
     RustNightly,
-    RustWasm32Wasi,
     RustNightlyWasm32Wasi,
     WasmTools,
     Docker,
@@ -45,7 +44,6 @@ impl std::fmt::Display for Dependency {
             Dependency::Node => write!(f, "node {}.{}", REQUIRED_NODE_MAJOR, MINIMUM_NODE_MINOR),
             Dependency::Rust => write!(f, "rust"),
             Dependency::RustNightly => write!(f, "rust nightly"),
-            Dependency::RustWasm32Wasi => write!(f, "rust wasm32-wasip1 target"),
             Dependency::RustNightlyWasm32Wasi => write!(f, "rust nightly wasm32-wasip1 target"),
             Dependency::WasmTools => write!(f, "wasm-tools"),
             Dependency::Docker => write!(f, "docker"),
@@ -262,24 +260,6 @@ fn check_rust_toolchains_targets() -> Result<Vec<Dependency>> {
         }
     });
 
-    // check stable deps
-    run_command(
-        Command::new("rustup")
-            .args(&["default", "stable"])
-            .stdout(Stdio::null())
-            .stderr(Stdio::null()),
-        false,
-    )?;
-    let output = Command::new("rustup").arg("show").output()?.stdout;
-    let output = String::from_utf8_lossy(&output);
-
-    let has_wasm32_wasi = output
-        .split('\n')
-        .fold(false, |acc, item| acc || item == "wasm32-wasip1");
-    if !has_wasm32_wasi {
-        missing_deps.push(Dependency::RustWasm32Wasi);
-    }
-
     // check nightly deps
     let has_nightly_toolchain = output
         .split('\n')
@@ -411,6 +391,7 @@ pub fn install_foundry() -> Result<()> {
 
     Ok(())
 }
+
 /// Check for Rust deps, returning a Vec of not found: can be automatically fetched
 #[instrument(level = "trace", skip_all)]
 pub fn check_rust_deps() -> Result<Vec<Dependency>> {
@@ -419,7 +400,6 @@ pub fn check_rust_deps() -> Result<Vec<Dependency>> {
         return Ok(vec![
             Dependency::Rust,
             Dependency::RustNightly,
-            Dependency::RustWasm32Wasi,
             Dependency::RustNightlyWasm32Wasi,
             Dependency::WasmTools,
         ]);
@@ -486,7 +466,6 @@ pub fn get_deps(deps: Vec<Dependency>, verbose: bool) -> Result<()> {
                     )?,
                     Dependency::Rust => install_rust(verbose)?,
                     Dependency::RustNightly => call_rustup("install nightly", verbose)?,
-                    Dependency::RustWasm32Wasi => call_rustup("target add wasm32-wasip1", verbose)?,
                     Dependency::RustNightlyWasm32Wasi => {
                         call_rustup("target add wasm32-wasip1 --toolchain nightly", verbose)?
                     }
