@@ -1497,8 +1497,10 @@ pub async fn execute(
             )
             .await?;
         } else {
-            let deps = check_js_deps()?;
-            get_deps(deps, verbose)?;
+            if !skip_deps_check {
+                let deps = check_js_deps()?;
+                get_deps(deps, verbose)?;
+            }
             let valid_node = get_newest_valid_node_version(None, None)?;
 
             if ui_only {
