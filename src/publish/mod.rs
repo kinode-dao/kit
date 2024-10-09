@@ -93,7 +93,7 @@ pub fn make_local_file_link_path(path: &Path, text: &str) -> Result<String> {
 }
 
 pub fn make_remote_link(url: &str, text: &str) -> String {
-    format!("\x1B]8;;{}\x1B\\{}\x1B]8;;\x1B\\", url, text,)
+    format!("\x1B]8;;{}\x1B\\{}\x1B]8;;\x1B\\", url, text)
 }
 
 fn is_valid_kimap_package_name(s: &str) -> bool {
