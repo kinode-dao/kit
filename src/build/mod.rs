@@ -1210,7 +1210,10 @@ fn get_ui_dirs(package_dir: &Path) -> Result<Vec<PathBuf>> {
         .read_dir()?
         .filter_map(|entry| {
             let path = entry.ok()?.path();
-            if path.is_dir() && path.join(PACKAGE_JSON_NAME).exists() && !path.join(COMPONENTIZE_MJS_NAME).exists() {
+            if path.is_dir()
+                && path.join(PACKAGE_JSON_NAME).exists()
+                && !path.join(COMPONENTIZE_MJS_NAME).exists()
+            {
                 // is dir AND is js AND is not component -> is UI: add to Vec
                 Some(path)
             } else {
@@ -1347,12 +1350,8 @@ async fn compile_package(
 ) -> Result<()> {
     let metadata = read_and_update_metadata(package_dir)?;
     let mut wasm_paths = HashSet::new();
-    let (mut apis, dependencies) = check_and_populate_dependencies(
-        package_dir,
-        &metadata,
-        skip_deps_check,
-        verbose,
-    )?;
+    let (mut apis, dependencies) =
+        check_and_populate_dependencies(package_dir, &metadata, skip_deps_check, verbose)?;
 
     if !ignore_deps && !dependencies.is_empty() {
         fetch_dependencies(
@@ -1469,7 +1468,9 @@ pub async fn execute(
     ignore_deps: bool, // for internal use; may cause problems when adding recursive deps
 ) -> Result<()> {
     if no_ui && ui_only {
-        return Err(eyre!("Cannot set both `no_ui` and `ui_only` to true at the same time"));
+        return Err(eyre!(
+            "Cannot set both `no_ui` and `ui_only` to true at the same time"
+        ));
     }
     if !package_dir.join("pkg").exists() {
         if Some(".DS_Store") == package_dir.file_name().and_then(|s| s.to_str()) {
