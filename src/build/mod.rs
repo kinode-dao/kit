@@ -272,13 +272,13 @@ pub fn read_metadata(package_dir: &Path) -> Result<Erc721Metadata> {
 pub fn read_and_update_metadata(package_dir: &Path) -> Result<Erc721Metadata> {
     let mut metadata = read_metadata(package_dir)?;
 
-    let metadata_dot_json = make_local_file_link_path(
-        &package_dir.join("metadata.json"),
-        "metadata.json",
-    )?;
+    let metadata_dot_json =
+        make_local_file_link_path(&package_dir.join("metadata.json"), "metadata.json")?;
 
     let current_version_field = semver::Version::parse(&metadata.properties.current_version)?;
-    let most_recent_version: semver::Version = metadata.properties.code_hashes
+    let most_recent_version: semver::Version = metadata
+        .properties
+        .code_hashes
         .keys()
         .filter_map(|s| semver::Version::parse(&s).ok())
         .max()
@@ -307,11 +307,7 @@ pub fn read_and_update_metadata(package_dir: &Path) -> Result<Erc721Metadata> {
     Ok(metadata)
 }
 
-fn replace_version_in_file(
-    file_path: &Path,
-    pattern: &str,
-    new_version: &str,
-) -> Result<()> {
+fn replace_version_in_file(file_path: &Path, pattern: &str, new_version: &str) -> Result<()> {
     let file = fs::File::open(&file_path)?;
     let reader = std::io::BufReader::new(file);
 
