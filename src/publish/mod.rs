@@ -20,7 +20,7 @@ use tracing::{info, instrument};
 
 use kinode_process_lib::kernel_types::Erc721Metadata;
 
-use crate::build::{download_file, make_pkg_publisher, read_metadata, zip_pkg};
+use crate::build::{download_file, make_pkg_publisher, read_and_update_metadata, zip_pkg};
 
 sol! {
     function mint (
@@ -163,7 +163,7 @@ async fn check_remote_metadata(
     }
     let remote_metadata_path = remote_metadata_dir.join("metadata.json");
     download_file(metadata_uri, &remote_metadata_path).await?;
-    let remote_metadata = read_metadata(&remote_metadata_dir)?;
+    let remote_metadata = read_and_update_metadata(&remote_metadata_dir)?;
 
     // TODO: add derive(PartialEq) to Erc721
     if serde_json::to_string(&metadata)? != serde_json::to_string(&remote_metadata)? {
@@ -341,7 +341,7 @@ pub async fn execute(
         }
     };
 
-    let metadata = read_metadata(package_dir)?;
+    let metadata = read_and_update_metadata(package_dir)?;
 
     let name = metadata.name.clone().unwrap();
     let publisher = metadata.properties.publisher.clone();

@@ -7,7 +7,7 @@ use tracing::{info, instrument};
 
 use kinode_process_lib::kernel_types::{Erc721Metadata, PackageManifestEntry};
 
-use crate::build::{hash_zip_pkg, make_pkg_publisher, make_zip_filename, read_metadata};
+use crate::build::{hash_zip_pkg, make_pkg_publisher, make_zip_filename, read_and_update_metadata};
 use crate::publish::make_local_file_link_path;
 use crate::{inject_message, KIT_LOG_PATH_DEFAULT};
 
@@ -64,6 +64,7 @@ fn install(
                     "screenshots": metadata.properties.screenshots,
                     "wit_version": metadata.properties.wit_version,
                     "dependencies": metadata.properties.dependencies,
+                    "api_includes": metadata.properties.api_includes,
                 },
             },
         }
@@ -171,7 +172,7 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
         ));
     }
     let pkg_dir = package_dir.join("pkg").canonicalize()?;
-    let metadata = read_metadata(package_dir)?;
+    let metadata = read_and_update_metadata(package_dir)?;
     let package_name = metadata.properties.package_name.as_str();
     let publisher = metadata.properties.publisher.as_str();
     let pkg_publisher = make_pkg_publisher(&metadata);

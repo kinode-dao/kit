@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::io::{Read, Write};
+use std::io::{BufRead, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::time::SystemTime;
@@ -20,6 +20,7 @@ use zip::write::FileOptions;
 
 use kinode_process_lib::{kernel_types::Erc721Metadata, PackageId};
 
+use crate::publish::make_local_file_link_path;
 use crate::setup::{
     check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version,
     get_python_version, REQUIRED_PY_PACKAGE,
@@ -265,6 +266,71 @@ pub fn read_metadata(package_dir: &Path) -> Result<Erc721Metadata> {
             .wrap_err_with(|| "Missing required metadata.json file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=metadata.json#metadatajson")?
         )?;
     Ok(metadata)
+}
+
+#[instrument(level = "trace", skip_all)]
+pub fn read_and_update_metadata(package_dir: &Path) -> Result<Erc721Metadata> {
+    let mut metadata = read_metadata(package_dir)?;
+
+    let metadata_dot_json = make_local_file_link_path(
+        &package_dir.join("metadata.json"),
+        "metadata.json",
+    )?;
+
+    let current_version_field = semver::Version::parse(&metadata.properties.current_version)?;
+    let most_recent_version: semver::Version = metadata.properties.code_hashes
+        .keys()
+        .filter_map(|s| semver::Version::parse(&s).ok())
+        .max()
+        .ok_or_else(|| eyre!("{metadata_dot_json} doesn't list versions"))?;
+
+    if most_recent_version == current_version_field {
+        // we're up-to-date: don't edit
+    } else if most_recent_version > current_version_field {
+        // we're out-of-date: update
+        replace_version_in_file(
+            &package_dir.join("metadata.json"),
+            r#"("current_version":\s*")(\d+\.\d+\.\d+)"#,
+            &format!(r#"${{1}}{most_recent_version}"#),
+        )?;
+        metadata = read_metadata(package_dir)?;
+    } else {
+        // unexpected case: error
+        return Err(eyre!(
+            "{} has a current_version ({}) that does not exist: newest listed version {}",
+            metadata_dot_json,
+            current_version_field,
+            most_recent_version,
+        ));
+    }
+
+    Ok(metadata)
+}
+
+fn replace_version_in_file(
+    file_path: &Path,
+    pattern: &str,
+    new_version: &str,
+) -> Result<()> {
+    let file = fs::File::open(&file_path)?;
+    let reader = std::io::BufReader::new(file);
+
+    let mut content = String::new();
+    let version_regex = regex::Regex::new(pattern).unwrap();
+
+    for line in reader.lines() {
+        let line = line?;
+        let new_line = if version_regex.is_match(&line) {
+            version_regex.replace(&line, new_version).to_string()
+        } else {
+            line
+        };
+        content.push_str(&new_line);
+        content.push('\n');
+    }
+
+    fs::write(file_path, content.as_bytes())?;
+    Ok(())
 }
 
 /// Regex to dynamically capture the world name after 'world'
@@ -1223,7 +1289,7 @@ async fn compile_package(
     verbose: bool,
     ignore_deps: bool,
 ) -> Result<()> {
-    let metadata = read_metadata(package_dir)?;
+    let metadata = read_and_update_metadata(package_dir)?;
     let mut checked_rust = false;
     let mut checked_py = false;
     let mut checked_js = false;
