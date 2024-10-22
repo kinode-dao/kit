@@ -919,39 +919,6 @@ async fn compile_and_copy_ui(
 }
 
 #[instrument(level = "trace", skip_all)]
-async fn compile_package_and_ui(
-    package_dir: &Path,
-    valid_node: Option<String>,
-    skip_deps_check: bool,
-    features: &str,
-    url: Option<String>,
-    default_world: Option<&str>,
-    download_from: Option<&str>,
-    local_dependencies: Vec<PathBuf>,
-    add_paths_to_api: Vec<PathBuf>,
-    force: bool,
-    verbose: bool,
-    ignore_deps: bool,
-) -> Result<()> {
-    compile_and_copy_ui(package_dir, valid_node, verbose).await?;
-    compile_package(
-        package_dir,
-        skip_deps_check,
-        features,
-        url,
-        default_world,
-        download_from,
-        local_dependencies,
-        add_paths_to_api,
-        force,
-        verbose,
-        ignore_deps,
-    )
-    .await?;
-    Ok(())
-}
-
-#[instrument(level = "trace", skip_all)]
 async fn build_wit_dir(
     process_dir: &Path,
     apis: &HashMap<String, Vec<u8>>,
@@ -1249,6 +1216,58 @@ fn find_non_standard(
     Ok((imports, exports, others))
 }
 
+fn check_and_populate_dependencies(
+    package_dir: &Path,
+    metadata: &Erc721Metadata,
+    skip_deps_check: bool,
+    verbose: bool,
+) -> Result<(HashMap<String, Vec<u8>>, HashSet<String>)> {
+    let mut checked_rust = false;
+    let mut checked_py = false;
+    let mut checked_js = false;
+    let mut apis = HashMap::new();
+    let mut dependencies = HashSet::new();
+    for entry in package_dir.read_dir()? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            if path.join(RUST_SRC_PATH).exists() && !checked_rust && !skip_deps_check {
+                let deps = check_rust_deps()?;
+                get_deps(deps, verbose)?;
+                checked_rust = true;
+            } else if path.join(PYTHON_SRC_PATH).exists() && !checked_py {
+                check_py_deps()?;
+                checked_py = true;
+            } else if path.join(JAVASCRIPT_SRC_PATH).exists() && !checked_js && !skip_deps_check {
+                let deps = check_js_deps()?;
+                get_deps(deps, verbose)?;
+                checked_js = true;
+            } else if Some("api") == path.file_name().and_then(|s| s.to_str()) {
+                // read api files: to be used in build
+                for entry in path.read_dir()? {
+                    let entry = entry?;
+                    let path = entry.path();
+                    if Some("wit") != path.extension().and_then(|e| e.to_str()) {
+                        continue;
+                    };
+                    let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
+                        continue;
+                    };
+                    if let Ok(api_contents) = fs::read(&path) {
+                        apis.insert(file_name.to_string(), api_contents);
+                    }
+                }
+
+                // fetch dependency apis: to be used in build
+                if let Some(ref deps) = metadata.properties.dependencies {
+                    dependencies.extend(deps.clone());
+                }
+            }
+        }
+    }
+    Ok((apis, dependencies))
+}
+
 /// package dir looks like:
 /// ```
 /// metadata.json
@@ -1286,60 +1305,13 @@ async fn compile_package(
     ignore_deps: bool,
 ) -> Result<()> {
     let metadata = read_and_update_metadata(package_dir)?;
-    let mut checked_rust = false;
-    let mut checked_py = false;
-    let mut checked_js = false;
-    let mut apis = HashMap::new();
     let mut wasm_paths = HashSet::new();
-    let mut dependencies = HashSet::new();
-    for entry in package_dir.read_dir()? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            if path.join(RUST_SRC_PATH).exists() && !checked_rust && !skip_deps_check {
-                let deps = check_rust_deps()?;
-                get_deps(deps, verbose)?;
-                checked_rust = true;
-            } else if path.join(PYTHON_SRC_PATH).exists() && !checked_py {
-                check_py_deps()?;
-                checked_py = true;
-            } else if path.join(JAVASCRIPT_SRC_PATH).exists() && !checked_js && !skip_deps_check {
-                let deps = check_js_deps()?;
-                get_deps(deps, verbose)?;
-                checked_js = true;
-            } else if Some("api") == path.file_name().and_then(|s| s.to_str()) {
-                // read api files: to be used in build
-                for entry in path.read_dir()? {
-                    let entry = entry?;
-                    let path = entry.path();
-                    if Some("wit") != path.extension().and_then(|e| e.to_str()) {
-                        continue;
-                    };
-                    let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
-                        continue;
-                    };
-                    // TODO: reenable check once deps are working
-                    // if file_name.starts_with(&format!(
-                    //     "{}:{}",
-                    //     metadata.properties.package_name,
-                    //     metadata.properties.publisher,
-                    // )) {
-                    //     if let Ok(api_contents) = fs::read(&path) {
-                    //         apis.insert(file_name.to_string(), api_contents);
-                    //     }
-                    // }
-                    if let Ok(api_contents) = fs::read(&path) {
-                        apis.insert(file_name.to_string(), api_contents);
-                    }
-                }
-
-                // fetch dependency apis: to be used in build
-                if let Some(ref deps) = metadata.properties.dependencies {
-                    dependencies.extend(deps);
-                }
-            }
-        }
-    }
+    let (mut apis, dependencies) = check_and_populate_dependencies(
+        package_dir,
+        &metadata,
+        skip_deps_check,
+        verbose,
+    )?;
 
     if !ignore_deps && !dependencies.is_empty() {
         fetch_dependencies(
@@ -1565,12 +1537,10 @@ pub async fn execute(
             }
             let valid_node = get_newest_valid_node_version(None, None)?;
 
-            if ui_only {
-                compile_and_copy_ui(package_dir, valid_node, verbose).await?;
-            } else {
-                compile_package_and_ui(
+            compile_and_copy_ui(package_dir, valid_node, verbose).await?;
+            if !ui_only {
+                compile_package(
                     package_dir,
-                    valid_node,
                     skip_deps_check,
                     features,
                     url,
