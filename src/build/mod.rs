@@ -1216,6 +1216,7 @@ fn find_non_standard(
     Ok((imports, exports, others))
 }
 
+#[instrument(level = "trace", skip_all)]
 fn check_and_populate_dependencies(
     package_dir: &Path,
     metadata: &Erc721Metadata,
@@ -1268,6 +1269,41 @@ fn check_and_populate_dependencies(
     Ok((apis, dependencies))
 }
 
+#[instrument(level = "trace", skip_all)]
+fn zip_api(
+    package_dir: &Path,
+    target_api_dir: &Path,
+    add_paths_to_api: &Vec<PathBuf>,
+    metadata: &Erc721Metadata,
+) -> Result<()> {
+    let mut api_includes = add_paths_to_api.clone();
+    if let Some(ref metadata_includes) = metadata.properties.api_includes {
+        api_includes.extend_from_slice(metadata_includes);
+    }
+    for path in api_includes {
+        let path = if path.exists() {
+            path
+        } else {
+            package_dir.join(path).canonicalize().unwrap_or_default()
+        };
+        if !path.exists() {
+            warn!("Given path to add to API does not exist: {path:?}");
+            continue;
+        }
+        if let Err(e) = fs::copy(
+            &path,
+            target_api_dir.join(path.file_name().and_then(|f| f.to_str()).unwrap()),
+        ) {
+            warn!("Could not add path {path:?} to API: {e:?}");
+        }
+    }
+
+    let zip_path = package_dir.join("pkg").join("api.zip");
+    let zip_path = zip_path.to_str().unwrap();
+    zip_directory(&target_api_dir, zip_path)?;
+    Ok(())
+}
+
 /// package dir looks like:
 /// ```
 /// metadata.json
@@ -1299,10 +1335,10 @@ async fn compile_package(
     default_world: Option<&str>,
     download_from: Option<&str>,
     local_dependencies: Vec<PathBuf>,
-    add_paths_to_api: Vec<PathBuf>,
+    add_paths_to_api: &Vec<PathBuf>,
     force: bool,
     verbose: bool,
-    ignore_deps: bool,
+    ignore_deps: bool, // for internal use; may cause problems when adding recursive deps
 ) -> Result<()> {
     let metadata = read_and_update_metadata(package_dir)?;
     let mut wasm_paths = HashSet::new();
@@ -1402,33 +1438,9 @@ async fn compile_package(
         }
     }
 
-    // zip & place API inside of pkg/ to publish API
     if target_api_dir.exists() {
-        let mut api_includes = add_paths_to_api.clone();
-        if let Some(ref metadata_includes) = metadata.properties.api_includes {
-            api_includes.extend_from_slice(metadata_includes);
-        }
-        for path in api_includes {
-            let path = if path.exists() {
-                path
-            } else {
-                package_dir.join(path).canonicalize().unwrap_or_default()
-            };
-            if !path.exists() {
-                warn!("Given path to add to API does not exist: {path:?}");
-                continue;
-            }
-            if let Err(e) = fs::copy(
-                &path,
-                target_api_dir.join(path.file_name().and_then(|f| f.to_str()).unwrap()),
-            ) {
-                warn!("Could not add path {path:?} to API: {e:?}");
-            }
-        }
-
-        let zip_path = package_dir.join("pkg").join("api.zip");
-        let zip_path = zip_path.to_str().unwrap();
-        zip_directory(&target_api_dir, zip_path)?;
+        // zip & place API inside of pkg/ to publish API
+        zip_api(package_dir, &target_api_dir, add_paths_to_api, &metadata)?;
     }
 
     Ok(())
@@ -1507,7 +1519,7 @@ pub async fn execute(
                 default_world.clone(),
                 download_from,
                 local_dependencies,
-                add_paths_to_api,
+                &add_paths_to_api,
                 force,
                 verbose,
                 ignore_deps,
@@ -1524,7 +1536,7 @@ pub async fn execute(
                 default_world,
                 download_from,
                 local_dependencies,
-                add_paths_to_api,
+                &add_paths_to_api,
                 force,
                 verbose,
                 ignore_deps,
@@ -1547,7 +1559,7 @@ pub async fn execute(
                     default_world,
                     download_from,
                     local_dependencies,
-                    add_paths_to_api,
+                    &add_paths_to_api,
                     force,
                     verbose,
                     ignore_deps,
