@@ -32,6 +32,8 @@ const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
 const PYTHON_SRC_PATH: &str = "src/lib.py";
 const RUST_SRC_PATH: &str = "src/lib.rs";
+const PACKAGE_JSON_NAME: &str = "package.json";
+const COMPONENTIZE_MJS_NAME: &str = "componentize.mjs";
 const KINODE_WIT_0_7_0_URL: &str =
     "https://raw.githubusercontent.com/kinode-dao/kinode-wit/aa2c8b11c9171b949d1991c32f58591c0e881f85/kinode.wit";
 const KINODE_WIT_0_8_0_URL: &str =
@@ -98,7 +100,7 @@ fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
     let options = FileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
         .unix_permissions(0o755)
-        .last_modified_time(zip::DateTime::from_date_and_time(1980, 1, 1, 0, 0, 0).unwrap());
+        .last_modified_time(zip::DateTime::from_date_and_time(2023, 6, 19, 0, 0, 0).unwrap());
 
     let mut walk_dir = WalkDir::new(directory)
         .into_iter()
@@ -858,96 +860,49 @@ async fn compile_rust_wasm_process(
 
 #[instrument(level = "trace", skip_all)]
 async fn compile_and_copy_ui(
-    package_dir: &Path,
+    ui_path: &Path,
     valid_node: Option<String>,
     verbose: bool,
 ) -> Result<()> {
-    let ui_path = package_dir.join("ui");
     info!("Building UI in {:?}...", ui_path);
 
-    if ui_path.exists() && ui_path.is_dir() {
-        if ui_path.join("package.json").exists() {
-            info!("UI directory found, running npm install...");
+    if ui_path.exists() && ui_path.is_dir() && ui_path.join("package.json").exists() {
+        info!("Running npm install...");
 
-            let install = "npm install".to_string();
-            let run = "npm run build:copy".to_string();
-            let (install, run) = valid_node
-                .map(|valid_node| {
-                    (
-                        format!(
-                            "source ~/.nvm/nvm.sh && nvm use {} && {}",
-                            valid_node, install
-                        ),
-                        format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, run),
-                    )
-                })
-                .unwrap_or_else(|| (install, run));
+        let install = "npm install".to_string();
+        let run = "npm run build:copy".to_string();
+        let (install, run) = valid_node
+            .map(|valid_node| {
+                (
+                    format!(
+                        "source ~/.nvm/nvm.sh && nvm use {} && {}",
+                        valid_node, install
+                    ),
+                    format!("source ~/.nvm/nvm.sh && nvm use {} && {}", valid_node, run),
+                )
+            })
+            .unwrap_or_else(|| (install, run));
 
-            run_command(
-                Command::new("bash")
-                    .args(&["-c", &install])
-                    .current_dir(&ui_path),
-                verbose,
-            )?;
+        run_command(
+            Command::new("bash")
+                .args(&["-c", &install])
+                .current_dir(&ui_path),
+            verbose,
+        )?;
 
-            info!("Running npm run build:copy...");
+        info!("Running npm run build:copy...");
 
-            run_command(
-                Command::new("bash")
-                    .args(&["-c", &run])
-                    .current_dir(&ui_path),
-                verbose,
-            )?;
-        } else {
-            let pkg_ui_path = package_dir.join("pkg/ui");
-            if pkg_ui_path.exists() {
-                fs::remove_dir_all(&pkg_ui_path)?;
-            }
-            run_command(
-                Command::new("cp")
-                    .args(["-r", "ui", "pkg/ui"])
-                    .current_dir(&package_dir),
-                verbose,
-            )?;
-        }
+        run_command(
+            Command::new("bash")
+                .args(&["-c", &run])
+                .current_dir(&ui_path),
+            verbose,
+        )?;
     } else {
-        return Err(eyre!("'ui' directory not found"));
+        return Err(eyre!("UI directory {ui_path:?} not found"));
     }
 
     info!("Done building UI in {:?}.", ui_path);
-    Ok(())
-}
-
-#[instrument(level = "trace", skip_all)]
-async fn compile_package_and_ui(
-    package_dir: &Path,
-    valid_node: Option<String>,
-    skip_deps_check: bool,
-    features: &str,
-    url: Option<String>,
-    default_world: Option<&str>,
-    download_from: Option<&str>,
-    local_dependencies: Vec<PathBuf>,
-    add_paths_to_api: Vec<PathBuf>,
-    force: bool,
-    verbose: bool,
-    ignore_deps: bool,
-) -> Result<()> {
-    compile_and_copy_ui(package_dir, valid_node, verbose).await?;
-    compile_package(
-        package_dir,
-        skip_deps_check,
-        features,
-        url,
-        default_world,
-        download_from,
-        local_dependencies,
-        add_paths_to_api,
-        force,
-        verbose,
-        ignore_deps,
-    )
-    .await?;
     Ok(())
 }
 
@@ -1249,6 +1204,114 @@ fn find_non_standard(
     Ok((imports, exports, others))
 }
 
+#[instrument(level = "trace", skip_all)]
+fn get_ui_dirs(package_dir: &Path) -> Result<Vec<PathBuf>> {
+    let ui_dirs = package_dir
+        .read_dir()?
+        .filter_map(|entry| {
+            let path = entry.ok()?.path();
+            if path.is_dir()
+                && path.join(PACKAGE_JSON_NAME).exists()
+                && !path.join(COMPONENTIZE_MJS_NAME).exists()
+            {
+                // is dir AND is js AND is not component -> is UI: add to Vec
+                Some(path)
+            } else {
+                None
+            }
+        })
+        .collect();
+    Ok(ui_dirs)
+}
+
+#[instrument(level = "trace", skip_all)]
+fn check_and_populate_dependencies(
+    package_dir: &Path,
+    metadata: &Erc721Metadata,
+    skip_deps_check: bool,
+    verbose: bool,
+) -> Result<(HashMap<String, Vec<u8>>, HashSet<String>)> {
+    let mut checked_rust = false;
+    let mut checked_py = false;
+    let mut checked_js = false;
+    let mut apis = HashMap::new();
+    let mut dependencies = HashSet::new();
+    for entry in package_dir.read_dir()? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            if path.join(RUST_SRC_PATH).exists() && !checked_rust && !skip_deps_check {
+                let deps = check_rust_deps()?;
+                get_deps(deps, verbose)?;
+                checked_rust = true;
+            } else if path.join(PYTHON_SRC_PATH).exists() && !checked_py {
+                check_py_deps()?;
+                checked_py = true;
+            } else if path.join(JAVASCRIPT_SRC_PATH).exists() && !checked_js && !skip_deps_check {
+                let deps = check_js_deps()?;
+                get_deps(deps, verbose)?;
+                checked_js = true;
+            } else if Some("api") == path.file_name().and_then(|s| s.to_str()) {
+                // read api files: to be used in build
+                for entry in path.read_dir()? {
+                    let entry = entry?;
+                    let path = entry.path();
+                    if Some("wit") != path.extension().and_then(|e| e.to_str()) {
+                        continue;
+                    };
+                    let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
+                        continue;
+                    };
+                    if let Ok(api_contents) = fs::read(&path) {
+                        apis.insert(file_name.to_string(), api_contents);
+                    }
+                }
+
+                // fetch dependency apis: to be used in build
+                if let Some(ref deps) = metadata.properties.dependencies {
+                    dependencies.extend(deps.clone());
+                }
+            }
+        }
+    }
+    Ok((apis, dependencies))
+}
+
+#[instrument(level = "trace", skip_all)]
+fn zip_api(
+    package_dir: &Path,
+    target_api_dir: &Path,
+    add_paths_to_api: &Vec<PathBuf>,
+    metadata: &Erc721Metadata,
+) -> Result<()> {
+    let mut api_includes = add_paths_to_api.clone();
+    if let Some(ref metadata_includes) = metadata.properties.api_includes {
+        api_includes.extend_from_slice(metadata_includes);
+    }
+    for path in api_includes {
+        let path = if path.exists() {
+            path
+        } else {
+            package_dir.join(path).canonicalize().unwrap_or_default()
+        };
+        if !path.exists() {
+            warn!("Given path to add to API does not exist: {path:?}");
+            continue;
+        }
+        if let Err(e) = fs::copy(
+            &path,
+            target_api_dir.join(path.file_name().and_then(|f| f.to_str()).unwrap()),
+        ) {
+            warn!("Could not add path {path:?} to API: {e:?}");
+        }
+    }
+
+    let zip_path = package_dir.join("pkg").join("api.zip");
+    let zip_path = zip_path.to_str().unwrap();
+    zip_directory(&target_api_dir, zip_path)?;
+    Ok(())
+}
+
 /// package dir looks like:
 /// ```
 /// metadata.json
@@ -1280,66 +1343,15 @@ async fn compile_package(
     default_world: Option<&str>,
     download_from: Option<&str>,
     local_dependencies: Vec<PathBuf>,
-    add_paths_to_api: Vec<PathBuf>,
+    add_paths_to_api: &Vec<PathBuf>,
     force: bool,
     verbose: bool,
-    ignore_deps: bool,
+    ignore_deps: bool, // for internal use; may cause problems when adding recursive deps
 ) -> Result<()> {
     let metadata = read_and_update_metadata(package_dir)?;
-    let mut checked_rust = false;
-    let mut checked_py = false;
-    let mut checked_js = false;
-    let mut apis = HashMap::new();
     let mut wasm_paths = HashSet::new();
-    let mut dependencies = HashSet::new();
-    for entry in package_dir.read_dir()? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.is_dir() {
-            if path.join(RUST_SRC_PATH).exists() && !checked_rust && !skip_deps_check {
-                let deps = check_rust_deps()?;
-                get_deps(deps, verbose)?;
-                checked_rust = true;
-            } else if path.join(PYTHON_SRC_PATH).exists() && !checked_py {
-                check_py_deps()?;
-                checked_py = true;
-            } else if path.join(JAVASCRIPT_SRC_PATH).exists() && !checked_js && !skip_deps_check {
-                let deps = check_js_deps()?;
-                get_deps(deps, verbose)?;
-                checked_js = true;
-            } else if Some("api") == path.file_name().and_then(|s| s.to_str()) {
-                // read api files: to be used in build
-                for entry in path.read_dir()? {
-                    let entry = entry?;
-                    let path = entry.path();
-                    if Some("wit") != path.extension().and_then(|e| e.to_str()) {
-                        continue;
-                    };
-                    let Some(file_name) = path.file_name().and_then(|s| s.to_str()) else {
-                        continue;
-                    };
-                    // TODO: reenable check once deps are working
-                    // if file_name.starts_with(&format!(
-                    //     "{}:{}",
-                    //     metadata.properties.package_name,
-                    //     metadata.properties.publisher,
-                    // )) {
-                    //     if let Ok(api_contents) = fs::read(&path) {
-                    //         apis.insert(file_name.to_string(), api_contents);
-                    //     }
-                    // }
-                    if let Ok(api_contents) = fs::read(&path) {
-                        apis.insert(file_name.to_string(), api_contents);
-                    }
-                }
-
-                // fetch dependency apis: to be used in build
-                if let Some(ref deps) = metadata.properties.dependencies {
-                    dependencies.extend(deps);
-                }
-            }
-        }
-    }
+    let (mut apis, dependencies) =
+        check_and_populate_dependencies(package_dir, &metadata, skip_deps_check, verbose)?;
 
     if !ignore_deps && !dependencies.is_empty() {
         fetch_dependencies(
@@ -1430,33 +1442,9 @@ async fn compile_package(
         }
     }
 
-    // zip & place API inside of pkg/ to publish API
     if target_api_dir.exists() {
-        let mut api_includes = add_paths_to_api.clone();
-        if let Some(ref metadata_includes) = metadata.properties.api_includes {
-            api_includes.extend_from_slice(metadata_includes);
-        }
-        for path in api_includes {
-            let path = if path.exists() {
-                path
-            } else {
-                package_dir.join(path).canonicalize().unwrap_or_default()
-            };
-            if !path.exists() {
-                warn!("Given path to add to API does not exist: {path:?}");
-                continue;
-            }
-            if let Err(e) = fs::copy(
-                &path,
-                target_api_dir.join(path.file_name().and_then(|f| f.to_str()).unwrap()),
-            ) {
-                warn!("Could not add path {path:?} to API: {e:?}");
-            }
-        }
-
-        let zip_path = package_dir.join("pkg").join("api.zip");
-        let zip_path = zip_path.to_str().unwrap();
-        zip_directory(&target_api_dir, zip_path)?;
+        // zip & place API inside of pkg/ to publish API
+        zip_api(package_dir, &target_api_dir, add_paths_to_api, &metadata)?;
     }
 
     Ok(())
@@ -1479,6 +1467,11 @@ pub async fn execute(
     verbose: bool,
     ignore_deps: bool, // for internal use; may cause problems when adding recursive deps
 ) -> Result<()> {
+    if no_ui && ui_only {
+        return Err(eyre!(
+            "Cannot set both `no_ui` and `ui_only` to true at the same time"
+        ));
+    }
     if !package_dir.join("pkg").exists() {
         if Some(".DS_Store") == package_dir.file_name().and_then(|s| s.to_str()) {
             info!("Skipping build of {:?}", package_dir);
@@ -1522,69 +1515,33 @@ pub async fn execute(
 
     check_process_lib_version(&package_dir.join("Cargo.toml"))?;
 
-    let ui_dir = package_dir.join("ui");
-    if !ui_dir.exists() {
-        if ui_only {
-            return Err(eyre!("kit build: can't build UI: no ui directory exists"));
-        } else {
-            compile_package(
-                package_dir,
-                skip_deps_check,
-                features,
-                url,
-                default_world.clone(),
-                download_from,
-                local_dependencies,
-                add_paths_to_api,
-                force,
-                verbose,
-                ignore_deps,
-            )
-            .await?;
+    if !no_ui {
+        if !skip_deps_check {
+            let deps = check_js_deps()?;
+            get_deps(deps, verbose)?;
         }
-    } else {
-        if no_ui {
-            compile_package(
-                package_dir,
-                skip_deps_check,
-                features,
-                url,
-                default_world,
-                download_from,
-                local_dependencies,
-                add_paths_to_api,
-                force,
-                verbose,
-                ignore_deps,
-            )
-            .await?;
-        } else {
-            if !skip_deps_check {
-                let deps = check_js_deps()?;
-                get_deps(deps, verbose)?;
-            }
-            let valid_node = get_newest_valid_node_version(None, None)?;
+        let valid_node = get_newest_valid_node_version(None, None)?;
+        let ui_dirs = get_ui_dirs(package_dir)?;
+        for ui_dir in ui_dirs {
+            compile_and_copy_ui(&ui_dir, valid_node.clone(), verbose).await?;
+        }
+    }
 
-            if ui_only {
-                compile_and_copy_ui(package_dir, valid_node, verbose).await?;
-            } else {
-                compile_package_and_ui(
-                    package_dir,
-                    valid_node,
-                    skip_deps_check,
-                    features,
-                    url,
-                    default_world,
-                    download_from,
-                    local_dependencies,
-                    add_paths_to_api,
-                    force,
-                    verbose,
-                    ignore_deps,
-                )
-                .await?;
-            }
-        }
+    if !ui_only {
+        compile_package(
+            package_dir,
+            skip_deps_check,
+            features,
+            url,
+            default_world.clone(),
+            download_from,
+            local_dependencies,
+            &add_paths_to_api,
+            force,
+            verbose,
+            ignore_deps,
+        )
+        .await?;
     }
 
     let metadata = read_metadata(package_dir)?;
