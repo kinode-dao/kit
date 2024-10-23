@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Arc;
@@ -360,6 +361,8 @@ async fn build_packages(
             &path,
             false,
             false,
+            &HashSet::new(),
+            &HashSet::new(),
             false,
             "test",
             Some(url.clone()),
@@ -381,6 +384,8 @@ async fn build_packages(
             &setup_package.path,
             false,
             false,
+            &HashSet::new(),
+            &HashSet::new(),
             false,
             "test",
             Some(url.clone()),
@@ -400,6 +405,8 @@ async fn build_packages(
             &test_package_path,
             false,
             false,
+            &HashSet::new(),
+            &HashSet::new(),
             false,
             "test",
             Some(url.clone()),

@@ -593,11 +593,15 @@ fn get_cargo_package_path(package: &cargo_metadata::Package) -> Result<PathBuf> 
 #[instrument(level = "trace", skip_all)]
 fn is_up_to_date(
     build_with_features_path: &Path,
+    build_with_cludes_path: &Path,
     features: &str,
+    cludes: &str,
     package_dir: &Path,
 ) -> Result<bool> {
     let old_features = fs::read_to_string(&build_with_features_path).ok();
+    let old_cludes = fs::read_to_string(&build_with_cludes_path).ok();
     if old_features == Some(features.to_string())
+        && old_cludes == Some(cludes.to_string())
         && package_dir.join("Cargo.lock").exists()
         && package_dir.join("pkg").exists()
         && package_dir.join("pkg").join("api.zip").exists()
@@ -935,15 +939,13 @@ async fn build_wit_dir(
 
 #[instrument(level = "trace", skip_all)]
 async fn compile_package_item(
-    entry: std::io::Result<std::fs::DirEntry>,
+    path: PathBuf,
     features: String,
     apis: HashMap<String, Vec<u8>>,
     world: String,
     wit_version: Option<u32>,
     verbose: bool,
 ) -> Result<()> {
-    let entry = entry?;
-    let path = entry.path();
     if path.is_dir() {
         let is_rust_process = path.join(RUST_SRC_PATH).exists();
         let is_py_process = path.join(PYTHON_SRC_PATH).exists();
@@ -1007,6 +1009,8 @@ async fn fetch_dependencies(
     mut local_dependencies: Vec<PathBuf>,
     features: &str,
     default_world: Option<&str>,
+    include: &HashSet<PathBuf>,
+    exclude: &HashSet<PathBuf>,
     force: bool,
     verbose: bool,
 ) -> Result<()> {
@@ -1014,6 +1018,8 @@ async fn fetch_dependencies(
         package_dir,
         true,
         false,
+        include,
+        exclude,
         true,
         features,
         url.clone(),
@@ -1044,6 +1050,8 @@ async fn fetch_dependencies(
             local_dependency,
             true,
             false,
+            include,
+            exclude,
             true,
             features,
             url.clone(),
@@ -1210,7 +1218,11 @@ fn find_non_standard(
 }
 
 #[instrument(level = "trace", skip_all)]
-fn get_ui_dirs(package_dir: &Path) -> Result<Vec<PathBuf>> {
+fn get_ui_dirs(
+    package_dir: &Path,
+    include: &HashSet<PathBuf>,
+    exclude: &HashSet<PathBuf>,
+) -> Result<Vec<PathBuf>> {
     let ui_dirs = package_dir
         .read_dir()?
         .filter_map(|entry| {
@@ -1218,8 +1230,10 @@ fn get_ui_dirs(package_dir: &Path) -> Result<Vec<PathBuf>> {
             if path.is_dir()
                 && path.join(PACKAGE_JSON_NAME).exists()
                 && !path.join(COMPONENTIZE_MJS_NAME).exists()
+                && is_cluded(&path, include, exclude)
             {
-                // is dir AND is js AND is not component -> is UI: add to Vec
+                // is dir AND is js AND is not component AND is cluded
+                //  -> is UI: add to Vec
                 Some(path)
             } else {
                 None
@@ -1241,6 +1255,9 @@ fn check_and_populate_dependencies(
     let mut checked_js = false;
     let mut apis = HashMap::new();
     let mut dependencies = HashSet::new();
+    // Do we need to do an `is_cluded()` check here?
+    //  I think no because we may want to, e.g., build a process that
+    //  depends on another that is already built but hasn't changed.
     for entry in package_dir.read_dir()? {
         let entry = entry?;
         let path = entry.path();
@@ -1317,6 +1334,11 @@ fn zip_api(
     Ok(())
 }
 
+/// is included AND is not excluded
+fn is_cluded(path: &Path, include: &HashSet<PathBuf>, exclude: &HashSet<PathBuf>) -> bool {
+    (include.is_empty() || include.contains(path)) && !exclude.contains(path)
+}
+
 /// package dir looks like:
 /// ```
 /// metadata.json
@@ -1349,6 +1371,8 @@ async fn compile_package(
     download_from: Option<&str>,
     local_dependencies: Vec<PathBuf>,
     add_paths_to_api: &Vec<PathBuf>,
+    include: &HashSet<PathBuf>,
+    exclude: &HashSet<PathBuf>,
     force: bool,
     verbose: bool,
     ignore_deps: bool, // for internal use; may cause problems when adding recursive deps
@@ -1369,6 +1393,8 @@ async fn compile_package(
             local_dependencies.clone(),
             features,
             default_world,
+            include,
+            exclude,
             force,
             verbose,
         )
@@ -1385,8 +1411,15 @@ async fn compile_package(
     let mut tasks = tokio::task::JoinSet::new();
     let features = features.to_string();
     for entry in package_dir.read_dir()? {
+        let Ok(entry) = entry else {
+            continue;
+        };
+        let path = entry.path();
+        if !is_cluded(&path, include, exclude) {
+            continue;
+        }
         tasks.spawn(compile_package_item(
-            entry,
+            path,
             features.clone(),
             apis.clone(),
             wit_world.clone(),
@@ -1460,6 +1493,8 @@ pub async fn execute(
     package_dir: &Path,
     no_ui: bool,
     ui_only: bool,
+    include: &HashSet<PathBuf>,
+    exclude: &HashSet<PathBuf>,
     skip_deps_check: bool,
     features: &str,
     url: Option<String>,
@@ -1489,7 +1524,9 @@ pub async fn execute(
         .with_suggestion(|| "Please re-run targeting a package."));
     }
     let build_with_features_path = package_dir.join("target").join("build_with_features.txt");
-    if !force && is_up_to_date(&build_with_features_path, features, package_dir)? {
+    let build_with_cludes_path = package_dir.join("target").join("build_with_cludes.txt");
+    let cludes = format!("include: {include:?}\nexclude: {exclude:?}");
+    if !force && is_up_to_date(&build_with_features_path, &build_with_cludes_path, features, &cludes, package_dir)? {
         return Ok(());
     }
 
@@ -1517,6 +1554,7 @@ pub async fn execute(
 
     fs::create_dir_all(package_dir.join("target"))?;
     fs::write(&build_with_features_path, features)?;
+    fs::write(&build_with_cludes_path, &cludes)?;
 
     check_process_lib_version(&package_dir.join("Cargo.toml"))?;
 
@@ -1526,7 +1564,7 @@ pub async fn execute(
             get_deps(deps, verbose)?;
         }
         let valid_node = get_newest_valid_node_version(None, None)?;
-        let ui_dirs = get_ui_dirs(package_dir)?;
+        let ui_dirs = get_ui_dirs(package_dir, &include, &exclude)?;
         for ui_dir in ui_dirs {
             compile_and_copy_ui(&ui_dir, valid_node.clone(), verbose).await?;
         }
@@ -1542,6 +1580,8 @@ pub async fn execute(
             download_from,
             local_dependencies,
             &add_paths_to_api,
+            &include,
+            &exclude,
             force,
             verbose,
             ignore_deps,

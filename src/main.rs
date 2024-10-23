@@ -1,8 +1,9 @@
-use clap::{builder::PossibleValuesParser, command, value_parser, Arg, ArgAction, Command};
+use std::collections::HashSet;
 use std::env;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use clap::{builder::PossibleValuesParser, command, value_parser, Arg, ArgAction, Command};
 use color_eyre::{
     eyre::{eyre, Result},
     Section,
@@ -189,6 +190,16 @@ async fn execute(
             let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
             let no_ui = matches.get_one::<bool>("NO_UI").unwrap();
             let ui_only = matches.get_one::<bool>("UI_ONLY").unwrap();
+            let include: HashSet<PathBuf> = matches
+                .get_many::<String>("INCLUDE")
+                .unwrap_or_default()
+                .map(|s| package_dir.join(s))
+                .collect();
+            let exclude: HashSet<PathBuf> = matches
+                .get_many::<String>("EXCLUDE")
+                .unwrap_or_default()
+                .map(|s| package_dir.join(s))
+                .collect();
             let skip_deps_check = matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
             let features = match matches.get_one::<String>("FEATURES") {
                 Some(f) => f.clone(),
@@ -219,6 +230,8 @@ async fn execute(
                 &package_dir,
                 *no_ui,
                 *ui_only,
+                &include,
+                &exclude,
                 *skip_deps_check,
                 &features,
                 url,
@@ -237,6 +250,16 @@ async fn execute(
             let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
             let no_ui = matches.get_one::<bool>("NO_UI").unwrap();
             let ui_only = matches.get_one::<bool>("UI_ONLY").unwrap_or(&false);
+            let include: HashSet<PathBuf> = matches
+                .get_many::<String>("INCLUDE")
+                .unwrap_or_default()
+                .map(|s| package_dir.join(s))
+                .collect();
+            let exclude: HashSet<PathBuf> = matches
+                .get_many::<String>("EXCLUDE")
+                .unwrap_or_default()
+                .map(|s| package_dir.join(s))
+                .collect();
             let url = format!(
                 "http://localhost:{}",
                 matches.get_one::<u16>("NODE_PORT").unwrap(),
@@ -268,6 +291,8 @@ async fn execute(
                 &package_dir,
                 *no_ui,
                 *ui_only,
+                &include,
+                &exclude,
                 &url,
                 *skip_deps_check,
                 &features,
@@ -648,6 +673,18 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("If set, build ONLY the web UI for the process; no-op if passed with NO_UI")
                 .required(false)
             )
+            .arg(Arg::new("INCLUDE")
+                .action(ArgAction::Append)
+                .short('i')
+                .long("include")
+                .help("Build only these processes/UIs (can specify multiple times) (default: build all)")
+            )
+            .arg(Arg::new("EXCLUDE")
+                .action(ArgAction::Append)
+                .short('e')
+                .long("exclude")
+                .help("Build all but these processes/UIs (can specify multiple times) (default: build all)")
+            )
             .arg(Arg::new("SKIP_DEPS_CHECK")
                 .action(ArgAction::SetTrue)
                 .short('s')
@@ -769,6 +806,18 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .long("ui-only")
                 .help("If set, build ONLY the web UI for the process")
                 .required(false)
+            )
+            .arg(Arg::new("INCLUDE")
+                .action(ArgAction::Append)
+                .short('i')
+                .long("include")
+                .help("Build only these processes/UIs (can specify multiple times) (default: build all)")
+            )
+            .arg(Arg::new("EXCLUDE")
+                .action(ArgAction::Append)
+                .short('e')
+                .long("exclude")
+                .help("Build all but these processes/UIs (can specify multiple times) (default: build all)")
             )
             .arg(Arg::new("SKIP_DEPS_CHECK")
                 .action(ArgAction::SetTrue)
