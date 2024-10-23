@@ -1,0 +1,10 @@
+[workspace]
+resolver = "2"
+members = [
+    "echo-test",
+]
+
+[profile.release]
+panic = "abort"
+opt-level = "s"
+lto = true

@@ -20,7 +20,8 @@ use tracing::{info, instrument};
 
 use kinode_process_lib::kernel_types::Erc721Metadata;
 
-use crate::build::{download_file, make_pkg_publisher, read_metadata, zip_pkg};
+use crate::build::{download_file, make_pkg_publisher, read_and_update_metadata, zip_pkg};
+use crate::new::is_kimap_safe;
 
 sol! {
     function mint (
@@ -93,12 +94,7 @@ pub fn make_local_file_link_path(path: &Path, text: &str) -> Result<String> {
 }
 
 pub fn make_remote_link(url: &str, text: &str) -> String {
-    format!("\x1B]8;;{}\x1B\\{}\x1B]8;;\x1B\\", url, text,)
-}
-
-fn is_valid_kimap_package_name(s: &str) -> bool {
-    s.chars()
-        .all(|c| c.is_ascii_lowercase() || c == '-' || c.is_ascii_digit())
+    format!("\x1B]8;;{}\x1B\\{}\x1B]8;;\x1B\\", url, text)
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -163,7 +159,7 @@ async fn check_remote_metadata(
     }
     let remote_metadata_path = remote_metadata_dir.join("metadata.json");
     download_file(metadata_uri, &remote_metadata_path).await?;
-    let remote_metadata = read_metadata(&remote_metadata_dir)?;
+    let remote_metadata = read_and_update_metadata(&remote_metadata_dir)?;
 
     // TODO: add derive(PartialEq) to Erc721
     if serde_json::to_string(&metadata)? != serde_json::to_string(&remote_metadata)? {
@@ -341,14 +337,19 @@ pub async fn execute(
         }
     };
 
-    let metadata = read_metadata(package_dir)?;
+    let metadata = read_and_update_metadata(package_dir)?;
 
     let name = metadata.name.clone().unwrap();
     let publisher = metadata.properties.publisher.clone();
 
-    if !is_valid_kimap_package_name(&name) {
+    if !is_kimap_safe(&name, false) {
         return Err(eyre!(
             "The App Store requires package names have only lowercase letters, digits, and `-`s"
+        ));
+    }
+    if !is_kimap_safe(&publisher, true) {
+        return Err(eyre!(
+            "The App Store requires publisher names have only lowercase letters, digits, `-`s, and `.`s"
         ));
     }
 

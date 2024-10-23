@@ -7,8 +7,9 @@ use tracing::{info, instrument};
 
 use kinode_process_lib::kernel_types::{Erc721Metadata, PackageManifestEntry};
 
-use crate::build::{hash_zip_pkg, make_pkg_publisher, make_zip_filename, read_metadata};
-use crate::publish::make_local_file_link_path;
+use crate::build::{hash_zip_pkg, make_pkg_publisher, make_zip_filename, read_and_update_metadata};
+use crate::new::is_kimap_safe;
+use crate::publish::{make_local_file_link_path, make_remote_link};
 use crate::{inject_message, KIT_LOG_PATH_DEFAULT};
 
 #[instrument(level = "trace", skip_all)]
@@ -64,6 +65,7 @@ fn install(
                     "screenshots": metadata.properties.screenshots,
                     "wit_version": metadata.properties.wit_version,
                     "dependencies": metadata.properties.dependencies,
+                    "api_includes": metadata.properties.api_includes,
                 },
             },
         }
@@ -81,10 +83,38 @@ fn install(
 
 #[instrument(level = "trace", skip_all)]
 fn check_manifest(pkg_dir: &Path, manifest_file_name: &str) -> Result<()> {
-    let manifest = fs::File::open(pkg_dir.join(manifest_file_name))
-        .with_suggestion(|| format!("Missing required {} file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson", manifest_file_name))?;
-    let manifest: Vec<PackageManifestEntry> = serde_json::from_reader(manifest)
-        .with_suggestion(|| format!("Failed to parse required {} file. See discussion at https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson", manifest_file_name))?;
+    let manifest_path = pkg_dir.join(manifest_file_name);
+    let book_link = make_remote_link("https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson", "Kinode book");
+    let manifest = fs::File::open(&manifest_path).with_suggestion(|| {
+        format!("Missing required manifest.json file. See discussion {book_link}")
+    })?;
+    let manifest: Vec<PackageManifestEntry> =
+        serde_json::from_reader(manifest).with_suggestion(|| {
+            format!("Failed to parse required manifest.json file. See discussion {book_link}")
+        })?;
+    let manifest_json = make_local_file_link_path(&manifest_path, "manifest.json")?;
+    for entry in &manifest {
+        let file_name = &entry.process_name;
+        let file_path = entry.process_wasm_path
+            .strip_prefix("/")
+            .and_then(|s| s.strip_suffix(".wasm"))
+            .ok_or_else(|| {
+
+                eyre!(
+                    "{manifest_json} has unexpected Wasm path: {:?} (expected beginning `/` and ending `.wasm`)",
+                    entry.process_wasm_path,
+                )
+            })?;
+        if !is_kimap_safe(file_name, false) {
+            return Err(eyre!("{manifest_json} file name '{file_name}' must be Kimap safe (a-z, A-Z, 0-9, - allowed)"));
+        }
+        if !is_kimap_safe(file_path, false) {
+            return Err(eyre!(
+                "{manifest_json} file path {:?} must be Kimap safe (a-z, A-Z, 0-9, - allowed)",
+                entry.process_wasm_path,
+            ));
+        }
+    }
     let has_all_entries = manifest.iter().fold(true, |has_all_entries, entry| {
         let file_path = entry
             .process_wasm_path
@@ -171,7 +201,7 @@ pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
         ));
     }
     let pkg_dir = package_dir.join("pkg").canonicalize()?;
-    let metadata = read_metadata(package_dir)?;
+    let metadata = read_and_update_metadata(package_dir)?;
     let package_name = metadata.properties.package_name.as_str();
     let publisher = metadata.properties.publisher.as_str();
     let pkg_publisher = make_pkg_publisher(&metadata);

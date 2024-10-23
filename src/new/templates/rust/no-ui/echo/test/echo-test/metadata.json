@@ -1,0 +1,20 @@
+{
+    "name": "echo Test",
+    "description": "A test for echo.",
+    "image": "",
+    "properties": {
+        "package_name": "echo-test",
+        "current_version": "0.1.0",
+        "publisher": "template.os",
+        "mirrors": [],
+        "code_hashes": {
+            "0.1.0": ""
+        },
+        "wit_version": 0,
+        "dependencies": [
+            "tester:sys"
+        ]
+    },
+    "external_url": "",
+    "animation_url": ""
+}

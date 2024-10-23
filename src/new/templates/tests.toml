@@ -10,7 +10,7 @@ runtime_build_release = false
 #     { path = "javascript/no-ui/chat", run = true }
 # ]
 # setup_scripts = []
-# test_package_paths = ["javascript/no-ui/chat/test/chat_test"]
+# test_package_paths = ["javascript/no-ui/chat/test/chat-test"]
 # test_scripts = []
 # timeout_secs = 5
 # fakechain_router = 8545
@@ -34,7 +34,7 @@ runtime_build_release = false
 #     { path = "javascript/no-ui/echo", run = true }
 # ]
 # setup_scripts = []
-# test_package_paths = ["javascript/no-ui/echo/test/echo_test"]
+# test_package_paths = ["javascript/no-ui/echo/test/echo-test"]
 # test_scripts = []
 # timeout_secs = 5
 # fakechain_router = 8545
@@ -52,7 +52,7 @@ runtime_build_release = false
 #     { path = "javascript/no-ui/fibonacci", run = true }
 # ]
 # setup_scripts = []
-# test_package_paths = ["javascript/no-ui/fibonacci/test/fibonacci_test"]
+# test_package_paths = ["javascript/no-ui/fibonacci/test/fibonacci-test"]
 # test_scripts = []
 # timeout_secs = 5
 # fakechain_router = 8545
@@ -70,7 +70,7 @@ runtime_build_release = false
 #     { path = "python/no-ui/chat", run = true }
 # ]
 # setup_scripts = []
-# test_package_paths = ["python/no-ui/chat/test/chat_test"]
+# test_package_paths = ["python/no-ui/chat/test/chat-test"]
 # test_scripts = []
 # timeout_secs = 5
 # fakechain_router = 8545
@@ -94,7 +94,7 @@ runtime_build_release = false
 #     { path = "python/no-ui/echo", run = true }
 # ]
 # setup_scripts = []
-# test_package_paths = ["python/no-ui/echo/test/echo_test"]
+# test_package_paths = ["python/no-ui/echo/test/echo-test"]
 # test_scripts = []
 # timeout_secs = 5
 # fakechain_router = 8545
@@ -112,7 +112,7 @@ runtime_build_release = false
 #     { path = "python/no-ui/fibonacci", run = true }
 # ]
 # setup_scripts = []
-# test_package_paths = ["python/no-ui/fibonacci/test/fibonacci_test"]
+# test_package_paths = ["python/no-ui/fibonacci/test/fibonacci-test"]
 # test_scripts = []
 # timeout_secs = 5
 # fakechain_router = 8545
@@ -130,7 +130,7 @@ setup_packages = [
     { path = "rust/no-ui/chat", run = true }
 ]
 setup_scripts = []
-test_package_paths = ["rust/no-ui/chat/test/chat_test"]
+test_package_paths = ["rust/no-ui/chat/test/chat-test"]
 test_scripts = []
 timeout_secs = 5
 fakechain_router = 8545
@@ -154,7 +154,7 @@ setup_packages = [
     { path = "rust/no-ui/echo", run = true }
 ]
 setup_scripts = []
-test_package_paths = ["rust/no-ui/echo/test/echo_test"]
+test_package_paths = ["rust/no-ui/echo/test/echo-test"]
 test_scripts = []
 timeout_secs = 5
 fakechain_router = 8545
@@ -172,7 +172,7 @@ setup_packages = [
     { path = "rust/no-ui/fibonacci", run = true }
 ]
 setup_scripts = []
-test_package_paths = ["rust/no-ui/fibonacci/test/fibonacci_test"]
+test_package_paths = ["rust/no-ui/fibonacci/test/fibonacci-test"]
 test_scripts = []
 timeout_secs = 5
 fakechain_router = 8545
@@ -186,10 +186,10 @@ runtime_verbosity = 2
 
 # [[tests]]
 # setup_packages = [
-#     { path = "rust/no-ui/file_transfer", run = true }
+#     { path = "rust/no-ui/file-transfer", run = true }
 # ]
 # setup_scripts = []
-# test_package_paths = ["rust/no-ui/file_transfer/test/file_transfer_test"]
+# test_package_paths = ["rust/no-ui/file-transfer/test/file-transfer-test"]
 # test_scripts = []
 # timeout_secs = 5
 # fakechain_router = 8545

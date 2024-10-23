@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use color_eyre::Result;
@@ -11,6 +12,8 @@ pub async fn execute(
     package_dir: &Path,
     no_ui: bool,
     ui_only: bool,
+    include: &HashSet<PathBuf>,
+    exclude: &HashSet<PathBuf>,
     url: &str,
     skip_deps_check: bool,
     features: &str,
@@ -18,6 +21,7 @@ pub async fn execute(
     default_world: Option<&str>,
     local_dependencies: Vec<PathBuf>,
     add_paths_to_api: Vec<PathBuf>,
+    reproducible: bool,
     force: bool,
     verbose: bool,
 ) -> Result<()> {
@@ -25,6 +29,8 @@ pub async fn execute(
         package_dir,
         no_ui,
         ui_only,
+        include,
+        exclude,
         skip_deps_check,
         features,
         Some(url.into()),
@@ -32,6 +38,7 @@ pub async fn execute(
         default_world,
         local_dependencies,
         add_paths_to_api,
+        reproducible,
         force,
         verbose,
         false,

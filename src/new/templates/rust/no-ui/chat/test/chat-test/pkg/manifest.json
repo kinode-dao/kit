@@ -1,0 +1,15 @@
+[
+    {
+        "process_name": "chat-test",
+        "process_wasm_path": "/chat-test.wasm",
+        "on_exit": "Restart",
+        "request_networking": false,
+        "request_capabilities": [
+            "chat:chat:template.os"
+        ],
+        "grant_capabilities": [
+            "chat:chat:template.os"
+        ],
+        "public": true
+    }
+]

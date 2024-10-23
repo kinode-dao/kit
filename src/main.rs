@@ -1,8 +1,9 @@
-use clap::{builder::PossibleValuesParser, command, value_parser, Arg, ArgAction, Command};
+use std::collections::HashSet;
 use std::env;
 use std::path::PathBuf;
 use std::str::FromStr;
 
+use clap::{builder::PossibleValuesParser, command, value_parser, Arg, ArgAction, Command};
 use color_eyre::{
     eyre::{eyre, Result},
     Section,
@@ -189,6 +190,16 @@ async fn execute(
             let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
             let no_ui = matches.get_one::<bool>("NO_UI").unwrap();
             let ui_only = matches.get_one::<bool>("UI_ONLY").unwrap();
+            let include: HashSet<PathBuf> = matches
+                .get_many::<String>("INCLUDE")
+                .unwrap_or_default()
+                .map(|s| package_dir.join(s))
+                .collect();
+            let exclude: HashSet<PathBuf> = matches
+                .get_many::<String>("EXCLUDE")
+                .unwrap_or_default()
+                .map(|s| package_dir.join(s))
+                .collect();
             let skip_deps_check = matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
             let features = match matches.get_one::<String>("FEATURES") {
                 Some(f) => f.clone(),
@@ -211,6 +222,7 @@ async fn execute(
                 .unwrap_or_default()
                 .map(|s| PathBuf::from(s))
                 .collect();
+            let reproducible = matches.get_one::<bool>("REPRODUCIBLE").unwrap();
             let force = matches.get_one::<bool>("FORCE").unwrap();
             let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
 
@@ -218,6 +230,8 @@ async fn execute(
                 &package_dir,
                 *no_ui,
                 *ui_only,
+                &include,
+                &exclude,
                 *skip_deps_check,
                 &features,
                 url,
@@ -225,6 +239,7 @@ async fn execute(
                 default_world.map(|w| w.as_str()),
                 local_dependencies,
                 add_paths_to_api,
+                *reproducible,
                 *force,
                 *verbose,
                 false,
@@ -235,6 +250,16 @@ async fn execute(
             let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
             let no_ui = matches.get_one::<bool>("NO_UI").unwrap();
             let ui_only = matches.get_one::<bool>("UI_ONLY").unwrap_or(&false);
+            let include: HashSet<PathBuf> = matches
+                .get_many::<String>("INCLUDE")
+                .unwrap_or_default()
+                .map(|s| package_dir.join(s))
+                .collect();
+            let exclude: HashSet<PathBuf> = matches
+                .get_many::<String>("EXCLUDE")
+                .unwrap_or_default()
+                .map(|s| package_dir.join(s))
+                .collect();
             let url = format!(
                 "http://localhost:{}",
                 matches.get_one::<u16>("NODE_PORT").unwrap(),
@@ -258,6 +283,7 @@ async fn execute(
                 .unwrap_or_default()
                 .map(|s| PathBuf::from(s))
                 .collect();
+            let reproducible = matches.get_one::<bool>("REPRODUCIBLE").unwrap();
             let force = matches.get_one::<bool>("FORCE").unwrap();
             let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
 
@@ -265,6 +291,8 @@ async fn execute(
                 &package_dir,
                 *no_ui,
                 *ui_only,
+                &include,
+                &exclude,
                 &url,
                 *skip_deps_check,
                 &features,
@@ -272,6 +300,7 @@ async fn execute(
                 default_world.map(|w| w.as_str()),
                 local_dependencies,
                 add_paths_to_api,
+                *reproducible,
                 *force,
                 *verbose,
             )
@@ -644,6 +673,18 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("If set, build ONLY the web UI for the process; no-op if passed with NO_UI")
                 .required(false)
             )
+            .arg(Arg::new("INCLUDE")
+                .action(ArgAction::Append)
+                .short('i')
+                .long("include")
+                .help("Build only these processes/UIs (can specify multiple times) [default: build all]")
+            )
+            .arg(Arg::new("EXCLUDE")
+                .action(ArgAction::Append)
+                .short('e')
+                .long("exclude")
+                .help("Build all but these processes/UIs (can specify multiple times) [default: build all]")
+            )
             .arg(Arg::new("SKIP_DEPS_CHECK")
                 .action(ArgAction::SetTrue)
                 .short('s')
@@ -689,6 +730,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('a')
                 .long("add-to-api")
                 .help("Path to file to add to api.zip (can specify multiple times)")
+            )
+            .arg(Arg::new("REPRODUCIBLE")
+                .action(ArgAction::SetTrue)
+                .short('r')
+                .long("reproducible")
+                .help("Make a reproducible build using Docker")
+                .required(false)
             )
             .arg(Arg::new("FORCE")
                 .action(ArgAction::SetTrue)
@@ -759,6 +807,18 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("If set, build ONLY the web UI for the process")
                 .required(false)
             )
+            .arg(Arg::new("INCLUDE")
+                .action(ArgAction::Append)
+                .short('i')
+                .long("include")
+                .help("Build only these processes/UIs (can specify multiple times) [default: build all]")
+            )
+            .arg(Arg::new("EXCLUDE")
+                .action(ArgAction::Append)
+                .short('e')
+                .long("exclude")
+                .help("Build all but these processes/UIs (can specify multiple times) [default: build all]")
+            )
             .arg(Arg::new("SKIP_DEPS_CHECK")
                 .action(ArgAction::SetTrue)
                 .short('s')
@@ -770,6 +830,13 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .action(ArgAction::Set)
                 .long("features")
                 .help("Pass these comma-delimited feature flags to Rust cargo builds")
+                .required(false)
+            )
+            .arg(Arg::new("REPRODUCIBLE")
+                .action(ArgAction::SetTrue)
+                .short('r')
+                .long("reproducible")
+                .help("Make a reproducible build using Docker")
                 .required(false)
             )
             .arg(Arg::new("FORCE")
@@ -913,20 +980,20 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
             .visible_alias("n")
             .arg(Arg::new("DIR")
                 .action(ArgAction::Set)
-                .help("Path to create template directory at")
+                .help("Path to create template directory at (must contain only a-z, A-Z, 0-9, `-`)")
                 .required(true)
             )
             .arg(Arg::new("PACKAGE")
                 .action(ArgAction::Set)
                 .short('a')
                 .long("package")
-                .help("Name of the package [default: DIR]")
+                .help("Name of the package (must contain only a-z, A-Z, 0-9, `-`) [default: DIR]")
             )
             .arg(Arg::new("PUBLISHER")
                 .action(ArgAction::Set)
                 .short('u')
                 .long("publisher")
-                .help("Name of the publisher")
+                .help("Name of the publisher (must contain only a-z, A-Z, 0-9, `-`, `.`)")
                 .default_value("template.os")
             )
             .arg(Arg::new("LANGUAGE")
@@ -942,7 +1009,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('t')
                 .long("template")
                 .help("Template to create")
-                .value_parser(["blank", "chat", "echo", "fibonacci", "file_transfer"])
+                .value_parser(["blank", "chat", "echo", "fibonacci", "file-transfer"])
                 .default_value("chat")
             )
             .arg(Arg::new("UI")

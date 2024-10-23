@@ -3,7 +3,7 @@ use std::path::Path;
 use color_eyre::{eyre::eyre, Result};
 use tracing::{info, instrument};
 
-use crate::build::read_metadata;
+use crate::build::read_and_update_metadata;
 use crate::inject_message;
 
 #[instrument(level = "trace", skip_all)]
@@ -16,7 +16,7 @@ pub async fn execute(
     let (package_name, publisher): (String, String) = match (arg_package_name, arg_publisher) {
         (Some(package_name), Some(publisher)) => (package_name.into(), publisher.into()),
         _ => {
-            let metadata = read_metadata(package_dir)?;
+            let metadata = read_and_update_metadata(package_dir)?;
             let package_name = metadata.properties.package_name.as_str();
             let publisher = metadata.properties.publisher.as_str();
             (package_name.into(), publisher.into())
