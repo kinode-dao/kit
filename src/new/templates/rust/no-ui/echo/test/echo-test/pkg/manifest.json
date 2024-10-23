@@ -1,14 +1,14 @@
 [
     {
-        "process_name": "fibonacci_test",
-        "process_wasm_path": "/fibonacci_test.wasm",
+        "process_name": "echo-test",
+        "process_wasm_path": "/echo-test.wasm",
         "on_exit": "Restart",
         "request_networking": false,
         "request_capabilities": [
-            "fibonacci:fibonacci:template.os"
+            "echo:echo:template.os"
         ],
         "grant_capabilities": [
-            "fibonacci:fibonacci:template.os"
+            "echo:echo:template.os"
         ],
         "public": true
     }

@@ -1,9 +1,9 @@
 {
-    "name": "echo Test",
-    "description": "A test for echo.",
+    "name": "chat Test",
+    "description": "A test for chat.",
     "image": "",
     "properties": {
-        "package_name": "echo_test",
+        "package_name": "chat-test",
         "current_version": "0.1.0",
         "publisher": "template.os",
         "mirrors": [],
@@ -12,6 +12,7 @@
         },
         "wit_version": 0,
         "dependencies": [
+            "chat:template.os",
             "tester:sys"
         ]
     },

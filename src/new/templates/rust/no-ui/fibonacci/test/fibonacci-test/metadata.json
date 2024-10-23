@@ -3,7 +3,7 @@
     "description": "A test for fibonacci.",
     "image": "",
     "properties": {
-        "package_name": "fibonacci_test",
+        "package_name": "fibonacci-test",
         "current_version": "0.1.0",
         "publisher": "template.os",
         "mirrors": [],

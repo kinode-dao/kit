@@ -1,14 +1,14 @@
 [
     {
-        "process_name": "chat_test",
-        "process_wasm_path": "/chat_test.wasm",
+        "process_name": "fibonacci-test",
+        "process_wasm_path": "/fibonacci-test.wasm",
         "on_exit": "Restart",
         "request_networking": false,
         "request_capabilities": [
-            "chat:chat:template.os"
+            "fibonacci:fibonacci:template.os"
         ],
         "grant_capabilities": [
-            "chat:chat:template.os"
+            "fibonacci:fibonacci:template.os"
         ],
         "public": true
     }
