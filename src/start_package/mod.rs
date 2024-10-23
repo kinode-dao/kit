@@ -85,10 +85,13 @@ fn install(
 fn check_manifest(pkg_dir: &Path, manifest_file_name: &str) -> Result<()> {
     let manifest_path = pkg_dir.join(manifest_file_name);
     let book_link = make_remote_link("https://book.kinode.org/my_first_app/chapter_1.html?highlight=manifest.json#pkgmanifestjson", "Kinode book");
-    let manifest = fs::File::open(&manifest_path)
-        .with_suggestion(|| format!("Missing required manifest.json file. See discussion {book_link}"))?;
-    let manifest: Vec<PackageManifestEntry> = serde_json::from_reader(manifest)
-        .with_suggestion(|| format!("Failed to parse required manifest.json file. See discussion {book_link}"))?;
+    let manifest = fs::File::open(&manifest_path).with_suggestion(|| {
+        format!("Missing required manifest.json file. See discussion {book_link}")
+    })?;
+    let manifest: Vec<PackageManifestEntry> =
+        serde_json::from_reader(manifest).with_suggestion(|| {
+            format!("Failed to parse required manifest.json file. See discussion {book_link}")
+        })?;
     let manifest_json = make_local_file_link_path(&manifest_path, "manifest.json")?;
     for entry in &manifest {
         let file_name = &entry.process_name;
