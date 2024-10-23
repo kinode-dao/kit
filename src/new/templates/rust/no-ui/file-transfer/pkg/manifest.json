@@ -1,0 +1,14 @@
+[
+    {
+        "process_name": "file-transfer",
+        "process_wasm_path": "/file-transfer.wasm",
+        "on_exit": "Restart",
+        "request_networking": true,
+        "request_capabilities": [
+            "http_server:distro:sys",
+            "vfs:distro:sys"
+        ],
+        "grant_capabilities": [],
+        "public": true
+    }
+]
