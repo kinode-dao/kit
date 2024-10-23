@@ -43,7 +43,7 @@ impl Template {
             Template::Chat => "chat",
             Template::Echo => "echo",
             Template::Fibonacci => "fibonacci",
-            Template::FileTransfer => "file_transfer",
+            Template::FileTransfer => "file-transfer",
         }
         .to_string()
     }
@@ -67,7 +67,7 @@ impl From<&String> for Template {
             "chat" => Template::Chat,
             "echo" => Template::Echo,
             "fibonacci" => Template::Fibonacci,
-            "file_transfer" => Template::FileTransfer,
+            "file-transfer" => Template::FileTransfer,
             _ => panic!("kit: template must be 'blank', 'chat', 'echo', or 'fibonacci'; not '{s}'"),
         }
     }
@@ -184,6 +184,7 @@ fn replace_vars(
         input
             .replace(template_package_name, package_name)
             .replace(&template_package_name_kebab, &package_name_kebab)
+            .replace(&template_package_name_snake, &package_name_snake)
     };
     input
         .replace(

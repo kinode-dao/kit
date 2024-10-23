@@ -1,0 +1,15 @@
+[
+    {
+        "process_name": "file-transfer-test",
+        "process_wasm_path": "/file-transfer-test.wasm",
+        "on_exit": "Restart",
+        "request_networking": false,
+        "request_capabilities": [
+            "file-transfer:file-transfer:template.os"
+        ],
+        "grant_capabilities": [
+            "file-transfer:file-transfer:template.os"
+        ],
+        "public": true
+    }
+]
