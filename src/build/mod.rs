@@ -100,7 +100,7 @@ fn zip_directory(directory: &Path, zip_filename: &str) -> Result<()> {
     let options = FileOptions::default()
         .compression_method(zip::CompressionMethod::Deflated)
         .unix_permissions(0o755)
-        .last_modified_time(zip::DateTime::from_date_and_time(1980, 1, 1, 0, 0, 0).unwrap());
+        .last_modified_time(zip::DateTime::from_date_and_time(2023, 6, 19, 0, 0, 0).unwrap());
 
     let mut walk_dir = WalkDir::new(directory)
         .into_iter()
