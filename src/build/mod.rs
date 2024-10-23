@@ -825,17 +825,22 @@ async fn compile_rust_wasm_process(
     // Adapt the module using wasm-tools
 
     // For use inside of process_dir
-    let wasm_file_name = process_dir
+    // Run `wasm-tools component new`, putting output in pkg/
+    //  and rewriting all `_`s to `-`s
+    // cargo hates `-`s and so outputs with `_`s; Kimap hates
+    //  `_`s and so we convert to and enforce all `-`s
+    let wasm_file_name_cab = process_dir
         .file_name()
         .and_then(|s| s.to_str())
         .unwrap()
         .replace("-", "_");
+    let wasm_file_name_hep = wasm_file_name_cab.replace("_", "-");
 
     let wasm_file_prefix = Path::new("target/wasm32-wasip1/release");
-    let wasm_file = wasm_file_prefix.join(&format!("{}.wasm", wasm_file_name));
+    let wasm_file_cab = wasm_file_prefix.join(&format!("{wasm_file_name_cab}.wasm"));
 
-    let wasm_path = format!("../pkg/{}.wasm", wasm_file_name);
-    let wasm_path = Path::new(&wasm_path);
+    let wasm_file_pkg = format!("../pkg/{wasm_file_name_hep}.wasm");
+    let wasm_file_pkg = Path::new(&wasm_file_pkg);
 
     let wasi_snapshot_file = Path::new("target/wasi_snapshot_preview1.wasm");
 
@@ -844,9 +849,9 @@ async fn compile_rust_wasm_process(
             .args(&[
                 "component",
                 "new",
-                wasm_file.to_str().unwrap(),
+                wasm_file_cab.to_str().unwrap(),
                 "-o",
-                wasm_path.to_str().unwrap(),
+                wasm_file_pkg.to_str().unwrap(),
                 "--adapt",
                 wasi_snapshot_file.to_str().unwrap(),
             ])
