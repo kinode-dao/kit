@@ -1526,7 +1526,15 @@ pub async fn execute(
     let build_with_features_path = package_dir.join("target").join("build_with_features.txt");
     let build_with_cludes_path = package_dir.join("target").join("build_with_cludes.txt");
     let cludes = format!("include: {include:?}\nexclude: {exclude:?}");
-    if !force && is_up_to_date(&build_with_features_path, &build_with_cludes_path, features, &cludes, package_dir)? {
+    if !force
+        && is_up_to_date(
+            &build_with_features_path,
+            &build_with_cludes_path,
+            features,
+            &cludes,
+            package_dir,
+        )?
+    {
         return Ok(());
     }
 
