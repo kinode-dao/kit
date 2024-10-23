@@ -126,6 +126,12 @@ fn replace_vars(
 
     let (publisher_dotted_snake, publisher_dotted_kebab) = replace_dots(publisher);
     let publisher_dotted_upper_camel = snake_to_upper_camel_case(&publisher_dotted_snake);
+
+    let js: HashSet<String> = ["js", "jsx", "ts", "tsx"]
+        .iter()
+        .map(|e| e.to_string())
+        .collect();
+
     let input = input
         // wit
         .replace(
@@ -140,27 +146,42 @@ fn replace_vars(
         // manifest.json
         .replace(
             &format!("{template_package_name_kebab}.wasm"),
-            &format!("{package_name_snake}.wasm"),
+            &format!("{package_name_kebab}.wasm"),
         )
         // tests manifest.json
         .replace(
-            &format!("{template_package_name_kebab}_test.wasm"),
-            &format!("{package_name_snake}_test.wasm"),
+            &format!("{template_package_name_kebab}-test.wasm"),
+            &format!("{package_name_kebab}-test.wasm"),
+        )
+        // part of a var name
+        .replace(
+            &format!("{template_package_name}_"),
+            &format!("{package_name_snake}_"),
+        )
+        // part of a var name
+        .replace(
+            &format!("_{template_package_name}"),
+            &format!("_{package_name_snake}"),
+        )
+        // field in a struct
+        .replace(
+            &format!("{template_package_name}:"),
+            &format!("{package_name_snake}:"),
+        )
+        .replace(
+            &format!("{template_package_name}-"),
+            &format!("{package_name_kebab}-"),
         );
     let input = if extension == "wit" {
         input
-            .replace(
-                &format!("{template_package_name}-"),
-                &format!("{package_name_kebab}-"),
-            )
             .replace(&template_package_name_kebab, &package_name_kebab)
             .replace(template_package_name, package_name)
+    } else if js.contains(extension) {
+        input
+            .replace(template_package_name, &package_name_snake)
+            .replace(&template_package_name_kebab, &package_name_kebab)
     } else {
         input
-            .replace(
-                &format!("{template_package_name}-"),
-                &format!("{package_name_kebab}-"),
-            )
             .replace(template_package_name, package_name)
             .replace(&template_package_name_kebab, &package_name_kebab)
     };
@@ -176,8 +197,13 @@ fn replace_vars(
         .to_string()
 }
 
-fn is_url_safe(input: &str) -> bool {
-    let re = regex::Regex::new(r"^[a-zA-Z0-9\-_.~]+$").unwrap();
+pub fn is_kimap_safe(input: &str, is_publisher: bool) -> bool {
+    let expression = if is_publisher {
+        r"^[a-zA-Z0-9\-.]+$"
+    } else {
+        r"^[a-zA-Z0-9\-]+$"
+    };
+    let re = regex::Regex::new(expression).unwrap();
     re.is_match(input)
 }
 
@@ -216,20 +242,26 @@ pub fn execute(
         ));
     }
 
-    if !is_url_safe(&package_name) {
+    if !is_kimap_safe(&package_name, false) {
         let error = if !is_from_dir {
-            eyre!("`package_name` '{}' must be URL safe.", package_name)
+            eyre!(
+                "`package_name` '{}' must be Kimap safe (a-z, A-Z, 0-9, - allowed).",
+                package_name
+            )
         } else {
             eyre!(
-                "`package_name` (derived from given directory {:?}) '{}' must be URL safe.",
+                "`package_name` (derived from given directory {:?}) '{}' must be Kimap safe (a-z, A-Z, 0-9, - allowed).",
                 new_dir,
                 package_name,
             )
         };
         return Err(error);
     }
-    if !is_url_safe(&publisher) {
-        return Err(eyre!("`publisher` '{}' must be URL safe.", publisher));
+    if !is_kimap_safe(&publisher, true) {
+        return Err(eyre!(
+            "`publisher` '{}' must be Kimap safe (a-z, A-Z, 0-9, -, . allowed).",
+            publisher
+        ));
     }
 
     let ui_infix = if ui {
