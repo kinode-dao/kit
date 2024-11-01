@@ -1566,13 +1566,13 @@ pub async fn execute(
 
     check_process_lib_version(&package_dir.join("Cargo.toml"))?;
 
-    if !no_ui {
+    let ui_dirs = get_ui_dirs(package_dir, &include, &exclude)?;
+    if !no_ui && !ui_dirs.is_empty() {
         if !skip_deps_check {
             let deps = check_js_deps()?;
             get_deps(deps, verbose)?;
         }
         let valid_node = get_newest_valid_node_version(None, None)?;
-        let ui_dirs = get_ui_dirs(package_dir, &include, &exclude)?;
         for ui_dir in ui_dirs {
             compile_and_copy_ui(&ui_dir, valid_node.clone(), verbose).await?;
         }
