@@ -10,6 +10,7 @@ use tracing::{info, instrument, warn};
 
 use crate::build::run_command;
 use crate::publish::make_remote_link;
+use crate::run_tests::types::BroadcastRecvBool;
 
 const FETCH_NVM_VERSION: &str = "v0.39.7";
 const REQUIRED_NODE_MAJOR: u32 = 20;
@@ -22,8 +23,7 @@ pub const REQUIRED_PY_PACKAGE: &str = "componentize-py==0.11.0";
 
 #[derive(Clone)]
 pub enum Dependency {
-    Anvil,
-    Forge,
+    Foundry(Option<String>),
     Nvm,
     Npm,
     Node,
@@ -37,8 +37,7 @@ pub enum Dependency {
 impl std::fmt::Display for Dependency {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            Dependency::Anvil => write!(f, "anvil"),
-            Dependency::Forge => write!(f, "forge"),
+            Dependency::Foundry(v) => write!(f, "foundry {v:?}"),
             Dependency::Nvm => write!(f, "nvm {}", FETCH_NVM_VERSION),
             Dependency::Npm => write!(f, "npm {}.{}", MINIMUM_NPM_MAJOR, MINIMUM_NPM_MINOR),
             Dependency::Node => write!(f, "node {}.{}", REQUIRED_NODE_MAJOR, MINIMUM_NODE_MINOR),
@@ -371,23 +370,60 @@ pub fn check_js_deps() -> Result<Vec<Dependency>> {
     Ok(missing_deps)
 }
 
-// Check for Foundry deps, returning a Vec of not found: can be automatically fetched?
+/// Check for Foundry deps, returning a Vec of Dependency if not found: can be automatically fetched?
 #[instrument(level = "trace", skip_all)]
-pub fn check_foundry_deps() -> Result<Vec<Dependency>> {
-    let mut missing_deps = Vec::new();
-    if !is_command_installed("forge")? {
-        missing_deps.push(Dependency::Forge);
-    }
+pub fn check_foundry_deps(
+    newer_than: Option<chrono::DateTime<chrono::Utc>>,
+    required_commit: Option<String>,
+) -> Result<Vec<Dependency>> {
     if !is_command_installed("anvil")? {
-        missing_deps.push(Dependency::Anvil);
+        return Ok(vec![Dependency::Foundry(required_commit)]);
     }
-    Ok(missing_deps)
+    let Some(newer_than) = newer_than else {
+        return Ok(vec![]);
+    };
+    let (_, installed_datetime) = get_foundry_version()?;
+    let installed_datetime = installed_datetime.parse::<chrono::DateTime<chrono::Utc>>()?;
+    if installed_datetime < newer_than {
+        return Ok(vec![Dependency::Foundry(required_commit)]);
+    }
+    Ok(vec![])
 }
 
-// install forge+anvil+others, could be separated into binary extractions from github releases.
-pub fn install_foundry() -> Result<()> {
-    let install_cmd = "curl -L https://foundry.paradigm.xyz | bash";
-    run_command(Command::new("bash").args(&["-c", install_cmd]), false)?;
+#[instrument(level = "trace", skip_all)]
+fn get_foundry_version() -> Result<(String, String)> {
+    let output = run_command(Command::new("bash").args(&["-c", "anvil --version"]), false)?;
+    let Some(output) = output else {
+        return Err(eyre!(
+            "failed to fetch foundry version: anvil --version failed"
+        ));
+    };
+    let output: Vec<&str> = output.0.split('(').nth(1).unwrap().split(' ').collect();
+    if output.len() != 2 {
+        return Err(eyre!(
+            "failed to fetch foundry version: unexpected output: {output:?}"
+        ));
+    }
+    Ok((
+        output[0].trim().to_string(),
+        output[1]
+            .trim()
+            .strip_suffix(')')
+            .unwrap_or_else(|| output[1])
+            .to_string(),
+    ))
+}
+
+/// install forge+anvil+others, could be separated into binary extractions from github releases.
+#[instrument(level = "trace", skip_all)]
+pub fn install_foundry(version: Option<String>, verbose: bool) -> Result<()> {
+    let download_cmd = "curl -L https://foundry.paradigm.xyz | bash";
+    let install_cmd = match version {
+        None => ". ~/.bashrc && foundryup".to_string(),
+        Some(v) => format!(". ~/.bashrc && foundryup -C {v}"),
+    };
+    run_command(Command::new("bash").args(&["-c", download_cmd]), verbose)?;
+    run_command(Command::new("bash").args(&["-c", &install_cmd]), verbose)?;
 
     Ok(())
 }
@@ -429,7 +465,7 @@ pub fn check_docker_deps() -> Result<Vec<Dependency>> {
 }
 
 #[instrument(level = "trace", skip_all)]
-pub fn get_deps(deps: Vec<Dependency>, verbose: bool) -> Result<()> {
+pub async fn get_deps(deps: Vec<Dependency>, recv_kill: &mut BroadcastRecvBool, verbose: bool) -> Result<()> {
     if deps.is_empty() {
         return Ok(());
     }
@@ -449,10 +485,18 @@ pub fn get_deps(deps: Vec<Dependency>, verbose: bool) -> Result<()> {
     io::stdout().flush().unwrap();
 
     // Read the user's response
-    let mut response = String::new();
-    io::stdin().read_line(&mut response).unwrap();
+    let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
+    tokio::spawn(async move {
+        let mut response = String::new();
+        io::stdin().read_line(&mut response).unwrap();
+        sender.send(response).await.unwrap();
+    });
 
     // Process the response
+    let response = tokio::select! {
+        Some(response) = receiver.recv() => response,
+        _ = recv_kill.recv() => return Err(eyre!("got exit code")),
+    };
     let response = response.trim().to_lowercase();
     match response.as_str() {
         "y" | "yes" | "" => {
@@ -470,7 +514,7 @@ pub fn get_deps(deps: Vec<Dependency>, verbose: bool) -> Result<()> {
                         call_rustup("target add wasm32-wasip1 --toolchain nightly", verbose)?
                     }
                     Dependency::WasmTools => call_cargo("install wasm-tools", verbose)?,
-                    Dependency::Forge | Dependency::Anvil => install_foundry()?,
+                    Dependency::Foundry(v) => install_foundry(v, verbose)?,
                     Dependency::Docker => {}
                 }
             }
@@ -481,14 +525,14 @@ pub fn get_deps(deps: Vec<Dependency>, verbose: bool) -> Result<()> {
 }
 
 #[instrument(level = "trace", skip_all)]
-pub fn execute(verbose: bool) -> Result<()> {
+pub async fn execute(recv_kill: &mut BroadcastRecvBool, verbose: bool) -> Result<()> {
     info!("Setting up...");
 
     check_py_deps()?;
     let mut missing_deps = check_js_deps()?;
     missing_deps.append(&mut check_rust_deps()?);
     missing_deps.append(&mut check_docker_deps()?);
-    get_deps(missing_deps, verbose)?;
+    get_deps(missing_deps, recv_kill, verbose).await?;
 
     info!("Done setting up.");
     Ok(())

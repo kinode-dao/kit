@@ -21,6 +21,7 @@ use zip::write::FileOptions;
 use kinode_process_lib::{kernel_types::Erc721Metadata, PackageId};
 
 use crate::publish::make_local_file_link_path;
+use crate::run_tests::types::BroadcastRecvBool;
 use crate::setup::{
     check_js_deps, check_py_deps, check_rust_deps, get_deps, get_newest_valid_node_version,
     get_python_version, REQUIRED_PY_PACKAGE,
@@ -51,6 +52,11 @@ struct CargoFile {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct CargoPackage {
     name: String,
+}
+
+pub fn make_fake_kill_chan() -> BroadcastRecvBool {
+    let (_send_to_kill, recv_kill) = tokio::sync::broadcast::channel(1);
+    recv_kill
 }
 
 pub fn make_pkg_publisher(metadata: &Erc721Metadata) -> String {
@@ -1244,7 +1250,7 @@ fn get_ui_dirs(
 }
 
 #[instrument(level = "trace", skip_all)]
-fn check_and_populate_dependencies(
+async fn check_and_populate_dependencies(
     package_dir: &Path,
     metadata: &Erc721Metadata,
     skip_deps_check: bool,
@@ -1255,6 +1261,7 @@ fn check_and_populate_dependencies(
     let mut checked_js = false;
     let mut apis = HashMap::new();
     let mut dependencies = HashSet::new();
+    let mut recv_kill = make_fake_kill_chan();
     // Do we need to do an `is_cluded()` check here?
     //  I think no because we may want to, e.g., build a process that
     //  depends on another that is already built but hasn't changed.
@@ -1264,14 +1271,14 @@ fn check_and_populate_dependencies(
         if path.is_dir() {
             if path.join(RUST_SRC_PATH).exists() && !checked_rust && !skip_deps_check {
                 let deps = check_rust_deps()?;
-                get_deps(deps, verbose)?;
+                get_deps(deps, &mut recv_kill, verbose).await?;
                 checked_rust = true;
             } else if path.join(PYTHON_SRC_PATH).exists() && !checked_py {
                 check_py_deps()?;
                 checked_py = true;
             } else if path.join(JAVASCRIPT_SRC_PATH).exists() && !checked_js && !skip_deps_check {
                 let deps = check_js_deps()?;
-                get_deps(deps, verbose)?;
+                get_deps(deps, &mut recv_kill, verbose).await?;
                 checked_js = true;
             } else if Some("api") == path.file_name().and_then(|s| s.to_str()) {
                 // read api files: to be used in build
@@ -1380,7 +1387,7 @@ async fn compile_package(
     let metadata = read_and_update_metadata(package_dir)?;
     let mut wasm_paths = HashSet::new();
     let (mut apis, dependencies) =
-        check_and_populate_dependencies(package_dir, &metadata, skip_deps_check, verbose)?;
+        check_and_populate_dependencies(package_dir, &metadata, skip_deps_check, verbose).await?;
 
     if !ignore_deps && !dependencies.is_empty() {
         fetch_dependencies(
@@ -1566,10 +1573,11 @@ pub async fn execute(
 
     check_process_lib_version(&package_dir.join("Cargo.toml"))?;
 
+    let mut recv_kill = make_fake_kill_chan();
     if !no_ui {
         if !skip_deps_check {
             let deps = check_js_deps()?;
-            get_deps(deps, verbose)?;
+            get_deps(deps, &mut recv_kill, verbose).await?;
         }
         let valid_node = get_newest_valid_node_version(None, None)?;
         let ui_dirs = get_ui_dirs(package_dir, &include, &exclude)?;

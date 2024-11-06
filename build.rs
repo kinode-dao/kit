@@ -3,8 +3,45 @@ use std::io::{self, Write};
 use std::path::Path;
 
 const TEMPLATES_DIR: &str = "src/new/templates";
+const CHAIN_KINOSTATE_DIR: &str = "src/chain/kinostate";
 const TARGET_DIR: &str = "target";
-const INCLUDES: &str = "includes.rs";
+const NEW_INCLUDES: &str = "new_includes.rs";
+const CHAIN_INCLUDES: &str = "chain_includes.rs";
+
+/// create target/new_includes.rs to build templates into binary
+fn make_new_includes() -> anyhow::Result<()> {
+    let mut output_buffer = Vec::new();
+    writeln!(
+        &mut output_buffer,
+        "const PATH_TO_CONTENT: &[(&str, &str)] = &["
+    )?;
+    writeln!(
+        output_buffer,
+        "    (\"{}\", include_str!(\"{}\")),",
+        "componentize.mjs", "../src/new/componentize.mjs",
+    )?;
+
+    visit_dirs(Path::new(TEMPLATES_DIR), &mut output_buffer)?;
+
+    writeln!(&mut output_buffer, "];")?;
+
+    let target_dir = Path::new(TARGET_DIR);
+    let new_output_path = target_dir.join(NEW_INCLUDES);
+    // create *_includes.rs if it does not exist
+    if !target_dir.exists() {
+        fs::create_dir_all(target_dir)?;
+    }
+    if !new_output_path.exists() {
+        fs::write(&new_output_path, &output_buffer)?;
+    } else {
+        let existing_file = fs::read(&new_output_path)?;
+        if output_buffer != existing_file {
+            fs::write(&new_output_path, &output_buffer)?;
+        }
+    }
+
+    Ok(())
+}
 
 fn visit_dirs(dir: &Path, output_buffer: &mut Vec<u8>) -> io::Result<()> {
     if !dir.is_dir() {
@@ -47,6 +84,48 @@ fn visit_dirs(dir: &Path, output_buffer: &mut Vec<u8>) -> io::Result<()> {
     Ok(())
 }
 
+fn make_chain_includes() -> anyhow::Result<()> {
+    let mut output_buffer = Vec::new();
+    writeln!(
+        &mut output_buffer,
+        "const FOUNDRY_COMMIT_TO_CONTENT: &[(&str, &str)] = &["
+    )?;
+
+    for entry in fs::read_dir(CHAIN_KINOSTATE_DIR)? {
+        let entry = entry?;
+        let path = entry.path();
+        let commit = path
+            .file_stem()
+            .and_then(|c| c.to_str())
+            .ok_or_else(|| anyhow::anyhow!("couldn't get commit from {path:?}"))?;
+        writeln!(
+            output_buffer,
+            "    (\"{}\", include_str!(\"{}\")),",
+            commit,
+            Path::new("..").join(&path).display(),
+        )?;
+    }
+
+    writeln!(&mut output_buffer, "];")?;
+
+    let target_dir = Path::new(TARGET_DIR);
+    let chain_output_path = target_dir.join(CHAIN_INCLUDES);
+    // create *_includes.rs if it does not exist
+    if !target_dir.exists() {
+        fs::create_dir_all(target_dir)?;
+    }
+    if !chain_output_path.exists() {
+        fs::write(&chain_output_path, &output_buffer)?;
+    } else {
+        let existing_file = fs::read(&chain_output_path)?;
+        if output_buffer != existing_file {
+            fs::write(&chain_output_path, &output_buffer)?;
+        }
+    }
+
+    Ok(())
+}
+
 fn add_commit_hash(repo: &git2::Repository) -> anyhow::Result<()> {
     let sha = repo
         .head()?
@@ -70,36 +149,10 @@ fn add_branch_name(repo: &git2::Repository) -> anyhow::Result<()> {
 }
 
 fn main() -> anyhow::Result<()> {
-    let mut output_buffer = Vec::new();
-    writeln!(
-        &mut output_buffer,
-        "const PATH_TO_CONTENT: &[(&str, &str)] = &["
-    )?;
-    writeln!(
-        output_buffer,
-        "    (\"{}\", include_str!(\"{}\")),",
-        "componentize.mjs", "../src/new/componentize.mjs",
-    )?;
+    make_new_includes()?;
+    make_chain_includes()?;
 
-    visit_dirs(Path::new(TEMPLATES_DIR), &mut output_buffer)?;
-
-    writeln!(&mut output_buffer, "];")?;
-
-    let target_dir = Path::new(TARGET_DIR);
-    let output_path = target_dir.join(INCLUDES);
-    // create includes.rs if it does not exist
-    if !target_dir.exists() {
-        fs::create_dir_all(target_dir)?;
-    }
-    if !output_path.exists() {
-        fs::write(&output_path, &output_buffer)?;
-    } else {
-        let existing_file = fs::read(&output_path)?;
-        if output_buffer != existing_file {
-            fs::write(&output_path, &output_buffer)?;
-        }
-    }
-
+    // write version info into binary
     let repo = git2::Repository::open(".")?;
 
     add_commit_hash(&repo)?;

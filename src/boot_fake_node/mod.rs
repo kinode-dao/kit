@@ -157,7 +157,7 @@ pub fn get_platform_runtime_name(is_simulation_mode: bool) -> Result<String> {
 }
 
 #[instrument(level = "trace", skip_all)]
-pub async fn get_runtime_binary(version: &str, is_simulation_mode: bool) -> Result<PathBuf> {
+pub async fn get_runtime_binary(version: &str, is_simulation_mode: bool) -> Result<(PathBuf, String)> {
     let zip_name = get_platform_runtime_name(is_simulation_mode)?;
 
     let version = if version != "latest" {
@@ -193,7 +193,7 @@ pub async fn get_runtime_binary(version: &str, is_simulation_mode: bool) -> Resu
         get_runtime_binary_inner(&version, &zip_name, &runtime_dir).await?;
     }
 
-    Ok(runtime_path)
+    Ok((runtime_path, version))
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -403,13 +403,13 @@ pub async fn execute(
 ) -> Result<()> {
     let detached = false; // TODO: to argument?
                           // TODO: factor out with run_tests?
-    let runtime_path = match runtime_path {
+    let (runtime_path, version) = match runtime_path {
         None => get_runtime_binary(&version, true).await?,
         Some(runtime_path) => {
             if !runtime_path.exists() {
                 return Err(eyre!("--runtime-path {:?} does not exist.", runtime_path));
             }
-            if runtime_path.is_dir() {
+            let runtime_path = if runtime_path.is_dir() {
                 // Compile the runtime binary
                 compile_runtime(&runtime_path, release, true)?;
                 runtime_path
@@ -418,9 +418,18 @@ pub async fn execute(
                     .join("kinode")
             } else {
                 runtime_path
-            }
+            };
+            let Some((output, _)) = build::run_command(
+                Command::new("bash").args(["-c", &format!("{} --version", runtime_path.display())]),
+                false,
+            )? else {
+                return Err(eyre!("couldn't get Kinode version"));
+            };
+            let version = output.split('\n').last().unwrap().split(' ').last().unwrap();
+            (runtime_path, version.to_string())
         }
     };
+    let version = version.strip_prefix("v").unwrap_or_else(|| &version);
 
     let mut task_handles = Vec::new();
 
@@ -455,8 +464,9 @@ pub async fn execute(
     }
 
     // boot fakechain
+    let version = version.parse()?;
     let anvil_process =
-        chain::start_chain(fakechain_port, true, recv_kill_in_start_chain, false).await?;
+        chain::start_chain(fakechain_port, recv_kill_in_start_chain, Some(version), false).await?;
 
     if let Some(rpc) = rpc {
         args.extend_from_slice(&["--rpc".into(), rpc.into()]);
