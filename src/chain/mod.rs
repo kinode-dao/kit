@@ -38,10 +38,11 @@ pub async fn start_chain(
         .iter()
         .map(|ss| (ss.0.parse().unwrap(), ss.1.to_string()))
         .collect();
-    let foundry_commit_to_date: HashMap<String, chrono::DateTime<chrono::Utc>> = FOUNDRY_COMMIT_TO_DATE
-        .iter()
-        .map(|ss| (ss.0.to_string(), ss.1.parse().unwrap()))
-        .collect();
+    let foundry_commit_to_date: HashMap<String, chrono::DateTime<chrono::Utc>> =
+        FOUNDRY_COMMIT_TO_DATE
+            .iter()
+            .map(|ss| (ss.0.to_string(), ss.1.parse().unwrap()))
+            .collect();
     let foundry_commit_to_content: HashMap<String, String> = FOUNDRY_COMMIT_TO_CONTENT
         .iter()
         .map(|ss| (ss.0.to_string(), ss.1.to_string()))
@@ -50,13 +51,14 @@ pub async fn start_chain(
     let (newer_than, required_commit) = match fakenode_version {
         None => (None, None),
         Some(v) => {
-            let Some((_, commit)) = fakenode_to_foundry
-                .iter()
-                .find(|(vr, _)| vr.matches(&v)) else
-            {
+            let Some((_, commit)) = fakenode_to_foundry.iter().find(|(vr, _)| vr.matches(&v))
+            else {
                 return Err(eyre!(""));
             };
-            (foundry_commit_to_date.get(commit).map(|d| d.clone()), Some(commit.to_string()))
+            (
+                foundry_commit_to_date.get(commit).map(|d| d.clone()),
+                Some(commit.to_string()),
+            )
         }
     };
 
@@ -65,11 +67,12 @@ pub async fn start_chain(
 
     let required_commit = required_commit.unwrap_or_else(|| FOUNDRY_NEWEST_COMMIT.to_string());
 
-    let kinostate_path = PathBuf::from(KIT_CACHE)
-        .join(format!("kinostate-{required_commit}.json"));
+    let kinostate_path = PathBuf::from(KIT_CACHE).join(format!("kinostate-{required_commit}.json"));
     let kinostate_content = foundry_commit_to_content
         .get(&required_commit)
-        .expect(&format!("couldn't find kinostate content for foundry commit {required_commit}"));
+        .expect(&format!(
+            "couldn't find kinostate content for foundry commit {required_commit}"
+        ));
     fs::write(&kinostate_path, kinostate_content)?;
 
     info!("Checking for Anvil on port {}...", port);

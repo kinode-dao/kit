@@ -157,7 +157,10 @@ pub fn get_platform_runtime_name(is_simulation_mode: bool) -> Result<String> {
 }
 
 #[instrument(level = "trace", skip_all)]
-pub async fn get_runtime_binary(version: &str, is_simulation_mode: bool) -> Result<(PathBuf, String)> {
+pub async fn get_runtime_binary(
+    version: &str,
+    is_simulation_mode: bool,
+) -> Result<(PathBuf, String)> {
     let zip_name = get_platform_runtime_name(is_simulation_mode)?;
 
     let version = if version != "latest" {
@@ -422,10 +425,17 @@ pub async fn execute(
             let Some((output, _)) = build::run_command(
                 Command::new("bash").args(["-c", &format!("{} --version", runtime_path.display())]),
                 false,
-            )? else {
+            )?
+            else {
                 return Err(eyre!("couldn't get Kinode version"));
             };
-            let version = output.split('\n').last().unwrap().split(' ').last().unwrap();
+            let version = output
+                .split('\n')
+                .last()
+                .unwrap()
+                .split(' ')
+                .last()
+                .unwrap();
             (runtime_path, version.to_string())
         }
     };
@@ -465,8 +475,13 @@ pub async fn execute(
 
     // boot fakechain
     let version = version.parse()?;
-    let anvil_process =
-        chain::start_chain(fakechain_port, recv_kill_in_start_chain, Some(version), false).await?;
+    let anvil_process = chain::start_chain(
+        fakechain_port,
+        recv_kill_in_start_chain,
+        Some(version),
+        false,
+    )
+    .await?;
 
     if let Some(rpc) = rpc {
         args.extend_from_slice(&["--rpc".into(), rpc.into()]);

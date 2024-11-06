@@ -465,7 +465,11 @@ pub fn check_docker_deps() -> Result<Vec<Dependency>> {
 }
 
 #[instrument(level = "trace", skip_all)]
-pub async fn get_deps(deps: Vec<Dependency>, recv_kill: &mut BroadcastRecvBool, verbose: bool) -> Result<()> {
+pub async fn get_deps(
+    deps: Vec<Dependency>,
+    recv_kill: &mut BroadcastRecvBool,
+    verbose: bool,
+) -> Result<()> {
     if deps.is_empty() {
         return Ok(());
     }

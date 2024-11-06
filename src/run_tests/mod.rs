@@ -332,8 +332,13 @@ async fn build_packages(
     // boot fakechain
     let recv_kill_in_start_chain = send_to_kill.subscribe();
     let version = Some(version.parse()?);
-    let anvil_process =
-        chain::start_chain(test.fakechain_router, recv_kill_in_start_chain, version, false).await?;
+    let anvil_process = chain::start_chain(
+        test.fakechain_router,
+        recv_kill_in_start_chain,
+        version,
+        false,
+    )
+    .await?;
 
     boot_nodes(
         &nodes,
@@ -685,8 +690,15 @@ async fn handle_test(
     test_dir_path: &Path,
     persist_home: bool,
 ) -> Result<()> {
-    let (setup_packages, test_package_paths) =
-        build_packages(&test, test_dir_path, &detached, &persist_home, runtime_path, version).await?;
+    let (setup_packages, test_package_paths) = build_packages(
+        &test,
+        test_dir_path,
+        &detached,
+        &persist_home,
+        runtime_path,
+        version,
+    )
+    .await?;
 
     let SetupCleanupReturn {
         send_to_cleanup,
@@ -725,8 +737,13 @@ async fn handle_test(
     // boot fakechain
     let recv_kill_in_start_chain = send_to_kill.subscribe();
     let version = Some(version.parse()?);
-    let anvil_process =
-        chain::start_chain(test.fakechain_router, recv_kill_in_start_chain, version, false).await?;
+    let anvil_process = chain::start_chain(
+        test.fakechain_router,
+        recv_kill_in_start_chain,
+        version,
+        false,
+    )
+    .await?;
 
     // Process each node
     boot_nodes(
@@ -823,11 +840,18 @@ pub async fn execute(config_path: PathBuf) -> Result<()> {
             let Some((output, _)) = build::run_command(
                 Command::new("bash").args(["-c", &format!("{} --version", runtime_path.display())]),
                 false,
-            )? else {
+            )?
+            else {
                 return Err(eyre!("couldn't get Kinode version"));
             };
             println!("{output:?}");
-            let version = output.split('\n').last().unwrap().split(' ').last().unwrap();
+            let version = output
+                .split('\n')
+                .last()
+                .unwrap()
+                .split(' ')
+                .last()
+                .unwrap();
             println!("{version}");
             (runtime_path, version.to_string())
         }
