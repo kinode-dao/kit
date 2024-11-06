@@ -844,15 +844,14 @@ pub async fn execute(config_path: PathBuf) -> Result<()> {
             else {
                 return Err(eyre!("couldn't get Kinode version"));
             };
-            println!("{output:?}");
             let version = output
                 .split('\n')
-                .last()
+                .rev()
+                .nth(1)
                 .unwrap()
                 .split(' ')
                 .last()
                 .unwrap();
-            println!("{version}");
             (runtime_path, version.to_string())
         }
     };
