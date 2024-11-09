@@ -1573,14 +1573,14 @@ pub async fn execute(
 
     check_process_lib_version(&package_dir.join("Cargo.toml"))?;
 
-    let mut recv_kill = make_fake_kill_chan();
-    if !no_ui {
+    let ui_dirs = get_ui_dirs(package_dir, &include, &exclude)?;
+    if !no_ui && !ui_dirs.is_empty() {
         if !skip_deps_check {
+            let mut recv_kill = make_fake_kill_chan();
             let deps = check_js_deps()?;
             get_deps(deps, &mut recv_kill, verbose).await?;
         }
         let valid_node = get_newest_valid_node_version(None, None)?;
-        let ui_dirs = get_ui_dirs(package_dir, &include, &exclude)?;
         for ui_dir in ui_dirs {
             compile_and_copy_ui(&ui_dir, valid_node.clone(), verbose).await?;
         }
