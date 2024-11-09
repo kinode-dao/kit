@@ -4,14 +4,20 @@ use std::process::Command;
 use color_eyre::{eyre::eyre, Result};
 use tracing::{info, instrument};
 
-use crate::build::run_command;
+use crate::build::{make_fake_kill_chan, run_command};
 use crate::setup::{check_js_deps, get_deps, get_newest_valid_node_version};
 
 #[instrument(level = "trace", skip_all)]
-pub fn execute(package_dir: &Path, url: &str, skip_deps_check: bool, release: bool) -> Result<()> {
+pub async fn execute(
+    package_dir: &Path,
+    url: &str,
+    skip_deps_check: bool,
+    release: bool,
+) -> Result<()> {
     if !skip_deps_check {
         let deps = check_js_deps()?;
-        get_deps(deps, false)?;
+        let mut recv_kill = make_fake_kill_chan();
+        get_deps(deps, &mut recv_kill, false).await?;
     }
     let valid_node = get_newest_valid_node_version(None, None)?;
 

@@ -24,7 +24,10 @@ pub async fn execute(
     let detached = false; // TODO: to argument?
                           // TODO: factor out with run_tests?
     let runtime_path = match runtime_path {
-        None => get_runtime_binary(&version, false).await?,
+        None => {
+            let (runtime_path, _) = get_runtime_binary(&version, false).await?;
+            runtime_path
+        }
         Some(runtime_path) => {
             if !runtime_path.exists() {
                 return Err(eyre!("--runtime-path {:?} does not exist.", runtime_path));

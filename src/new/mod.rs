@@ -7,7 +7,7 @@ use color_eyre::{eyre::eyre, Result};
 use fs_err as fs;
 use tracing::instrument;
 
-include!("../../target/includes.rs");
+include!("../../target/new_includes.rs");
 
 #[derive(Clone)]
 pub enum Language {
