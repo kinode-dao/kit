@@ -165,8 +165,8 @@ fn replace_vars(
         )
         // field in a struct
         .replace(
-            &format!("{template_package_name}:"),
-            &format!("{package_name_snake}:"),
+            &format!("{template_package_name}: "),
+            &format!("{package_name_snake}: "),
         )
         .replace(
             &format!("{template_package_name}-"),

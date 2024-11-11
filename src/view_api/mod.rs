@@ -205,6 +205,9 @@ async fn download(
         Some(hash) => hash.to_string(),
         None => get_version_hash(node, url, &package_name, &publisher_node).await?,
     };
+    if desired_version_hash.is_empty() {
+        return Err(eyre!("Failed to get required version hash"));
+    }
     let request = make_download(
         node,
         &package_name,
@@ -267,7 +270,7 @@ async fn get_api(
         fs::create_dir_all(&zip_dir)?;
         fs::write(&zip_path, blob)?;
         extract_zip(&zip_path)?;
-        for entry in zip_dir.read_dir()? {
+        for entry in fs::read_dir(&zip_dir)? {
             let entry = entry?;
             let path = entry.path();
             if Some("wit") == path.extension().and_then(|s| s.to_str()) {

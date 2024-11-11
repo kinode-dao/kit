@@ -513,6 +513,7 @@ fn get_most_recent_modified_time(
     exclude_files: &HashSet<&str>,
     exclude_extensions: &HashSet<&str>,
     exclude_dirs: &HashSet<&str>,
+    must_exist_dirs: &mut HashSet<&str>,
 ) -> Result<(Option<SystemTime>, Option<SystemTime>)> {
     let mut most_recent: Option<SystemTime> = None;
     let mut most_recent_excluded: Option<SystemTime> = None;
@@ -540,6 +541,7 @@ fn get_most_recent_modified_time(
                 .unwrap_or_default()
                 .to_str()
                 .unwrap_or_default();
+            must_exist_dirs.remove(dir_name);
             if exclude_dirs.contains(dir_name) {
                 continue;
             }
@@ -549,6 +551,7 @@ fn get_most_recent_modified_time(
                 exclude_files,
                 exclude_extensions,
                 exclude_dirs,
+                must_exist_dirs,
             )?;
 
             if let Some(st) = sub_time {
@@ -571,6 +574,12 @@ fn get_most_recent_modified_time(
             most_recent = Some(most_recent.map_or(file_time, |t| t.max(file_time)));
         }
     }
+
+    if !must_exist_dirs.is_empty() {
+        return Err(eyre!("Didn't find required dirs: {must_exist_dirs:?}"));
+    }
+
+    debug!("get_most_recent_modified_time: most_recent: {most_recent:?}, most_recent_excluded: {most_recent_excluded:?}");
 
     Ok((most_recent, most_recent_excluded))
 }
@@ -606,6 +615,23 @@ fn is_up_to_date(
 ) -> Result<bool> {
     let old_features = fs::read_to_string(&build_with_features_path).ok();
     let old_cludes = fs::read_to_string(&build_with_cludes_path).ok();
+
+    debug!(
+        "is_up_to_date({package_dir:?}):
+    old_features == Some(features.to_string()): {}
+    old_cludes == Some(cludes.to_string()): {}
+    package_dir.join(\"Cargo.lock\").exists(): {}
+    package_dir.join(\"pkg\").exists(): {}
+    package_dir.join(\"pkg\").join(\"api.zip\").exists(): {}
+    file_with_extension_exists(&package_dir.join(\"pkg\"), \"wasm\"): {}",
+        old_features == Some(features.to_string()),
+        old_cludes == Some(cludes.to_string()),
+        package_dir.join("Cargo.lock").exists(),
+        package_dir.join("pkg").exists(),
+        package_dir.join("pkg").join("api.zip").exists(),
+        file_with_extension_exists(&package_dir.join("pkg"), "wasm"),
+    );
+
     if old_features == Some(features.to_string())
         && old_cludes == Some(cludes.to_string())
         && package_dir.join("Cargo.lock").exists()
@@ -613,13 +639,22 @@ fn is_up_to_date(
         && package_dir.join("pkg").join("api.zip").exists()
         && file_with_extension_exists(&package_dir.join("pkg"), "wasm")
     {
-        let (mut source_time, build_time) = get_most_recent_modified_time(
+        let (mut source_time, build_time) = match get_most_recent_modified_time(
             package_dir,
             &HashSet::from(["Cargo.lock", "api.zip"]),
             &HashSet::from(["wasm"]),
             &HashSet::from(["target"]),
-        )?;
+            &mut HashSet::from(["target"]),
+        ) {
+            Ok(v) => v,
+            Err(e) => if e.to_string().starts_with("Didn't find required dirs:") {
+                return Ok(false);
+            } else {
+                return Err(e);
+            },
+        };
         let Some(build_time) = build_time else {
+            debug!("is_up_to_date: no built files: not up-to-date");
             return Ok(false);
         };
 
@@ -630,12 +665,20 @@ fn is_up_to_date(
             .exec()?;
         for package in metadata.packages.iter().filter(|p| p.source.is_none()) {
             let dep_package_dir = get_cargo_package_path(&package)?;
-            let (dep_source_time, _) = get_most_recent_modified_time(
+            let (dep_source_time, _) = match get_most_recent_modified_time(
                 &dep_package_dir,
                 &HashSet::from(["Cargo.lock", "api.zip"]),
                 &HashSet::from(["wasm"]),
                 &HashSet::from(["target"]),
-            )?;
+                &mut HashSet::from(["target"]),
+            ) {
+                Ok(v) => v,
+                Err(e) => if e.to_string().starts_with("Didn't find required dirs:") {
+                    return Ok(false);
+                } else {
+                    return Err(e);
+                },
+            };
             match source_time {
                 None => source_time = dep_source_time,
                 Some(ref st) => {
@@ -980,7 +1023,7 @@ fn fetch_local_built_dependency(
     wasm_paths: &mut HashSet<PathBuf>,
     local_dependency: &Path,
 ) -> Result<()> {
-    for entry in local_dependency.join("api").read_dir()? {
+    for entry in fs::read_dir(local_dependency.join("api"))? {
         let entry = entry?;
         let path = entry.path();
         let maybe_ext = path.extension().and_then(|s| s.to_str());
@@ -993,7 +1036,7 @@ fn fetch_local_built_dependency(
             apis.insert(file_name.into(), wit_contents);
         }
     }
-    for entry in local_dependency.join("target").join("api").read_dir()? {
+    for entry in fs::read_dir(local_dependency.join("target").join("api"))? {
         let entry = entry?;
         let path = entry.path();
         let maybe_ext = path.extension().and_then(|s| s.to_str());
@@ -1081,6 +1124,7 @@ async fn fetch_dependencies(
         .iter()
         .map(|p| p.file_name().and_then(|f| f.to_str()).unwrap())
         .collect();
+    debug!("fetch_dependencies: local_dependencies: {local_dependencies:?}");
     for dependency in dependencies {
         let Ok(dep) = dependency.parse::<PackageId>() else {
             return Err(eyre!(
@@ -1097,7 +1141,7 @@ async fn fetch_dependencies(
                 "Got unexpected result from fetching API for {dependency}"
             ));
         };
-        for entry in zip_dir.read_dir()? {
+        for entry in fs::read_dir(zip_dir)? {
             let entry = entry?;
             let path = entry.path();
             let maybe_ext = path.extension().and_then(|s| s.to_str());
@@ -1195,7 +1239,7 @@ fn find_non_standard(
     let mut imports = HashMap::new();
     let mut exports = HashMap::new();
 
-    for entry in package_dir.join("pkg").read_dir()? {
+    for entry in fs::read_dir(package_dir.join("pkg"))? {
         let entry = entry?;
         let path = entry.path();
         if wasm_paths.contains(&path) {
@@ -1229,8 +1273,7 @@ fn get_ui_dirs(
     include: &HashSet<PathBuf>,
     exclude: &HashSet<PathBuf>,
 ) -> Result<Vec<PathBuf>> {
-    let ui_dirs = package_dir
-        .read_dir()?
+    let ui_dirs = fs::read_dir(package_dir)?
         .filter_map(|entry| {
             let path = entry.ok()?.path();
             if path.is_dir()
@@ -1265,7 +1308,7 @@ async fn check_and_populate_dependencies(
     // Do we need to do an `is_cluded()` check here?
     //  I think no because we may want to, e.g., build a process that
     //  depends on another that is already built but hasn't changed.
-    for entry in package_dir.read_dir()? {
+    for entry in fs::read_dir(package_dir)? {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir() {
@@ -1282,7 +1325,7 @@ async fn check_and_populate_dependencies(
                 checked_js = true;
             } else if Some("api") == path.file_name().and_then(|s| s.to_str()) {
                 // read api files: to be used in build
-                for entry in path.read_dir()? {
+                for entry in fs::read_dir(path)? {
                     let entry = entry?;
                     let path = entry.path();
                     if Some("wit") != path.extension().and_then(|e| e.to_str()) {
@@ -1417,7 +1460,7 @@ async fn compile_package(
 
     let mut tasks = tokio::task::JoinSet::new();
     let features = features.to_string();
-    for entry in package_dir.read_dir()? {
+    for entry in fs::read_dir(package_dir)? {
         let Ok(entry) = entry else {
             continue;
         };
@@ -1514,6 +1557,24 @@ pub async fn execute(
     verbose: bool,
     ignore_deps: bool, // for internal use; may cause problems when adding recursive deps
 ) -> Result<()> {
+    debug!("execute:
+    package_dir={package_dir:?},
+    no_ui={no_ui},
+    ui_only={ui_only},
+    include={include:?},
+    exclude={exclude:?},
+    skip_deps_check={skip_deps_check},
+    features={features},
+    url={url:?},
+    download_from={download_from:?},
+    default_world={default_world:?},
+    local_dependencies={local_dependencies:?},
+    add_paths_to_api={add_paths_to_api:?},
+    reproducible={reproducible},
+    force={force},
+    verbose={verbose},
+    ignore_deps={ignore_deps},"
+    );
     if no_ui && ui_only {
         return Err(eyre!(
             "Cannot set both `no_ui` and `ui_only` to true at the same time"
