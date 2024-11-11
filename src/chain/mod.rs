@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 
 use color_eyre::{
@@ -6,7 +8,6 @@ use color_eyre::{
 };
 use fs_err as fs;
 use reqwest::Client;
-use sha2::{Digest, Sha256};
 use tokio::time::{sleep, Duration};
 use tracing::{info, instrument};
 
@@ -15,38 +16,64 @@ use crate::run_tests::types::BroadcastRecvBool;
 use crate::setup::{check_foundry_deps, get_deps};
 use crate::KIT_CACHE;
 
-const KINOSTATE_JSON: &str = include_str!("./kinostate.json");
+include!("../../target/chain_includes.rs");
+
 const DEFAULT_MAX_ATTEMPTS: u16 = 16;
 
-#[instrument(level = "trace", skip_all)]
-async fn write_kinostate() -> Result<String> {
-    let state_hash = {
-        let mut hasher = Sha256::new();
-        hasher.update(KINOSTATE_JSON.as_bytes());
-        format!("{:x}", hasher.finalize())
-    };
-
-    let json_path = format!("{}/kinostate-{}.json", KIT_CACHE, state_hash);
-    let json_path = std::path::PathBuf::from(json_path);
-
-    if !json_path.exists() {
-        fs::write(&json_path, KINOSTATE_JSON)?;
-    }
-    Ok(state_hash)
-}
+pub const FAKENODE_TO_FOUNDRY: &[(&str, &str)] = &[("<0.9.8", "008922d51"), (">=0.9.8", "c3069a5")];
+pub const FOUNDRY_COMMIT_TO_DATE: &[(&str, &str)] = &[
+    ("008922d51", "2024-04-23T00:23:10.634984900Z"),
+    ("c3069a5", "2024-11-05T00:22:10.561306811Z"),
+];
+pub const FOUNDRY_NEWEST_COMMIT: &str = "c3069a5";
 
 #[instrument(level = "trace", skip_all)]
 pub async fn start_chain(
     port: u16,
-    piped: bool,
-    recv_kill: BroadcastRecvBool,
+    mut recv_kill: BroadcastRecvBool,
+    fakenode_version: Option<semver::Version>,
     verbose: bool,
 ) -> Result<Option<Child>> {
-    let deps = check_foundry_deps()?;
-    get_deps(deps, verbose)?;
+    let fakenode_to_foundry: HashMap<semver::VersionReq, String> = FAKENODE_TO_FOUNDRY
+        .iter()
+        .map(|ss| (ss.0.parse().unwrap(), ss.1.to_string()))
+        .collect();
+    let foundry_commit_to_date: HashMap<String, chrono::DateTime<chrono::Utc>> =
+        FOUNDRY_COMMIT_TO_DATE
+            .iter()
+            .map(|ss| (ss.0.to_string(), ss.1.parse().unwrap()))
+            .collect();
+    let foundry_commit_to_content: HashMap<String, String> = FOUNDRY_COMMIT_TO_CONTENT
+        .iter()
+        .map(|ss| (ss.0.to_string(), ss.1.to_string()))
+        .collect();
 
-    let state_hash = write_kinostate().await?;
-    let state_path = format!("./kinostate-{}.json", state_hash);
+    let (newer_than, required_commit) = match fakenode_version {
+        None => (None, None),
+        Some(v) => {
+            let Some((_, commit)) = fakenode_to_foundry.iter().find(|(vr, _)| vr.matches(&v))
+            else {
+                return Err(eyre!(""));
+            };
+            (
+                foundry_commit_to_date.get(commit).map(|d| d.clone()),
+                Some(commit.to_string()),
+            )
+        }
+    };
+
+    let deps = check_foundry_deps(newer_than, required_commit.clone())?;
+    get_deps(deps, &mut recv_kill, verbose).await?;
+
+    let required_commit = required_commit.unwrap_or_else(|| FOUNDRY_NEWEST_COMMIT.to_string());
+
+    let kinostate_path = PathBuf::from(KIT_CACHE).join(format!("kinostate-{required_commit}.json"));
+    let kinostate_content = foundry_commit_to_content
+        .get(&required_commit)
+        .expect(&format!(
+            "couldn't find kinostate content for foundry commit {required_commit}"
+        ));
+    fs::write(&kinostate_path, kinostate_content)?;
 
     info!("Checking for Anvil on port {}...", port);
     if wait_for_anvil(port, 1, None).await.is_ok() {
@@ -57,12 +84,12 @@ pub async fn start_chain(
         .arg("--port")
         .arg(port.to_string())
         .arg("--load-state")
-        .arg(&state_path)
+        .arg(&kinostate_path)
         .current_dir(KIT_CACHE)
-        .stdout(if piped {
-            Stdio::piped()
-        } else {
+        .stdout(if verbose {
             Stdio::inherit()
+        } else {
+            Stdio::piped()
         })
         .spawn()?;
 
@@ -129,7 +156,7 @@ async fn wait_for_anvil(
 
 /// kit chain, alias to anvil
 #[instrument(level = "trace", skip_all)]
-pub async fn execute(port: u16, verbose: bool) -> Result<()> {
+pub async fn execute(port: u16, version: &str, verbose: bool) -> Result<()> {
     let (send_to_cleanup, mut recv_in_cleanup) = tokio::sync::mpsc::unbounded_channel();
     let (send_to_kill, _recv_kill) = tokio::sync::broadcast::channel(1);
     let recv_kill_in_cos = send_to_kill.subscribe();
@@ -137,7 +164,12 @@ pub async fn execute(port: u16, verbose: bool) -> Result<()> {
     let handle_signals = tokio::spawn(cleanup_on_signal(send_to_cleanup.clone(), recv_kill_in_cos));
 
     let recv_kill_in_start_chain = send_to_kill.subscribe();
-    let child = start_chain(port, false, recv_kill_in_start_chain, verbose).await?;
+    let version = if version == "latest" {
+        None
+    } else {
+        Some(version.parse()?)
+    };
+    let child = start_chain(port, recv_kill_in_start_chain, version, verbose).await?;
     let Some(mut child) = child else {
         return Err(eyre!(
             "Port {} is already in use by another anvil process",

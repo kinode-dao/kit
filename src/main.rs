@@ -308,8 +308,9 @@ async fn execute(
         }
         Some(("chain", matches)) => {
             let port = matches.get_one::<u16>("PORT").unwrap();
+            let version = matches.get_one::<String>("VERSION").unwrap();
             let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
-            chain::execute(*port, *verbose).await
+            chain::execute(*port, version, *verbose).await
         }
         Some(("connect", matches)) => {
             let local_port = matches.get_one::<u16>("LOCAL_PORT").unwrap();
@@ -327,7 +328,7 @@ async fn execute(
             let skip_deps_check = matches.get_one::<bool>("SKIP_DEPS_CHECK").unwrap();
             let release = matches.get_one::<bool>("RELEASE").unwrap();
 
-            dev_ui::execute(&package_dir, &url, *skip_deps_check, *release)
+            dev_ui::execute(&package_dir, &url, *skip_deps_check, *release).await
         }
         Some(("inject-message", matches)) => {
             let url = format!(
@@ -434,7 +435,8 @@ async fn execute(
         Some(("setup", matches)) => {
             let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
 
-            setup::execute(*verbose)
+            let mut recv_kill = build::make_fake_kill_chan();
+            setup::execute(&mut recv_kill, *verbose).await
         }
         Some(("start-package", matches)) => {
             let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
@@ -864,6 +866,27 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("Port to run the chain on")
                 .default_value("8545")
                 .value_parser(value_parser!(u16))
+            )
+            .arg(Arg::new("VERSION")
+                .action(ArgAction::Set)
+                .short('v')
+                .long("version")
+                .help("Version of Kinode binary to run chain for (foundry version must match Kinode version)")
+                .default_value("latest")
+                .value_parser(PossibleValuesParser::new({
+                    let mut possible_values = vec!["latest".to_string()];
+                    let mut remote_values = boot_fake_node::find_releases_with_asset_if_online(
+                        None,
+                        None,
+                        &boot_fake_node::get_platform_runtime_name(false)?
+                    ).await?;
+                    remote_values.truncate(MAX_REMOTE_VALUES);
+                    if remote_values.len() == 0 {
+                        possible_values = vec![];
+                    }
+                    possible_values.append(&mut remote_values);
+                    possible_values
+                }))
             )
             .arg(Arg::new("VERBOSE")
                 .action(ArgAction::SetTrue)
