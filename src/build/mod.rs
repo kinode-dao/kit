@@ -647,11 +647,13 @@ fn is_up_to_date(
             &mut HashSet::from(["target"]),
         ) {
             Ok(v) => v,
-            Err(e) => if e.to_string().starts_with("Didn't find required dirs:") {
-                return Ok(false);
-            } else {
-                return Err(e);
-            },
+            Err(e) => {
+                if e.to_string().starts_with("Didn't find required dirs:") {
+                    return Ok(false);
+                } else {
+                    return Err(e);
+                }
+            }
         };
         let Some(build_time) = build_time else {
             debug!("is_up_to_date: no built files: not up-to-date");
@@ -673,11 +675,13 @@ fn is_up_to_date(
                 &mut HashSet::from(["target"]),
             ) {
                 Ok(v) => v,
-                Err(e) => if e.to_string().starts_with("Didn't find required dirs:") {
-                    return Ok(false);
-                } else {
-                    return Err(e);
-                },
+                Err(e) => {
+                    if e.to_string().starts_with("Didn't find required dirs:") {
+                        return Ok(false);
+                    } else {
+                        return Err(e);
+                    }
+                }
             };
             match source_time {
                 None => source_time = dep_source_time,
@@ -1557,7 +1561,8 @@ pub async fn execute(
     verbose: bool,
     ignore_deps: bool, // for internal use; may cause problems when adding recursive deps
 ) -> Result<()> {
-    debug!("execute:
+    debug!(
+        "execute:
     package_dir={package_dir:?},
     no_ui={no_ui},
     ui_only={ui_only},
