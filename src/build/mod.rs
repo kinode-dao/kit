@@ -507,6 +507,75 @@ fn check_process_lib_version(cargo_toml_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Scans all .rs files in a directory recursively and returns the most recent
+/// modification time of any included file
+pub fn get_latest_include_mod_time<P: AsRef<Path>>(dir: P) -> Result<Option<SystemTime>> {
+    let includes = scan_includes(dir)?;
+
+    let mut latest_time = None;
+
+    for path in includes {
+        match get_file_modified_time(&path) {
+            Ok(mod_time) => {
+                latest_time = Some(match latest_time {
+                    Some(current_latest) => std::cmp::max(current_latest, mod_time),
+                    None => mod_time,
+                });
+            }
+            Err(e) => warn!("Could not get modification time for {path:?}: {e}"),
+        }
+    }
+
+    Ok(latest_time)
+}
+
+/// Scans all .rs files in a directory recursively and returns arguments
+/// to include!, include_str!, and include_bytes! macros
+#[instrument(level = "trace", skip_all)]
+pub fn scan_includes<P: AsRef<Path>>(dir: P) -> Result<Vec<PathBuf>> {
+    let mut includes = Vec::new();
+    let include_regex = regex::Regex::new(
+        r#"(?:include|include_str|include_bytes)!\s*\(\s*"([^"]+)"\s*\)"#
+    )?;
+
+    // Recursively walk directory
+    visit_dirs(dir.as_ref(), &include_regex, &mut includes)?;
+
+    Ok(includes)
+}
+
+#[instrument(level = "trace", skip_all)]
+fn visit_dirs(dir: &Path, regex: &regex::Regex, includes: &mut Vec<PathBuf>) -> Result<()> {
+    if dir.is_dir() {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                visit_dirs(&path, regex, includes)?;
+            } else if let Some(ext) = path.extension() {
+                if ext == "rs" {
+                    scan_file(&path, regex, includes)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[instrument(level = "trace", skip_all)]
+fn scan_file(file: &Path, regex: &regex::Regex, includes: &mut Vec<PathBuf>) -> Result<()> {
+    let contents = fs::read_to_string(file)?;
+
+    for cap in regex.captures_iter(&contents) {
+        if let Some(path) = cap.get(1) {
+            includes.push(file.parent().unwrap().join(path.as_str()));
+        }
+    }
+
+    Ok(())
+}
+
 #[instrument(level = "trace", skip_all)]
 fn get_most_recent_modified_time(
     dir: &Path,
@@ -514,6 +583,7 @@ fn get_most_recent_modified_time(
     exclude_extensions: &HashSet<&str>,
     exclude_dirs: &HashSet<&str>,
     must_exist_dirs: &mut HashSet<&str>,
+    is_recursion: bool,
 ) -> Result<(Option<SystemTime>, Option<SystemTime>)> {
     let mut most_recent: Option<SystemTime> = None;
     let mut most_recent_excluded: Option<SystemTime> = None;
@@ -552,6 +622,7 @@ fn get_most_recent_modified_time(
                 exclude_extensions,
                 exclude_dirs,
                 must_exist_dirs,
+                true,
             )?;
 
             if let Some(st) = sub_time {
@@ -575,7 +646,7 @@ fn get_most_recent_modified_time(
         }
     }
 
-    if !must_exist_dirs.is_empty() {
+    if !is_recursion && !must_exist_dirs.is_empty() {
         return Err(eyre!("Didn't find required dirs: {must_exist_dirs:?}"));
     }
 
@@ -645,10 +716,12 @@ fn is_up_to_date(
             &HashSet::from(["wasm"]),
             &HashSet::from(["target"]),
             &mut HashSet::from(["target"]),
+            false,
         ) {
             Ok(v) => v,
             Err(e) => {
                 if e.to_string().starts_with("Didn't find required dirs:") {
+                    debug!("is_up_to_date first {e}");
                     return Ok(false);
                 } else {
                     return Err(e);
@@ -673,16 +746,19 @@ fn is_up_to_date(
                 &HashSet::from(["wasm"]),
                 &HashSet::from(["target"]),
                 &mut HashSet::from(["target"]),
+                false,
             ) {
                 Ok(v) => v,
                 Err(e) => {
                     if e.to_string().starts_with("Didn't find required dirs:") {
+                        debug!("is_up_to_date second {e}");
                         return Ok(false);
                     } else {
                         return Err(e);
                     }
                 }
             };
+            // TODO: refactor source time updating along with get_latest_include_mode_time to map_or
             match source_time {
                 None => source_time = dep_source_time,
                 Some(ref st) => {
@@ -692,6 +768,22 @@ fn is_up_to_date(
                             //  -> update source_time to dep_source_time
                             source_time = dep_source_time;
                         }
+                    }
+                }
+            }
+        }
+
+        // update source to most recent of above or include!s
+        let include_source_time = get_latest_include_mod_time(package_dir)?;
+        // TODO: refactor source time updating along with get_latest_include_mode_time to map_or
+        match source_time {
+            None => source_time = include_source_time,
+            Some(ref st) => {
+                if let Some(ref ist) = include_source_time {
+                    if ist.duration_since(st.clone()).is_ok() {
+                        // includes have more recent changes than source
+                        //  -> update source_time to include_source_time
+                        source_time = include_source_time;
                     }
                 }
             }
