@@ -534,9 +534,8 @@ pub fn get_latest_include_mod_time<P: AsRef<Path>>(dir: P) -> Result<Option<Syst
 #[instrument(level = "trace", skip_all)]
 pub fn scan_includes<P: AsRef<Path>>(dir: P) -> Result<Vec<PathBuf>> {
     let mut includes = Vec::new();
-    let include_regex = regex::Regex::new(
-        r#"(?:include|include_str|include_bytes)!\s*\(\s*"([^"]+)"\s*\)"#
-    )?;
+    let include_regex =
+        regex::Regex::new(r#"(?:include|include_str|include_bytes)!\s*\(\s*"([^"]+)"\s*\)"#)?;
 
     // Recursively walk directory
     visit_dirs(dir.as_ref(), &include_regex, &mut includes)?;
