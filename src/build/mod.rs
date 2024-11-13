@@ -1183,7 +1183,7 @@ async fn fetch_dependencies(
         debug!("Failed to fetch self as dependency: {e:?}");
     };
     let canon_package_dir = package_dir.canonicalize()?;
-    for local_dependency in &local_dependencies {
+    for local_dependency in &local_dependencies.iter().filter(|d| *d != &canon_package_dir).collect::<Vec<&PathBuf>>() {
         // build dependency
         let local_dep_deps = local_dependencies
             .clone()
