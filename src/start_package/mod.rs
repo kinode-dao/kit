@@ -27,7 +27,7 @@ fn new_package(
     });
 
     inject_message::make_message(
-        "main:app_store:sys",
+        "main:app-store:sys",
         Some(15),
         &message.to_string(),
         node,
@@ -72,7 +72,7 @@ fn install(
     });
 
     inject_message::make_message(
-        "main:app_store:sys",
+        "main:app-store:sys",
         Some(15),
         &body.to_string(),
         node,

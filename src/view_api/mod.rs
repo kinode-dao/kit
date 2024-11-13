@@ -14,7 +14,7 @@ fn make_app_store_message(
     message: &serde_json::Value,
 ) -> Result<serde_json::Value> {
     inject_message::make_message(
-        &format!("{process_name}:app_store:sys"),
+        &format!("{process_name}:app-store:sys"),
         Some(5),
         &message.to_string(),
         node,

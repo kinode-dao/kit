@@ -28,7 +28,7 @@ pub async fn execute(
         "Uninstall": {"package_name": package_name, "publisher_node": publisher},
     });
     let uninstall_request = inject_message::make_message(
-        "main:app_store:sys",
+        "main:app-store:sys",
         Some(15),
         &body.to_string(),
         None,
