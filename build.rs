@@ -69,7 +69,7 @@ fn visit_dirs(dir: &Path, output_buffer: &mut Vec<u8>) -> io::Result<()> {
             let relative_path = path.strip_prefix(TEMPLATES_DIR).unwrap();
             let path_str = relative_path.to_str().unwrap().replace("\\", "/");
 
-            let relative_path_from_includes = Path::new("..").join(path);
+            let relative_path_from_includes = Path::new("..").join(&path);
             let path_str_from_includes = relative_path_from_includes
                 .to_str()
                 .unwrap()
@@ -79,6 +79,7 @@ fn visit_dirs(dir: &Path, output_buffer: &mut Vec<u8>) -> io::Result<()> {
                 "    (\"{}\", include_str!(\"{}\")),",
                 path_str, path_str_from_includes,
             )?;
+            println!("cargo::rerun-if-changed={}", path.display());
         }
     }
     Ok(())
@@ -104,6 +105,7 @@ fn make_chain_includes() -> anyhow::Result<()> {
             commit,
             Path::new("..").join(&path).display(),
         )?;
+        println!("cargo::rerun-if-changed={}", path.display());
     }
 
     writeln!(&mut output_buffer, "];")?;

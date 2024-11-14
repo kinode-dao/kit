@@ -31,34 +31,33 @@ fn handle_message(
             ref target,
             ref message,
         }) => {
+            // Counterparty is the other node in the chat with us
+            let (counterparty, author) = if target == &our.node {
+                (&source.node, source.node.clone())
+            } else {
+                (target, our.node.clone())
+            };
+
+            // If the target is not us, send a request to the target
             if target == &our.node {
                 println!("{}: {}", source.node, message);
-                let message = ChatMessage {
-                    author: source.node.clone(),
-                    content: message.into(),
-                };
-                message_archive
-                    .entry(source.node.clone())
-                    .and_modify(|e| e.push(message.clone()))
-                    .or_insert(vec![message]);
             } else {
-                let _ = Request::new()
-                    .target(Address {
-                        node: target.clone(),
-                        process: "chat:chat:template.os".parse()?,
-                    })
+                Request::new()
+                    .target((target, "chat", "chat", "template.os"))
                     .body(body)
-                    .send_and_await_response(5)?
-                    .unwrap();
-                let message = ChatMessage {
-                    author: our.node.clone(),
-                    content: message.into(),
-                };
-                message_archive
-                    .entry(target.clone())
-                    .and_modify(|e| e.push(message.clone()))
-                    .or_insert(vec![message]);
+                    .send_and_await_response(5)??;
             }
+
+            // Insert message into archive, creating one for counterparty if it DNE
+            let new_message = ChatMessage {
+                author: author.clone(),
+                content: message.clone(),
+            };
+            message_archive
+                .entry(counterparty.to_string())
+                .and_modify(|e| e.push(new_message.clone()))
+                .or_insert(vec![new_message]);
+
             Response::new().body(ChatResponse::Send).send().unwrap();
         }
         ChatRequest::History(ref node) => {
@@ -69,8 +68,7 @@ fn handle_message(
                         .map(|msgs| msgs.clone())
                         .unwrap_or_default(),
                 ))
-                .send()
-                .unwrap();
+                .send()?;
         }
     }
     Ok(())
