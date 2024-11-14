@@ -364,6 +364,7 @@ async fn build_packages(
                 .join(&dependency_package_path)
                 .canonicalize()?,
         };
+        debug!("Build {path:?}");
         build::execute(
             &path,
             false,
@@ -383,6 +384,7 @@ async fn build_packages(
             false,
         )
         .await?;
+        debug!("Start {path:?}");
         start_package::execute(&path, &url).await?;
     }
 
@@ -503,11 +505,11 @@ async fn load_setups(setup_paths: &Vec<SetupPackage>, port: u16) -> Result<()> {
 
 #[instrument(level = "trace", skip_all)]
 async fn load_process(path: &Path, drive: &str, port: &u16) -> Result<()> {
-    for entry in path.join("pkg").read_dir()? {
+    for entry in fs::read_dir(path.join("pkg"))? {
         let entry = entry?;
         let path = entry.path();
         if Some("wasm") == path.extension().and_then(|s| s.to_str()) {
-            println!("include path {:?}", path);
+            debug!("include path {:?}", path);
             let file_name = path
                 .file_name()
                 .and_then(|s| s.to_str())
@@ -811,7 +813,7 @@ pub async fn execute(config_path: PathBuf) -> Result<()> {
 
     let (config_path, config) = load_config(&config_path)?;
 
-    println!("{:?}", std::env::current_dir());
+    debug!("{:?}", std::env::current_dir());
     debug!("{:?}", config);
 
     // TODO: factor out with boot_fake_node?

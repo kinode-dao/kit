@@ -3,7 +3,7 @@ use std::path::Path;
 use color_eyre::{eyre::eyre, Result, Section};
 use fs_err as fs;
 use serde_json::json;
-use tracing::{info, instrument};
+use tracing::{debug, info, instrument};
 
 use kinode_process_lib::kernel_types::{Erc721Metadata, PackageManifestEntry};
 
@@ -194,6 +194,7 @@ fn check_manifest(pkg_dir: &Path, manifest_file_name: &str) -> Result<()> {
 
 #[instrument(level = "trace", skip_all)]
 pub async fn execute(package_dir: &Path, url: &str) -> Result<()> {
+    debug!("execute(package_dir={package_dir:?}, url={url})");
     if !package_dir.join("pkg").exists() {
         return Err(eyre!(
             "Required `pkg/` dir not found within given input dir {:?} (or cwd, if none given). Please re-run targeting a package.",
