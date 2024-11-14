@@ -1024,7 +1024,8 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .short('l')
                 .long("language")
                 .help("Programming language of the template")
-                .value_parser(["rust", "python", "javascript"])
+                .value_parser(["rust"])
+                //.value_parser(["rust", "python", "javascript"]) // TODO: resupport
                 .default_value("rust")
             )
             .arg(Arg::new("TEMPLATE")
