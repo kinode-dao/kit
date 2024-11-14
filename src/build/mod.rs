@@ -507,12 +507,82 @@ fn check_process_lib_version(cargo_toml_path: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Scans all .rs files in a directory recursively and returns the most recent
+/// modification time of any included file
+pub fn get_latest_include_mod_time<P: AsRef<Path>>(dir: P) -> Result<Option<SystemTime>> {
+    let includes = scan_includes(dir)?;
+
+    let mut latest_time = None;
+
+    for path in includes {
+        match get_file_modified_time(&path) {
+            Ok(mod_time) => {
+                latest_time = Some(match latest_time {
+                    Some(current_latest) => std::cmp::max(current_latest, mod_time),
+                    None => mod_time,
+                });
+            }
+            Err(e) => warn!("Could not get modification time for {path:?}: {e}"),
+        }
+    }
+
+    Ok(latest_time)
+}
+
+/// Scans all .rs files in a directory recursively and returns arguments
+/// to include!, include_str!, and include_bytes! macros
+#[instrument(level = "trace", skip_all)]
+pub fn scan_includes<P: AsRef<Path>>(dir: P) -> Result<Vec<PathBuf>> {
+    let mut includes = Vec::new();
+    let include_regex =
+        regex::Regex::new(r#"(?:include|include_str|include_bytes)!\s*\(\s*"([^"]+)"\s*\)"#)?;
+
+    // Recursively walk directory
+    visit_dirs(dir.as_ref(), &include_regex, &mut includes)?;
+
+    Ok(includes)
+}
+
+#[instrument(level = "trace", skip_all)]
+fn visit_dirs(dir: &Path, regex: &regex::Regex, includes: &mut Vec<PathBuf>) -> Result<()> {
+    if dir.is_dir() {
+        for entry in fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+
+            if path.is_dir() {
+                visit_dirs(&path, regex, includes)?;
+            } else if let Some(ext) = path.extension() {
+                if ext == "rs" {
+                    scan_file(&path, regex, includes)?;
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[instrument(level = "trace", skip_all)]
+fn scan_file(file: &Path, regex: &regex::Regex, includes: &mut Vec<PathBuf>) -> Result<()> {
+    let contents = fs::read_to_string(file)?;
+
+    for cap in regex.captures_iter(&contents) {
+        if let Some(path) = cap.get(1) {
+            includes.push(file.parent().unwrap().join(path.as_str()));
+        }
+    }
+
+    Ok(())
+}
+
 #[instrument(level = "trace", skip_all)]
 fn get_most_recent_modified_time(
     dir: &Path,
     exclude_files: &HashSet<&str>,
     exclude_extensions: &HashSet<&str>,
     exclude_dirs: &HashSet<&str>,
+    must_exist_dirs: &mut HashSet<&str>,
+    is_recursion: bool,
 ) -> Result<(Option<SystemTime>, Option<SystemTime>)> {
     let mut most_recent: Option<SystemTime> = None;
     let mut most_recent_excluded: Option<SystemTime> = None;
@@ -540,6 +610,7 @@ fn get_most_recent_modified_time(
                 .unwrap_or_default()
                 .to_str()
                 .unwrap_or_default();
+            must_exist_dirs.remove(dir_name);
             if exclude_dirs.contains(dir_name) {
                 continue;
             }
@@ -549,6 +620,8 @@ fn get_most_recent_modified_time(
                 exclude_files,
                 exclude_extensions,
                 exclude_dirs,
+                must_exist_dirs,
+                true,
             )?;
 
             if let Some(st) = sub_time {
@@ -571,6 +644,12 @@ fn get_most_recent_modified_time(
             most_recent = Some(most_recent.map_or(file_time, |t| t.max(file_time)));
         }
     }
+
+    if !is_recursion && !must_exist_dirs.is_empty() {
+        return Err(eyre!("Didn't find required dirs: {must_exist_dirs:?}"));
+    }
+
+    debug!("get_most_recent_modified_time: most_recent: {most_recent:?}, most_recent_excluded: {most_recent_excluded:?}");
 
     Ok((most_recent, most_recent_excluded))
 }
@@ -606,6 +685,23 @@ fn is_up_to_date(
 ) -> Result<bool> {
     let old_features = fs::read_to_string(&build_with_features_path).ok();
     let old_cludes = fs::read_to_string(&build_with_cludes_path).ok();
+
+    debug!(
+        "is_up_to_date({package_dir:?}):
+    old_features == Some(features.to_string()): {}
+    old_cludes == Some(cludes.to_string()): {}
+    package_dir.join(\"Cargo.lock\").exists(): {}
+    package_dir.join(\"pkg\").exists(): {}
+    package_dir.join(\"pkg\").join(\"api.zip\").exists(): {}
+    file_with_extension_exists(&package_dir.join(\"pkg\"), \"wasm\"): {}",
+        old_features == Some(features.to_string()),
+        old_cludes == Some(cludes.to_string()),
+        package_dir.join("Cargo.lock").exists(),
+        package_dir.join("pkg").exists(),
+        package_dir.join("pkg").join("api.zip").exists(),
+        file_with_extension_exists(&package_dir.join("pkg"), "wasm"),
+    );
+
     if old_features == Some(features.to_string())
         && old_cludes == Some(cludes.to_string())
         && package_dir.join("Cargo.lock").exists()
@@ -613,13 +709,26 @@ fn is_up_to_date(
         && package_dir.join("pkg").join("api.zip").exists()
         && file_with_extension_exists(&package_dir.join("pkg"), "wasm")
     {
-        let (mut source_time, build_time) = get_most_recent_modified_time(
+        let (mut source_time, build_time) = match get_most_recent_modified_time(
             package_dir,
             &HashSet::from(["Cargo.lock", "api.zip"]),
             &HashSet::from(["wasm"]),
             &HashSet::from(["target"]),
-        )?;
+            &mut HashSet::from(["target"]),
+            false,
+        ) {
+            Ok(v) => v,
+            Err(e) => {
+                if e.to_string().starts_with("Didn't find required dirs:") {
+                    debug!("is_up_to_date first {e}");
+                    return Ok(false);
+                } else {
+                    return Err(e);
+                }
+            }
+        };
         let Some(build_time) = build_time else {
+            debug!("is_up_to_date: no built files: not up-to-date");
             return Ok(false);
         };
 
@@ -630,12 +739,25 @@ fn is_up_to_date(
             .exec()?;
         for package in metadata.packages.iter().filter(|p| p.source.is_none()) {
             let dep_package_dir = get_cargo_package_path(&package)?;
-            let (dep_source_time, _) = get_most_recent_modified_time(
+            let (dep_source_time, _) = match get_most_recent_modified_time(
                 &dep_package_dir,
                 &HashSet::from(["Cargo.lock", "api.zip"]),
                 &HashSet::from(["wasm"]),
                 &HashSet::from(["target"]),
-            )?;
+                &mut HashSet::from(["target"]),
+                false,
+            ) {
+                Ok(v) => v,
+                Err(e) => {
+                    if e.to_string().starts_with("Didn't find required dirs:") {
+                        debug!("is_up_to_date second {e}");
+                        return Ok(false);
+                    } else {
+                        return Err(e);
+                    }
+                }
+            };
+            // TODO: refactor source time updating along with get_latest_include_mode_time to map_or
             match source_time {
                 None => source_time = dep_source_time,
                 Some(ref st) => {
@@ -645,6 +767,22 @@ fn is_up_to_date(
                             //  -> update source_time to dep_source_time
                             source_time = dep_source_time;
                         }
+                    }
+                }
+            }
+        }
+
+        // update source to most recent of above or include!s
+        let include_source_time = get_latest_include_mod_time(package_dir)?;
+        // TODO: refactor source time updating along with get_latest_include_mode_time to map_or
+        match source_time {
+            None => source_time = include_source_time,
+            Some(ref st) => {
+                if let Some(ref ist) = include_source_time {
+                    if ist.duration_since(st.clone()).is_ok() {
+                        // includes have more recent changes than source
+                        //  -> update source_time to include_source_time
+                        source_time = include_source_time;
                     }
                 }
             }
@@ -980,7 +1118,7 @@ fn fetch_local_built_dependency(
     wasm_paths: &mut HashSet<PathBuf>,
     local_dependency: &Path,
 ) -> Result<()> {
-    for entry in local_dependency.join("api").read_dir()? {
+    for entry in fs::read_dir(local_dependency.join("api"))? {
         let entry = entry?;
         let path = entry.path();
         let maybe_ext = path.extension().and_then(|s| s.to_str());
@@ -993,7 +1131,7 @@ fn fetch_local_built_dependency(
             apis.insert(file_name.into(), wit_contents);
         }
     }
-    for entry in local_dependency.join("target").join("api").read_dir()? {
+    for entry in fs::read_dir(local_dependency.join("target").join("api"))? {
         let entry = entry?;
         let path = entry.path();
         let maybe_ext = path.extension().and_then(|s| s.to_str());
@@ -1045,7 +1183,11 @@ async fn fetch_dependencies(
         debug!("Failed to fetch self as dependency: {e:?}");
     };
     let canon_package_dir = package_dir.canonicalize()?;
-    for local_dependency in &local_dependencies {
+    for local_dependency in &local_dependencies
+        .iter()
+        .filter(|d| *d != &canon_package_dir)
+        .collect::<Vec<&PathBuf>>()
+    {
         // build dependency
         let local_dep_deps = local_dependencies
             .clone()
@@ -1081,6 +1223,7 @@ async fn fetch_dependencies(
         .iter()
         .map(|p| p.file_name().and_then(|f| f.to_str()).unwrap())
         .collect();
+    debug!("fetch_dependencies: local_dependencies: {local_dependencies:?}");
     for dependency in dependencies {
         let Ok(dep) = dependency.parse::<PackageId>() else {
             return Err(eyre!(
@@ -1097,7 +1240,7 @@ async fn fetch_dependencies(
                 "Got unexpected result from fetching API for {dependency}"
             ));
         };
-        for entry in zip_dir.read_dir()? {
+        for entry in fs::read_dir(zip_dir)? {
             let entry = entry?;
             let path = entry.path();
             let maybe_ext = path.extension().and_then(|s| s.to_str());
@@ -1195,7 +1338,7 @@ fn find_non_standard(
     let mut imports = HashMap::new();
     let mut exports = HashMap::new();
 
-    for entry in package_dir.join("pkg").read_dir()? {
+    for entry in fs::read_dir(package_dir.join("pkg"))? {
         let entry = entry?;
         let path = entry.path();
         if wasm_paths.contains(&path) {
@@ -1229,8 +1372,7 @@ fn get_ui_dirs(
     include: &HashSet<PathBuf>,
     exclude: &HashSet<PathBuf>,
 ) -> Result<Vec<PathBuf>> {
-    let ui_dirs = package_dir
-        .read_dir()?
+    let ui_dirs = fs::read_dir(package_dir)?
         .filter_map(|entry| {
             let path = entry.ok()?.path();
             if path.is_dir()
@@ -1265,7 +1407,7 @@ async fn check_and_populate_dependencies(
     // Do we need to do an `is_cluded()` check here?
     //  I think no because we may want to, e.g., build a process that
     //  depends on another that is already built but hasn't changed.
-    for entry in package_dir.read_dir()? {
+    for entry in fs::read_dir(package_dir)? {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir() {
@@ -1282,7 +1424,7 @@ async fn check_and_populate_dependencies(
                 checked_js = true;
             } else if Some("api") == path.file_name().and_then(|s| s.to_str()) {
                 // read api files: to be used in build
-                for entry in path.read_dir()? {
+                for entry in fs::read_dir(path)? {
                     let entry = entry?;
                     let path = entry.path();
                     if Some("wit") != path.extension().and_then(|e| e.to_str()) {
@@ -1417,7 +1559,7 @@ async fn compile_package(
 
     let mut tasks = tokio::task::JoinSet::new();
     let features = features.to_string();
-    for entry in package_dir.read_dir()? {
+    for entry in fs::read_dir(package_dir)? {
         let Ok(entry) = entry else {
             continue;
         };
@@ -1514,6 +1656,25 @@ pub async fn execute(
     verbose: bool,
     ignore_deps: bool, // for internal use; may cause problems when adding recursive deps
 ) -> Result<()> {
+    debug!(
+        "execute:
+    package_dir={package_dir:?},
+    no_ui={no_ui},
+    ui_only={ui_only},
+    include={include:?},
+    exclude={exclude:?},
+    skip_deps_check={skip_deps_check},
+    features={features},
+    url={url:?},
+    download_from={download_from:?},
+    default_world={default_world:?},
+    local_dependencies={local_dependencies:?},
+    add_paths_to_api={add_paths_to_api:?},
+    reproducible={reproducible},
+    force={force},
+    verbose={verbose},
+    ignore_deps={ignore_deps},"
+    );
     if no_ui && ui_only {
         return Err(eyre!(
             "Cannot set both `no_ui` and `ui_only` to true at the same time"
