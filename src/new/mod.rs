@@ -171,6 +171,11 @@ fn replace_vars(
         .replace(
             &format!("{template_package_name}-"),
             &format!("{package_name_kebab}-"),
+        )
+        // function call
+        .replace(
+            &format!("{template_package_name}("),
+            &format!("{package_name_snake}("),
         );
     let input = if extension == "wit" {
         input

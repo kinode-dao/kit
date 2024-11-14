@@ -5,6 +5,7 @@ runtime_build_release = false
 
 
 [[tests]]
+dependency_package_paths = [".."]
 setup_packages = [
     { path = "..", run = true }
 ]
