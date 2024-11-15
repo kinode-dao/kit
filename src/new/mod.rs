@@ -132,74 +132,106 @@ fn replace_vars(
         .map(|e| e.to_string())
         .collect();
 
-    let input = input
+    let replacements = vec![
         // wit
-        .replace(
-            &format!("{template_package_name_kebab}-"),
-            &format!("{package_name_kebab}-"),
-        )
+        (
+            format!("{template_package_name_kebab}-"),
+            format!("{package_name_kebab}-"),
+        ),
         // rust imports
-        .replace(
-            &format!("{template_package_name_snake}::"),
-            &format!("{package_name_snake}::"),
-        )
+        (
+            format!("{template_package_name_snake}::"),
+            format!("{package_name_snake}::"),
+        ),
         // manifest.json
-        .replace(
-            &format!("{template_package_name_kebab}.wasm"),
-            &format!("{package_name_kebab}.wasm"),
-        )
+        (
+            format!("{template_package_name_kebab}.wasm"),
+            format!("{package_name_kebab}.wasm"),
+        ),
         // tests manifest.json
-        .replace(
-            &format!("{template_package_name_kebab}-test.wasm"),
-            &format!("{package_name_kebab}-test.wasm"),
-        )
+        (
+            format!("{template_package_name_kebab}-test.wasm"),
+            format!("{package_name_kebab}-test.wasm"),
+        ),
         // part of a var name
-        .replace(
-            &format!("{template_package_name}_"),
-            &format!("{package_name_snake}_"),
-        )
+        (
+            format!("{template_package_name}_"),
+            format!("{package_name_snake}_"),
+        ),
         // part of a var name
-        .replace(
-            &format!("_{template_package_name}"),
-            &format!("_{package_name_snake}"),
-        )
+        (
+            format!("_{template_package_name}"),
+            format!("_{package_name_snake}"),
+        ),
         // field in a struct
-        .replace(
-            &format!("{template_package_name}: "),
-            &format!("{package_name_snake}: "),
-        )
-        .replace(
-            &format!("{template_package_name}-"),
-            &format!("{package_name_kebab}-"),
-        )
+        (
+            format!("{template_package_name}: "),
+            format!("{package_name_snake}: "),
+        ),
+        (
+            format!("{template_package_name}-"),
+            format!("{package_name_kebab}-"),
+        ),
         // function call
-        .replace(
-            &format!("{template_package_name}("),
-            &format!("{package_name_snake}("),
-        );
-    let input = if extension == "wit" {
-        input
-            .replace(&template_package_name_kebab, &package_name_kebab)
-            .replace(template_package_name, package_name)
+        (
+            format!("{template_package_name}("),
+            format!("{package_name_snake}("),
+        ),
+    ];
+    let mut replacements: Vec<(&str, &str)> = replacements
+        .iter()
+        .map(|(s, t)| (s.as_str(), t.as_str()))
+        .collect();
+    if extension == "wit" {
+        replacements.append(&mut vec![
+            (&template_package_name_kebab, &package_name_kebab),
+            (template_package_name, package_name),
+        ]);
     } else if js.contains(extension) {
-        input
-            .replace(template_package_name, &package_name_snake)
-            .replace(&template_package_name_kebab, &package_name_kebab)
+        replacements.append(&mut vec![
+            (template_package_name, &package_name_snake),
+            (&template_package_name_kebab, &package_name_kebab),
+        ]);
     } else {
-        input
-            .replace(template_package_name, package_name)
-            .replace(&template_package_name_kebab, &package_name_kebab)
-            .replace(&template_package_name_snake, &package_name_snake)
+        replacements.append(&mut vec![
+            (template_package_name, package_name),
+            (&template_package_name_kebab, &package_name_kebab),
+            (&template_package_name_snake, &package_name_snake),
+        ]);
     };
-    input
-        .replace(
+    replacements.append(&mut vec![
+        (
             &template_package_name_upper_camel,
             &package_name_upper_camel,
-        )
-        .replace("template.os", publisher)
-        .replace("template_dot_os", &publisher_dotted_snake)
-        .replace("template-dot-os", &publisher_dotted_kebab)
-        .replace("TemplateDotOs", &publisher_dotted_upper_camel)
+        ),
+        ("template.os", publisher),
+        ("template_dot_os", &publisher_dotted_snake),
+        ("template-dot-os", &publisher_dotted_kebab),
+        ("TemplateDotOs", &publisher_dotted_upper_camel),
+    ]);
+
+    let pattern = replacements
+        .iter()
+        .map(|(from, _)| regex::escape(from))
+        .collect::<Vec<_>>()
+        .join("|");
+
+    let regex = regex::Regex::new(&pattern).unwrap();
+
+    regex
+        .replace_all(&input, |caps: &regex::Captures| {
+            let matched = caps.get(0).unwrap().as_str().to_string();
+            replacements
+                .iter()
+                .find_map(|(from, to)| {
+                    if *from == matched.as_str() {
+                        Some(to.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .unwrap_or(matched)
+        })
         .to_string()
 }
 
