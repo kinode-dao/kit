@@ -29,6 +29,9 @@ use crate::setup::{
 use crate::view_api;
 use crate::KIT_CACHE;
 
+mod rewrite;
+use rewrite::copy_and_rewrite_package;
+
 const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
 const PYTHON_SRC_PATH: &str = "src/lib.py";
@@ -1734,7 +1737,9 @@ pub async fn execute(
 
     check_process_lib_version(&package_dir.join("Cargo.toml"))?;
 
-    let ui_dirs = get_ui_dirs(package_dir, &include, &exclude)?;
+    let rewritten_dir = copy_and_rewrite_package(package_dir)?;
+
+    let ui_dirs = get_ui_dirs(&rewritten_dir, &include, &exclude)?;
     if !no_ui && !ui_dirs.is_empty() {
         if !skip_deps_check {
             let mut recv_kill = make_fake_kill_chan();
@@ -1749,7 +1754,7 @@ pub async fn execute(
 
     if !ui_only {
         compile_package(
-            package_dir,
+            &rewritten_dir,
             skip_deps_check,
             features,
             url,
@@ -1765,6 +1770,11 @@ pub async fn execute(
         )
         .await?;
     }
+
+    if package_dir.join("pkg").exists() {
+        fs::remove_dir_all(package_dir.join("pkg"))?;
+    }
+    copy_dir(rewritten_dir.join("pkg"), package_dir.join("pkg"))?;
 
     let metadata = read_metadata(package_dir)?;
     let pkg_publisher = make_pkg_publisher(&metadata);
