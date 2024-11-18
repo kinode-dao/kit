@@ -691,6 +691,7 @@ async fn handle_test(
     test: Test,
     test_dir_path: &Path,
     persist_home: bool,
+    always_print_node_output: bool,
 ) -> Result<()> {
     let (setup_packages, test_package_paths) = build_packages(
         &test,
@@ -798,7 +799,7 @@ async fn handle_test(
         info!("PASS");
     }
 
-    let _ = send_to_cleanup.send(tests_result.is_err());
+    let _ = send_to_cleanup.send(always_print_node_output || tests_result.is_err());
     for handle in task_handles {
         handle.await.unwrap();
     }
@@ -869,6 +870,7 @@ pub async fn execute(config_path: PathBuf) -> Result<()> {
             test,
             &test_dir_path,
             config.persist_home,
+            config.always_print_node_output,
         )
         .await?;
     }
