@@ -123,8 +123,8 @@ fn extract_wit_bindgen(content: &str) -> Option<String> {
 }
 
 fn parse_spawn_from(input: &str) -> Result<(String, String, usize), SpawnParseError> {
-    // Skip the "Spawn(|" prefix since we know it's there
-    let input_after_spawn = &input["Spawn(|".len()..];
+    // Skip the "Spawn!(|" prefix since we know it's there
+    let input_after_spawn = &input["Spawn!(|".len()..];
 
     // Find the closing "|"
     let pipe_end = input_after_spawn
@@ -170,7 +170,7 @@ fn parse_spawn_from(input: &str) -> Result<(String, String, usize), SpawnParseEr
         .to_string();
 
     // Return the total length consumed so we know where to continue searching
-    let total_consumed = "Spawn(|".len() + paren_end + 1;
+    let total_consumed = "Spawn!(|".len() + paren_end + 1;
 
     Ok((args, body, total_consumed))
 }
@@ -180,7 +180,7 @@ fn find_all_spawns(input: &str) -> Result<Vec<SpawnMatch>, SpawnParseError> {
     let mut search_from = 0;
     let imports = extract_imports(input)?;
 
-    while let Some(spawn_start) = input[search_from..].find("Spawn(|") {
+    while let Some(spawn_start) = input[search_from..].find("Spawn!(|") {
         let absolute_start = search_from + spawn_start;
 
         let (args, body, consumed_len) = parse_spawn_from(&input[absolute_start..])?;
