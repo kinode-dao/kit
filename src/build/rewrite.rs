@@ -72,6 +72,39 @@ enum SpawnParseError {
     UnclosedParen,
 }
 
+// TODO: factor out with build::mod.rs::copy_dir()
+#[instrument(level = "trace", skip_all)]
+fn copy_dir(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<()> {
+    let src = src.as_ref();
+    let dst = dst.as_ref();
+    if !dst.exists() {
+        fs::create_dir_all(dst)?;
+    }
+
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if src_path.is_dir() {
+            if src_path.file_name().and_then(|n| n.to_str()) == Some("target") {
+                continue;
+            }
+            copy_dir(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)?;
+        }
+    }
+    Ok(())
+}
+
+fn make_args_struct_name(worker_name: &str) -> String {
+    format!(
+        "{}Args",
+        snake_to_upper_camel_case(&worker_name.replace("-", "_"))
+    )
+}
+
 #[instrument(level = "trace", skip_all)]
 fn parse_fn_args(args: &str) -> Result<Vec<ArgInfo>> {
     // Parse the argument string as Rust function parameters
@@ -95,13 +128,6 @@ fn parse_fn_args(args: &str) -> Result<Vec<ArgInfo>> {
         .collect();
 
     Ok(params)
-}
-
-fn make_args_struct_name(worker_name: &str) -> String {
-    format!(
-        "{}Args",
-        snake_to_upper_camel_case(&worker_name.replace("-", "_"))
-    )
 }
 
 fn generate_args_struct_type(struct_name: &str, args: &[ArgInfo]) -> String {
@@ -247,30 +273,6 @@ fn parse_spawn_from(input: &str) -> Result<(String, String, usize), SpawnParseEr
     Ok((args, body, total_consumed))
 }
 
-fn find_all_spawns(input: &str) -> Result<Vec<SpawnMatch>, SpawnParseError> {
-    let mut results = Vec::new();
-    let mut search_from = 0;
-    let imports = extract_imports(input)?;
-
-    while let Some(spawn_start) = input[search_from..].find("Spawn!(|") {
-        let absolute_start = search_from + spawn_start;
-
-        let (args, body, consumed_len) = parse_spawn_from(&input[absolute_start..])?;
-
-        results.push(SpawnMatch {
-            args,
-            body,
-            imports: imports.clone(),
-            start_pos: absolute_start,
-            end_pos: absolute_start + consumed_len,
-        });
-
-        search_from = absolute_start + consumed_len;
-    }
-
-    Ok(results)
-}
-
 #[instrument(level = "trace", skip_all)]
 fn generate_worker_process(
     process_name: &str,
@@ -307,123 +309,28 @@ fn init(our: Address) {{
     Ok(template)
 }
 
-#[instrument(level = "trace", skip_all)]
-pub fn copy_and_rewrite_package(package_dir: &Path) -> Result<PathBuf> {
-    debug!("Rewriting for {}...", package_dir.display());
-    let rewrite_dir = package_dir.join("target").join("rewrite");
-    if rewrite_dir.exists() {
-        fs::remove_dir_all(&rewrite_dir)?;
-    }
-    fs::create_dir_all(&rewrite_dir)?;
+fn find_all_spawns(input: &str) -> Result<Vec<SpawnMatch>, SpawnParseError> {
+    let mut results = Vec::new();
+    let mut search_from = 0;
+    let imports = extract_imports(input)?;
 
-    copy_dir(package_dir, &rewrite_dir)?;
+    while let Some(spawn_start) = input[search_from..].find("Spawn!(|") {
+        let absolute_start = search_from + spawn_start;
 
-    let mut generated = GeneratedProcesses::default();
+        let (args, body, consumed_len) = parse_spawn_from(&input[absolute_start..])?;
 
-    // Process all Rust files in the copied directory
-    process_package(&rewrite_dir, &mut generated)?;
+        results.push(SpawnMatch {
+            args,
+            body,
+            imports: imports.clone(),
+            start_pos: absolute_start,
+            end_pos: absolute_start + consumed_len,
+        });
 
-    // Create child processes
-    create_child_processes(&rewrite_dir, &generated)?;
-
-    // Update workspace Cargo.toml
-    update_workspace_cargo_toml(&rewrite_dir, &generated)?;
-
-    Ok(rewrite_dir)
-}
-
-// TODO: factor out with build::mod.rs::copy_dir()
-#[instrument(level = "trace", skip_all)]
-fn copy_dir(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> Result<()> {
-    let src = src.as_ref();
-    let dst = dst.as_ref();
-    if !dst.exists() {
-        fs::create_dir_all(dst)?;
+        search_from = absolute_start + consumed_len;
     }
 
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
-
-        if src_path.is_dir() {
-            if src_path.file_name().and_then(|n| n.to_str()) == Some("target") {
-                continue;
-            }
-            copy_dir(&src_path, &dst_path)?;
-        } else {
-            fs::copy(&src_path, &dst_path)?;
-        }
-    }
-    Ok(())
-}
-
-#[instrument(level = "trace", skip_all)]
-fn create_child_processes(package_dir: &Path, generated: &GeneratedProcesses) -> Result<()> {
-    for (process_name, workers) in &generated.processes {
-        for (worker_name, (_, content)) in workers {
-            let parent_dir = package_dir.join(process_name);
-            let worker_dir = package_dir.join(worker_name);
-
-            // Copy the source directory structure from parent
-            let parent_src = parent_dir.join("src");
-            let worker_src = worker_dir.join("src");
-            debug!("{} {}", parent_src.display(), worker_src.display());
-            copy_dir(&parent_src, &worker_src)?;
-
-            // Overwrite lib.rs with our generated content
-            fs::write(worker_src.join("lib.rs"), content)?;
-
-            // Copy and modify Cargo.toml
-            let parent_cargo = fs::read_to_string(parent_dir.join("Cargo.toml"))?;
-            let mut doc = parent_cargo.parse::<toml_edit::DocumentMut>()?;
-
-            // Update package name to worker name
-            if let Some(package) = doc.get_mut("package") {
-                if let Some(name) = package.get_mut("name") {
-                    *name = toml_edit::value(worker_name.as_str());
-                }
-            }
-
-            fs::write(worker_dir.join("Cargo.toml"), doc.to_string())?;
-        }
-    }
-    Ok(())
-}
-
-#[instrument(level = "trace", skip_all)]
-fn update_workspace_cargo_toml(package_dir: &Path, generated: &GeneratedProcesses) -> Result<()> {
-    let cargo_toml_path = package_dir.join("Cargo.toml");
-    let cargo_toml = fs::read_to_string(&cargo_toml_path)?;
-
-    // Parse existing TOML
-    let mut doc = cargo_toml.parse::<toml_edit::DocumentMut>()?;
-
-    // Get or create workspace section
-    let workspace = doc.entry("workspace").or_insert(toml_edit::table());
-
-    // Get or create members array
-    let members = workspace
-        .as_table_mut()
-        .ok_or_else(|| eyre!("workspace is not a table"))?
-        .entry("members")
-        .or_insert(toml_edit::array());
-
-    let members_array = members
-        .as_array_mut()
-        .ok_or_else(|| eyre!("members is not an array"))?;
-
-    // Add all worker packages
-    for workers in generated.processes.values() {
-        for worker_name in workers.keys() {
-            members_array.push(worker_name);
-        }
-    }
-
-    // Write back to file
-    fs::write(cargo_toml_path, doc.to_string())?;
-
-    Ok(())
+    Ok(results)
 }
 
 #[instrument(level = "trace", skip_all)]
@@ -532,4 +439,97 @@ fn process_package(package_dir: &Path, generated: &mut GeneratedProcesses) -> Re
         }
     }
     Ok(())
+}
+
+#[instrument(level = "trace", skip_all)]
+fn create_child_processes(package_dir: &Path, generated: &GeneratedProcesses) -> Result<()> {
+    for (process_name, workers) in &generated.processes {
+        for (worker_name, (_, content)) in workers {
+            let parent_dir = package_dir.join(process_name);
+            let worker_dir = package_dir.join(worker_name);
+
+            // Copy the source directory structure from parent
+            let parent_src = parent_dir.join("src");
+            let worker_src = worker_dir.join("src");
+            debug!("{} {}", parent_src.display(), worker_src.display());
+            copy_dir(&parent_src, &worker_src)?;
+
+            // Overwrite lib.rs with our generated content
+            fs::write(worker_src.join("lib.rs"), content)?;
+
+            // Copy and modify Cargo.toml
+            let parent_cargo = fs::read_to_string(parent_dir.join("Cargo.toml"))?;
+            let mut doc = parent_cargo.parse::<toml_edit::DocumentMut>()?;
+
+            // Update package name to worker name
+            if let Some(package) = doc.get_mut("package") {
+                if let Some(name) = package.get_mut("name") {
+                    *name = toml_edit::value(worker_name.as_str());
+                }
+            }
+
+            fs::write(worker_dir.join("Cargo.toml"), doc.to_string())?;
+        }
+    }
+    Ok(())
+}
+
+#[instrument(level = "trace", skip_all)]
+fn update_workspace_cargo_toml(package_dir: &Path, generated: &GeneratedProcesses) -> Result<()> {
+    let cargo_toml_path = package_dir.join("Cargo.toml");
+    let cargo_toml = fs::read_to_string(&cargo_toml_path)?;
+
+    // Parse existing TOML
+    let mut doc = cargo_toml.parse::<toml_edit::DocumentMut>()?;
+
+    // Get or create workspace section
+    let workspace = doc.entry("workspace").or_insert(toml_edit::table());
+
+    // Get or create members array
+    let members = workspace
+        .as_table_mut()
+        .ok_or_else(|| eyre!("workspace is not a table"))?
+        .entry("members")
+        .or_insert(toml_edit::array());
+
+    let members_array = members
+        .as_array_mut()
+        .ok_or_else(|| eyre!("members is not an array"))?;
+
+    // Add all worker packages
+    for workers in generated.processes.values() {
+        for worker_name in workers.keys() {
+            members_array.push(worker_name);
+        }
+    }
+
+    // Write back to file
+    fs::write(cargo_toml_path, doc.to_string())?;
+
+    Ok(())
+}
+
+#[instrument(level = "trace", skip_all)]
+pub fn copy_and_rewrite_package(package_dir: &Path) -> Result<PathBuf> {
+    debug!("Rewriting for {}...", package_dir.display());
+    let rewrite_dir = package_dir.join("target").join("rewrite");
+    if rewrite_dir.exists() {
+        fs::remove_dir_all(&rewrite_dir)?;
+    }
+    fs::create_dir_all(&rewrite_dir)?;
+
+    copy_dir(package_dir, &rewrite_dir)?;
+
+    let mut generated = GeneratedProcesses::default();
+
+    // Process all Rust files in the copied directory
+    process_package(&rewrite_dir, &mut generated)?;
+
+    // Create child processes
+    create_child_processes(&rewrite_dir, &generated)?;
+
+    // Update workspace Cargo.toml
+    update_workspace_cargo_toml(&rewrite_dir, &generated)?;
+
+    Ok(rewrite_dir)
 }
