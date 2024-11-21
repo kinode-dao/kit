@@ -4,8 +4,11 @@ use std::path::{Path, PathBuf};
 use color_eyre::{eyre::eyre, Result};
 use fs_err as fs;
 use regex::Regex;
+use syn::{__private::ToTokens, parse_str};
 use toml_edit;
 use tracing::{debug, instrument};
+
+use crate::new::snake_to_upper_camel_case;
 
 #[derive(Debug, Default)]
 struct GeneratedProcesses {
@@ -41,20 +44,18 @@ impl From<GeneratedProcesses> for GeneratedProcessesExternal {
 }
 
 #[derive(Debug)]
+struct ArgInfo {
+    name: String,
+    ty: String,
+}
+
+#[derive(Debug)]
 struct SpawnMatch {
     args: String,
     body: String,
     imports: Vec<String>,
     start_pos: usize,
     end_pos: usize,
-}
-
-#[derive(Debug)]
-struct SpawnInfo {
-    args: String,         // The arguments passed to the spawn closure
-    body: String,         // The body of the spawn closure
-    imports: Vec<String>, // All imports from the original file
-    wit_bindgen: String,  // `wit_bindgen!()` call
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -69,6 +70,77 @@ enum SpawnParseError {
     UnclosedBrace,
     #[error("Spawn parse failed due to malformed closure: unclosed paren")]
     UnclosedParen,
+}
+
+#[instrument(level = "trace", skip_all)]
+fn parse_fn_args(args: &str) -> Result<Vec<ArgInfo>> {
+    // Parse the argument string as Rust function parameters
+    let fn_item: syn::ItemFn = parse_str(&format!("fn dummy({args}) {{}}"))?;
+
+    // Extract the parameters from the function signature
+    let params = fn_item
+        .sig
+        .inputs
+        .into_iter()
+        .filter_map(|param| {
+            if let syn::FnArg::Typed(pat_type) = param {
+                Some(ArgInfo {
+                    name: pat_type.pat.into_token_stream().to_string(),
+                    ty: pat_type.ty.into_token_stream().to_string(),
+                })
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    Ok(params)
+}
+
+fn make_args_struct_name(worker_name: &str) -> String {
+    format!(
+        "{}Args",
+        snake_to_upper_camel_case(&worker_name.replace("-", "_"))
+    )
+}
+
+fn generate_args_struct_type(struct_name: &str, args: &[ArgInfo]) -> String {
+    let fields = args
+        .iter()
+        .map(|arg| format!("    {}: {},", arg.name, arg.ty))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!(
+        r#"#[derive(serde::Serialize, serde::Deserialize)]
+struct {struct_name} {{
+{fields}
+}}"#
+    )
+}
+
+fn generate_args_struct_instance(struct_name: &str, args: &[ArgInfo]) -> String {
+    let fields = args
+        .iter()
+        .map(|arg| format!("            {0}: {0}.clone(),", arg.name))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!(
+        r#"let args = {struct_name} {{
+{fields}
+        }};"#
+    )
+}
+
+fn generate_args_struct_destructure(struct_name: &str, args: &[ArgInfo]) -> String {
+    let fields = args
+        .iter()
+        .map(|arg| arg.name.clone())
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    format!(r#"let {struct_name} {{ {fields} }}"#)
 }
 
 fn extract_imports(content: &str) -> Result<Vec<String>, SpawnParseError> {
@@ -200,34 +272,36 @@ fn find_all_spawns(input: &str) -> Result<Vec<SpawnMatch>, SpawnParseError> {
 }
 
 #[instrument(level = "trace", skip_all)]
-fn generate_worker_process(process_name: &str, spawn_info: &SpawnInfo) -> Result<String> {
+fn generate_worker_process(
+    process_name: &str,
+    body: &str,
+    imports: &[String],
+    wit_bindgen: &str,
+    args_type: &str,
+    args_destructure: &str,
+) -> Result<String> {
+    let imports = imports
+        .iter()
+        .map(|i| format!("#[allow(unused_imports)]\nuse {i};\n"))
+        .collect::<String>();
     let template = format!(
         r#"// Generated worker process for {process_name}
-{}
+{imports}
 
-{}
+{wit_bindgen}
+
+{args_type}
 
 call_init!(init);
 fn init(our: Address) {{
     // Get args from parent
     let message = await_message().expect("Failed to get args from parent");
-    let args: serde_json::Value = serde_json::from_slice(&message.body()).unwrap();
+    {args_destructure} = serde_json::from_slice(&message.body()).unwrap();
 
-    // Execute original spawn body
-    {}
-
-    // Exit after completion
-    std::process::exit(0);
+    // Execute `Spawn!()` function body
+    {body}
 }}
 "#,
-        // Add all the original imports
-        spawn_info
-            .imports
-            .iter()
-            .map(|i| format!("use {i};\n"))
-            .collect::<String>(),
-        spawn_info.wit_bindgen,
-        spawn_info.body
     );
 
     Ok(template)
@@ -355,7 +429,6 @@ fn update_workspace_cargo_toml(package_dir: &Path, generated: &GeneratedProcesse
 #[instrument(level = "trace", skip_all)]
 fn rewrite_rust_file(
     process_name: &str,
-    file_name: &str,
     content: &str,
     generated: &mut GeneratedProcesses,
 ) -> Result<String> {
@@ -366,6 +439,12 @@ fn rewrite_rust_file(
     for (i, spawn_match) in spawn_matches.iter().enumerate().rev() {
         let worker_name = format!("{process_name}-worker-{i}");
         let wasm_name = format!("{worker_name}.wasm");
+
+        let args_name = make_args_struct_name(&worker_name);
+        let parsed_args = parse_fn_args(&spawn_match.args)?;
+        let args_type = generate_args_struct_type(&args_name, &parsed_args);
+        let args_instance = generate_args_struct_instance(&args_name, &parsed_args);
+        let args_destructure = generate_args_struct_destructure(&args_name, &parsed_args);
 
         // Generate worker process
         let wit_bindgen = extract_wit_bindgen(content).unwrap_or_else(|| {
@@ -378,13 +457,12 @@ fn rewrite_rust_file(
         });
 
         let worker_code = generate_worker_process(
-            file_name,
-            &SpawnInfo {
-                args: spawn_match.args.clone(),
-                body: spawn_match.body.clone(),
-                imports: spawn_match.imports.clone(),
-                wit_bindgen,
-            },
+            process_name,
+            &spawn_match.body,
+            &spawn_match.imports,
+            &wit_bindgen,
+            &args_type,
+            &args_destructure,
         )?;
 
         // Track in generated processes
@@ -395,31 +473,26 @@ fn rewrite_rust_file(
             .insert(worker_name.clone(), (wasm_name, worker_code));
 
         // Create replacement spawn code
-        let args = spawn_match
-            .args
-            .split(", ")
-            .map(|s| format!("\"{s}\":{s}"))
-            .collect::<Vec<String>>()
-            .join(",");
-        let args = "{".to_string() + &args;
-        let args = args + "}";
         let replacement = format!(
             r#"{{
         use kinode_process_lib::{{spawn, OnExit, Request}};
+        {args_type}
+
+        {args_instance}
+
         let worker = spawn(
             None,
-            &format!("{{}}:{{}}/pkg/{}.wasm", our.process.package_name, our.process.publisher_node),
+            &format!("{{}}:{{}}/pkg/{worker_name}.wasm", our.process.package_name, our.process.publisher_node),
             OnExit::None,
             vec![],
             vec![],
             false,
         ).expect("failed to spawn worker");
         Request::to((our.node(), worker))
-            .body(serde_json::to_vec(&serde_json::json!({})).unwrap())
+            .body(serde_json::to_vec(&args).unwrap())
             .send()
             .expect("failed to initialize worker");
     }}"#,
-            worker_name, args,
         );
 
         // Replace in the content using positions
@@ -453,14 +526,8 @@ fn process_package(package_dir: &Path, generated: &mut GeneratedProcesses) -> Re
                 .ok_or_else(|| eyre!("Invalid process name"))?
                 .to_string();
 
-            let file_name = path
-                .file_stem()
-                .and_then(|n| n.to_str())
-                .ok_or_else(|| eyre!("Invalid file name"))?
-                .to_string();
-
             let content = fs::read_to_string(&path)?;
-            let new_content = rewrite_rust_file(&process_name, &file_name, &content, generated)?;
+            let new_content = rewrite_rust_file(&process_name, &content, generated)?;
             fs::write(&path, new_content)?;
         }
     }
