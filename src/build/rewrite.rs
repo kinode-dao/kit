@@ -333,6 +333,8 @@ fn find_all_spawns(input: &str) -> Result<Vec<SpawnMatch>, SpawnParseError> {
     Ok(results)
 }
 
+/// Rewrites the parent and stores information
+/// for writing children in GeneratedProcess.
 #[instrument(level = "trace", skip_all)]
 fn rewrite_rust_file(
     process_name: &str,
@@ -409,6 +411,8 @@ fn rewrite_rust_file(
     Ok(new_content)
 }
 
+/// For each process in package, rewrite rust files parents
+/// and store information for writing children in GeneratedProcess.
 #[instrument(level = "trace", skip_all)]
 fn process_package(package_dir: &Path, generated: &mut GeneratedProcesses) -> Result<()> {
     if !package_dir.is_dir() {
@@ -436,6 +440,7 @@ fn process_package(package_dir: &Path, generated: &mut GeneratedProcesses) -> Re
             let content = fs::read_to_string(&path)?;
             let new_content = rewrite_rust_file(&process_name, &content, generated)?;
             fs::write(&path, new_content)?;
+            crate::build::run_command(std::process::Command::new("rustfmt").arg(&path), false)?;
         }
     }
     Ok(())
@@ -455,7 +460,12 @@ fn create_child_processes(package_dir: &Path, generated: &GeneratedProcesses) ->
             copy_dir(&parent_src, &worker_src)?;
 
             // Overwrite lib.rs with our generated content
-            fs::write(worker_src.join("lib.rs"), content)?;
+            let worker_lib = worker_src.join("lib.rs");
+            fs::write(&worker_lib, content)?;
+            crate::build::run_command(
+                std::process::Command::new("rustfmt").arg(&worker_lib),
+                false,
+            )?;
 
             // Copy and modify Cargo.toml
             let parent_cargo = fs::read_to_string(parent_dir.join("Cargo.toml"))?;
@@ -522,7 +532,7 @@ pub fn copy_and_rewrite_package(package_dir: &Path) -> Result<PathBuf> {
 
     let mut generated = GeneratedProcesses::default();
 
-    // Process all Rust files in the copied directory
+    // Rewrite parents & gather info for writing children
     process_package(&rewrite_dir, &mut generated)?;
 
     // Create child processes
