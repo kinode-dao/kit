@@ -2168,6 +2168,7 @@ dependencies = [
  "hex",
  "kinode_process_lib",
  "nix 0.27.1",
+ "proc-macro2",
  "regex",
  "reqwest",
  "rpassword",
