@@ -73,7 +73,7 @@ impl From<&String> for Template {
     }
 }
 
-fn snake_to_upper_camel_case(input: &str) -> String {
+pub fn snake_to_upper_camel_case(input: &str) -> String {
     let parts: Vec<&str> = input.split('_').collect();
     let mut camel_case = String::new();
 
