@@ -1158,7 +1158,7 @@ async fn fetch_dependencies(
     default_world: Option<&str>,
     include: &HashSet<PathBuf>,
     exclude: &HashSet<PathBuf>,
-    no_rewrite: bool,
+    rewrite: bool,
     force: bool,
     verbose: bool,
 ) -> Result<()> {
@@ -1175,7 +1175,7 @@ async fn fetch_dependencies(
         default_world,
         vec![], // TODO: what about deps-of-deps?
         vec![],
-        no_rewrite,
+        rewrite,
         false,
         force,
         verbose,
@@ -1212,7 +1212,7 @@ async fn fetch_dependencies(
             default_world,
             local_dep_deps,
             vec![],
-            no_rewrite,
+            rewrite,
             false,
             force,
             verbose,
@@ -1528,7 +1528,7 @@ async fn compile_package(
     add_paths_to_api: &Vec<PathBuf>,
     include: &HashSet<PathBuf>,
     exclude: &HashSet<PathBuf>,
-    no_rewrite: bool,
+    rewrite: bool,
     force: bool,
     verbose: bool,
     ignore_deps: bool, // for internal use; may cause problems when adding recursive deps
@@ -1551,7 +1551,7 @@ async fn compile_package(
             default_world,
             include,
             exclude,
-            no_rewrite,
+            rewrite,
             force,
             verbose,
         )
@@ -1659,7 +1659,7 @@ pub async fn execute(
     default_world: Option<&str>,
     local_dependencies: Vec<PathBuf>,
     add_paths_to_api: Vec<PathBuf>,
-    no_rewrite: bool,
+    rewrite: bool,
     reproducible: bool,
     force: bool,
     verbose: bool,
@@ -1744,9 +1744,9 @@ pub async fn execute(
     check_process_lib_version(&package_dir.join("Cargo.toml"))?;
 
     // live_dir is the "dir that is being built" or is "live";
-    //  if `no_rewrite`, that is just `package_dir`;
+    //  if `!rewrite`, that is just `package_dir`;
     //  else, it is the modified copy that is in `target/rewrite/`
-    let live_dir = if no_rewrite {
+    let live_dir = if !rewrite {
         PathBuf::from(package_dir)
     } else {
         copy_and_rewrite_package(package_dir)?
@@ -1777,7 +1777,7 @@ pub async fn execute(
             &add_paths_to_api,
             &include,
             &exclude,
-            no_rewrite,
+            rewrite,
             force,
             verbose,
             ignore_deps,
@@ -1785,7 +1785,7 @@ pub async fn execute(
         .await?;
     }
 
-    if !no_rewrite {
+    if rewrite {
         if package_dir.join("pkg").exists() {
             fs::remove_dir_all(package_dir.join("pkg"))?;
         }

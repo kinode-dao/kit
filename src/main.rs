@@ -222,7 +222,7 @@ async fn execute(
                 .unwrap_or_default()
                 .map(|s| PathBuf::from(s))
                 .collect();
-            let no_rewrite = matches.get_one::<bool>("NO_REWRITE").unwrap();
+            let rewrite = matches.get_one::<bool>("REWRITE").unwrap();
             let reproducible = matches.get_one::<bool>("REPRODUCIBLE").unwrap();
             let force = matches.get_one::<bool>("FORCE").unwrap();
             let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
@@ -240,7 +240,7 @@ async fn execute(
                 default_world.map(|w| w.as_str()),
                 local_dependencies,
                 add_paths_to_api,
-                *no_rewrite,
+                *rewrite,
                 *reproducible,
                 *force,
                 *verbose,
@@ -285,7 +285,7 @@ async fn execute(
                 .unwrap_or_default()
                 .map(|s| PathBuf::from(s))
                 .collect();
-            let no_rewrite = matches.get_one::<bool>("NO_REWRITE").unwrap();
+            let rewrite = matches.get_one::<bool>("REWRITE").unwrap();
             let reproducible = matches.get_one::<bool>("REPRODUCIBLE").unwrap();
             let force = matches.get_one::<bool>("FORCE").unwrap();
             let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
@@ -303,7 +303,7 @@ async fn execute(
                 default_world.map(|w| w.as_str()),
                 local_dependencies,
                 add_paths_to_api,
-                *no_rewrite,
+                *rewrite,
                 *reproducible,
                 *force,
                 *verbose,
@@ -737,10 +737,10 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .long("add-to-api")
                 .help("Path to file to add to api.zip (can specify multiple times)")
             )
-            .arg(Arg::new("NO_REWRITE")
+            .arg(Arg::new("REWRITE")
                 .action(ArgAction::SetTrue)
-                .long("no-rewrite")
-                .help("Don't rewrite the package (disables `Spawn!()`) [default: rewrite]")
+                .long("rewrite")
+                .help("Rewrite the package (disables `Spawn!()`) [default: don't rewrite]")
                 .required(false)
             )
             .arg(Arg::new("REPRODUCIBLE")
@@ -844,10 +844,10 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("Pass these comma-delimited feature flags to Rust cargo builds")
                 .required(false)
             )
-            .arg(Arg::new("NO_REWRITE")
+            .arg(Arg::new("REWRITE")
                 .action(ArgAction::SetTrue)
                 .long("no-rewrite")
-                .help("Don't rewrite the package (disables `Spawn!()`) [default: rewrite]")
+                .help("Rewrite the package (disables `Spawn!()`) [default: don't rewrite]")
                 .required(false)
             )
             .arg(Arg::new("REPRODUCIBLE")
