@@ -12,6 +12,7 @@ pub struct Config {
     pub runtime: Runtime,
     pub runtime_build_release: bool,
     pub persist_home: bool,
+    pub always_print_node_output: bool,
     pub tests: Vec<Test>,
 }
 
