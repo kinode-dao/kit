@@ -2,7 +2,7 @@
 
 Tool**kit** for developing on [Kinode OS](https://github.com/kinode-dao/kinode).
 
-Documentation in the [Kinode Book](https://book.kinode.org/kit-dev-toolkit.html); example usage [here](https://book.kinode.org/my_first_app/chapter_1.html).
+Documentation in the [Kinode Book](https://book.kinode.org/kit/kit-dev-toolkit.html); example usage [here](https://book.kinode.org/my_first_app/chapter_1.html).
 
 ## Installing
 
@@ -71,7 +71,10 @@ kit boot-fake-node --runtime-path ~/git/kinode
 ```
 
 `kit` also contains tools for running tests.
-For details and examples, please see [https://github.com/kinode-dao/core_tests](https://github.com/kinode-dao/core_tests).
+For details and examples, please see
+1. [Kinode Book's example code](https://github.com/kinode-dao/kinode-book/tree/main/code).
+2. `kit`s templates, available through `kit new` or [here](https://github.com/kinode-dao/kit/tree/master/src/new/templates/rust).
+3. [https://github.com/kinode-dao/core_tests](https://github.com/kinode-dao/core_tests).
 
 ## UI Development
 
