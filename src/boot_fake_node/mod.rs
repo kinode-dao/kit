@@ -80,7 +80,14 @@ pub fn compile_runtime(path: &Path, release: bool, is_simulation_mode: bool) -> 
     info!("Compiling Kinode runtime...");
 
     // build the packages
-    let args = vec!["run", "-p", "build-packages", "--", "--features", "simulation-mode"];
+    let args = vec![
+        "run",
+        "-p",
+        "build-packages",
+        "--",
+        "--features",
+        "simulation-mode",
+    ];
     build::run_command(Command::new("cargo").args(&args).current_dir(path), false)?;
 
     // build the runtime
@@ -94,7 +101,10 @@ pub fn compile_runtime(path: &Path, release: bool, is_simulation_mode: bool) -> 
 
     build::run_command(
         Command::new("cargo")
-            .env("PATH_TO_PACKAGES_ZIP", "target/packages-simulation-mode.zip")
+            .env(
+                "PATH_TO_PACKAGES_ZIP",
+                "target/packages-simulation-mode.zip",
+            )
             .args(&args)
             .current_dir(path),
         false,
