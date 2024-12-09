@@ -42,6 +42,8 @@ const KINODE_WIT_0_7_0_URL: &str =
     "https://raw.githubusercontent.com/kinode-dao/kinode-wit/aa2c8b11c9171b949d1991c32f58591c0e881f85/kinode.wit";
 const KINODE_WIT_0_8_0_URL: &str =
     "https://raw.githubusercontent.com/kinode-dao/kinode-wit/v0.8/kinode.wit";
+const KINODE_WIT_1_0_0_URL: &str =
+    "https://raw.githubusercontent.com/kinode-dao/kinode-wit/1.0/kinode.wit";
 const WASI_VERSION: &str = "19.0.1"; // TODO: un-hardcode
 const DEFAULT_WORLD_0_7_0: &str = "process";
 const DEFAULT_WORLD_0_8_0: &str = "process-v0";
@@ -1074,7 +1076,8 @@ async fn build_wit_dir(
     }
     let wit_url = match wit_version {
         None => KINODE_WIT_0_7_0_URL,
-        Some(0) | _ => KINODE_WIT_0_8_0_URL,
+        Some(0) => KINODE_WIT_0_8_0_URL,
+        Some(1) | _ => KINODE_WIT_1_0_0_URL,
     };
     download_file(wit_url, &wit_dir.join("kinode.wit")).await?;
     for (file_name, contents) in apis {
