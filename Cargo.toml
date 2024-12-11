@@ -1,7 +1,12 @@
 [package]
 name = "kit"
+authors = ["Sybil Technologies AG"]
 version = "0.8.3"
 edition = "2021"
+description = "Development toolkit for Kinode"
+homepage = "https://kinode.org"
+repository = "https://github.com/kinode-dao/kit"
+license = "Apache-2.0"
 
 [build-dependencies]
 anyhow = "1.0"
