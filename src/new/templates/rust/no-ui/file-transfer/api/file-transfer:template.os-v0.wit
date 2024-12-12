@@ -75,5 +75,5 @@ world file-transfer-worker-api-v0 {
 world file-transfer-template-dot-os-v0 {
     import file-transfer;
     import file-transfer-worker;
-    include process-v0;
+    include process-v1;
 }
