@@ -1,5 +1,5 @@
 world chat-test-template-dot-os-v0 {
     import chat;
     import tester;
-    include process-v0;
+    include process-v1;
 }

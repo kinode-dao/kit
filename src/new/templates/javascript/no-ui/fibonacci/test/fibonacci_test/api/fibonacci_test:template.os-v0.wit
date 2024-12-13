@@ -1,5 +1,5 @@
 world fibonacci-test-template-dot-os-v0 {
     import fibonacci;
     import tester;
-    include process-v0;
+    include process-v1;
 }

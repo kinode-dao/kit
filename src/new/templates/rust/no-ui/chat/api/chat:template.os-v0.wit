@@ -23,5 +23,5 @@ interface chat {
 
 world chat-template-dot-os-v0 {
     import chat;
-    include process-v0;
+    include process-v1;
 }

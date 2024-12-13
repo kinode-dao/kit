@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 wit_bindgen::generate!({
     path: "target/wit",
-    world: "process-v0",
+    world: "process-v1",
 });
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -204,11 +204,7 @@ fn handle_chat_request(
             };
 
             // Send a WebSocket message to the http server in order to update the UI
-            send_ws_push(
-                channel_id.clone(),
-                WsMessageType::Text,
-                blob,
-            );
+            send_ws_push(channel_id.clone(), WsMessageType::Text, blob);
         }
         ChatRequest::History => {
             // If this is an HTTP request, send a response to the http server
