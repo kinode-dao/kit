@@ -80,11 +80,7 @@ pub fn compile_runtime(path: &Path, release: bool, is_simulation_mode: bool) -> 
     info!("Compiling Kinode runtime...");
 
     // build the packages
-    let mut args = vec![
-        "run",
-        "-p",
-        "build-packages",
-    ];
+    let mut args = vec!["run", "-p", "build-packages"];
     if is_simulation_mode {
         args.extend_from_slice(&["--", "--features", "simulation-mode"]);
     }
