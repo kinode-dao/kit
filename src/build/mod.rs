@@ -41,7 +41,7 @@ const KINODE_WIT_0_8_0_URL: &str =
     "https://raw.githubusercontent.com/kinode-dao/kinode-wit/v0.8/kinode.wit";
 const KINODE_WIT_1_0_0_URL: &str =
     "https://raw.githubusercontent.com/kinode-dao/kinode-wit/v1.0.0/kinode.wit";
-const WASI_VERSION: &str = "19.0.1"; // TODO: un-hardcode
+const WASI_VERSION: &str = "27.0.0"; // TODO: un-hardcode
 const DEFAULT_WORLD_0_7_0: &str = "process";
 const DEFAULT_WORLD_0_8_0: &str = "process-v0";
 const KINODE_PROCESS_LIB_CRATE_NAME: &str = "kinode_process_lib";
