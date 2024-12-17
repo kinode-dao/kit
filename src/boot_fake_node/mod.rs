@@ -96,9 +96,7 @@ pub fn compile_runtime(path: &Path, release: bool, is_simulation_mode: bool) -> 
     }
 
     let mut command = Command::new("cargo");
-    command
-        .args(&args)
-        .current_dir(path);
+    command.args(&args).current_dir(path);
     if is_simulation_mode {
         command.env(
             "PATH_TO_PACKAGES_ZIP",
