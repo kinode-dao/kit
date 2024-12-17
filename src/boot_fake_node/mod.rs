@@ -95,16 +95,17 @@ pub fn compile_runtime(path: &Path, release: bool, is_simulation_mode: bool) -> 
         args.extend_from_slice(&["--features", "simulation-mode"]);
     }
 
-    build::run_command(
-        Command::new("cargo")
-            .env(
-                "PATH_TO_PACKAGES_ZIP",
-                "target/packages-simulation-mode.zip",
-            )
-            .args(&args)
-            .current_dir(path),
-        false,
-    )?;
+    let mut command = Command::new("cargo");
+    command
+        .args(&args)
+        .current_dir(path);
+    if is_simulation_mode {
+        command.env(
+            "PATH_TO_PACKAGES_ZIP",
+            "target/packages-simulation-mode.zip",
+        );
+    }
+    build::run_command(&mut command, false)?;
 
     info!("Done compiling Kinode runtime.");
     Ok(())
