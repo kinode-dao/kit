@@ -314,7 +314,7 @@ pub async fn execute(
     rpc_uri: &str,
     real: &bool,
     unpublish: &bool,
-    gas_limit: u128,
+    gas_limit: u64,
     max_priority_fee_per_gas: Option<u128>,
     max_fee_per_gas: Option<u128>,
 ) -> Result<()> {

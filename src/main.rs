@@ -378,7 +378,7 @@ async fn execute(
             let rpc_uri = matches.get_one::<String>("RPC_URI").unwrap();
             let real = matches.get_one::<bool>("REAL").unwrap();
             let unpublish = matches.get_one::<bool>("UNPUBLISH").unwrap();
-            let gas_limit = matches.get_one::<u128>("GAS_LIMIT").unwrap();
+            let gas_limit = matches.get_one::<u64>("GAS_LIMIT").unwrap();
             let max_priority_fee = matches
                 .get_one::<u128>("MAX_PRIORITY_FEE_PER_GAS")
                 .and_then(|mpf| Some(mpf.clone()));
