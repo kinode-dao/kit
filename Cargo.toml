@@ -1,7 +1,7 @@
 [package]
 name = "kit"
 authors = ["Sybil Technologies AG"]
-version = "0.8.3"
+version = "0.9.0"
 edition = "2021"
 description = "Development toolkit for Kinode"
 homepage = "https://kinode.org"
@@ -44,6 +44,7 @@ fs-err = "2.11"
 hex = "0.4"
 kinode_process_lib = { git = "https://github.com/kinode-dao/process_lib.git", rev = "75d3f10" }
 nix = { version = "0.27", features = ["process", "signal", "term"] }
+proc-macro2 = "1.0"
 regex = "1"
 reqwest = { version = "0.12", features = ["json"] }
 rpassword = "7"
@@ -51,6 +52,9 @@ semver = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10.8"
+syn = { version = "2.0", features = ["full", "visit", "extra-traits"] }
+#syn = { version = "2.0", features = ["full", "visit"] }
+thiserror = "1.0"
 tokio = { version = "1.28", features = [
     "macros",
     "process",
@@ -60,6 +64,7 @@ tokio = { version = "1.28", features = [
     "time",
 ] }
 toml = "0.8"
+toml_edit = "0.22"
 tracing = "0.1"
 tracing-appender = "0.2"
 tracing-error = "0.2"

@@ -447,8 +447,9 @@ pub async fn execute(
             };
             let version = output
                 .split('\n')
-                .rev()
-                .nth(1)
+                .nth(0)
+                //.rev()
+                //.nth(1)
                 .unwrap()
                 .split(' ')
                 .last()

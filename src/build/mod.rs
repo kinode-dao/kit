@@ -29,6 +29,9 @@ use crate::setup::{
 use crate::view_api;
 use crate::KIT_CACHE;
 
+mod rewrite;
+use rewrite::copy_and_rewrite_package;
+
 const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
 const PYTHON_SRC_PATH: &str = "src/lib.py";
@@ -1158,6 +1161,7 @@ async fn fetch_dependencies(
     default_world: Option<&str>,
     include: &HashSet<PathBuf>,
     exclude: &HashSet<PathBuf>,
+    rewrite: bool,
     force: bool,
     verbose: bool,
 ) -> Result<()> {
@@ -1174,6 +1178,7 @@ async fn fetch_dependencies(
         default_world,
         vec![], // TODO: what about deps-of-deps?
         vec![],
+        rewrite,
         false,
         force,
         verbose,
@@ -1210,6 +1215,7 @@ async fn fetch_dependencies(
             default_world,
             local_dep_deps,
             vec![],
+            rewrite,
             false,
             force,
             verbose,
@@ -1525,6 +1531,7 @@ async fn compile_package(
     add_paths_to_api: &Vec<PathBuf>,
     include: &HashSet<PathBuf>,
     exclude: &HashSet<PathBuf>,
+    rewrite: bool,
     force: bool,
     verbose: bool,
     ignore_deps: bool, // for internal use; may cause problems when adding recursive deps
@@ -1547,6 +1554,7 @@ async fn compile_package(
             default_world,
             include,
             exclude,
+            rewrite,
             force,
             verbose,
         )
@@ -1654,6 +1662,7 @@ pub async fn execute(
     default_world: Option<&str>,
     local_dependencies: Vec<PathBuf>,
     add_paths_to_api: Vec<PathBuf>,
+    rewrite: bool,
     reproducible: bool,
     force: bool,
     verbose: bool,
@@ -1737,7 +1746,16 @@ pub async fn execute(
 
     check_process_lib_version(&package_dir.join("Cargo.toml"))?;
 
-    let ui_dirs = get_ui_dirs(package_dir, &include, &exclude)?;
+    // live_dir is the "dir that is being built" or is "live";
+    //  if `!rewrite`, that is just `package_dir`;
+    //  else, it is the modified copy that is in `target/rewrite/`
+    let live_dir = if !rewrite {
+        PathBuf::from(package_dir)
+    } else {
+        copy_and_rewrite_package(package_dir)?
+    };
+
+    let ui_dirs = get_ui_dirs(&live_dir, &include, &exclude)?;
     if !no_ui && !ui_dirs.is_empty() {
         if !skip_deps_check {
             let mut recv_kill = make_fake_kill_chan();
@@ -1752,7 +1770,7 @@ pub async fn execute(
 
     if !ui_only {
         compile_package(
-            package_dir,
+            &live_dir,
             skip_deps_check,
             features,
             url,
@@ -1762,11 +1780,19 @@ pub async fn execute(
             &add_paths_to_api,
             &include,
             &exclude,
+            rewrite,
             force,
             verbose,
             ignore_deps,
         )
         .await?;
+    }
+
+    if rewrite {
+        if package_dir.join("pkg").exists() {
+            fs::remove_dir_all(package_dir.join("pkg"))?;
+        }
+        copy_dir(live_dir.join("pkg"), package_dir.join("pkg"))?;
     }
 
     let metadata = read_metadata(package_dir)?;
