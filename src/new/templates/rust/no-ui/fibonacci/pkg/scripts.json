@@ -7,6 +7,6 @@
         "grant_capabilities": [
             "fibonacci:fibonacci:template.os"
         ],
-        "wit_version": 0
+        "wit_version": 1
     }
 }

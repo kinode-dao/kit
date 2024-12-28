@@ -7,7 +7,7 @@
         "grant_capabilities": [
             "file-transfer:file-transfer:template.os"
         ],
-        "wit_version": 0
+        "wit_version": 1
     },
     "list-files.wasm": {
         "root": false,
@@ -17,6 +17,6 @@
         "grant_capabilities": [
             "file-transfer:file-transfer:template.os"
         ],
-        "wit_version": 0
+        "wit_version": 1
     }
 }
