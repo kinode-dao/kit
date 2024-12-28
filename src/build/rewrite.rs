@@ -4,11 +4,7 @@ use std::path::{Path, PathBuf};
 use color_eyre::{eyre::eyre, Result};
 use fs_err as fs;
 use regex::Regex;
-use syn::{
-    __private::ToTokens,
-    parse_str,
-    visit::{self, Visit},
-};
+use syn::{__private::ToTokens, parse_str};
 use toml_edit;
 use tracing::{debug, instrument};
 
@@ -97,8 +93,6 @@ enum SpawnParseError {
     #[error("Spawn parse failed due to malformed closure: no opening paren `(`")]
     NoOpeningParen,
     #[error("Spawn parse failed due to malformed closure: no opening bracket `[`")]
-    NoOpeningBracket,
-    #[error("Spawn parse failed due to malformed closure: unclosed brace `{{`")]
     UnclosedBrace,
     #[error("Spawn parse failed due to malformed closure: unclosed paren `(`")]
     UnclosedParen,
@@ -584,17 +578,17 @@ fn generate_worker_process(
 ) -> Result<String> {
     let mut needed_fns = HashSet::new();
 
-    // Get return type if it's a function call
-    let return_type = match &spawn_match.spawn_type {
-        SpawnType::FnCall { name, .. } => {
-            if let Some(fn_info) = functions.get(name) {
-                fn_info.signature.ret.clone()
-            } else {
-                None
-            }
-        }
-        SpawnType::Closure { .. } => None, // Closures don't have return types in our context
-    };
+    //// Get return type if it's a function call
+    //let return_type = match &spawn_match.spawn_type {
+    //    SpawnType::FnCall { name, .. } => {
+    //        if let Some(fn_info) = functions.get(name) {
+    //            fn_info.signature.ret.clone()
+    //        } else {
+    //            None
+    //        }
+    //    }
+    //    SpawnType::Closure { .. } => None, // Closures don't have return types in our context
+    //};
 
     // Get list of functions we need to copy
     match &spawn_match.spawn_type {
@@ -734,7 +728,7 @@ fn rewrite_rust_file(
                 let parsed_signature = parse_fn_signature(args)?;
                 (args_name, parsed_signature)
             }
-            SpawnType::FnCall { name, args } => {
+            SpawnType::FnCall { name, args: _ } => {
                 let fn_info = functions
                     .get(name)
                     .ok_or_else(|| eyre!("Function {name} not found in parent"))?;
@@ -776,7 +770,7 @@ fn rewrite_rust_file(
 
         // Create replacement spawn code with appropriate args instantiation
         let args_instance = match &spawn_match.spawn_type {
-            SpawnType::Closure { args, .. } => {
+            SpawnType::Closure { .. } => {
                 // For closures, use the argument names directly
                 generate_args_struct_instance(&args_name, &parsed_signature.args)
             }

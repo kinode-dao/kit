@@ -79,7 +79,15 @@ pub fn extract_zip(archive_path: &Path) -> Result<()> {
 pub fn compile_runtime(path: &Path, release: bool, is_simulation_mode: bool) -> Result<()> {
     info!("Compiling Kinode runtime...");
 
-    let mut args = vec!["+nightly", "build", "-p", "kinode", "--color=always"];
+    // build the packages
+    let mut args = vec!["run", "-p", "build-packages"];
+    if is_simulation_mode {
+        args.extend_from_slice(&["--", "--features", "simulation-mode"]);
+    }
+    build::run_command(Command::new("cargo").args(&args).current_dir(path), false)?;
+
+    // build the runtime
+    let mut args = vec!["build", "-p", "kinode", "--color=always"];
     if release {
         args.push("--release");
     }
@@ -87,7 +95,15 @@ pub fn compile_runtime(path: &Path, release: bool, is_simulation_mode: bool) -> 
         args.extend_from_slice(&["--features", "simulation-mode"]);
     }
 
-    build::run_command(Command::new("cargo").args(&args).current_dir(path), false)?;
+    let mut command = Command::new("cargo");
+    command.args(&args).current_dir(path);
+    if is_simulation_mode {
+        command.env(
+            "PATH_TO_PACKAGES_ZIP",
+            "target/packages-simulation-mode.zip",
+        );
+    }
+    build::run_command(&mut command, false)?;
 
     info!("Done compiling Kinode runtime.");
     Ok(())
@@ -431,8 +447,9 @@ pub async fn execute(
             };
             let version = output
                 .split('\n')
-                .rev()
-                .nth(1)
+                .nth(0)
+                //.rev()
+                //.nth(1)
                 .unwrap()
                 .split(' ')
                 .last()

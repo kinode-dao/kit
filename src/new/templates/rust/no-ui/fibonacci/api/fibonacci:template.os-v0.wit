@@ -12,5 +12,5 @@ interface fibonacci {
 
 world fibonacci-template-dot-os-v0 {
     import fibonacci;
-    include process-v0;
+    include process-v1;
 }

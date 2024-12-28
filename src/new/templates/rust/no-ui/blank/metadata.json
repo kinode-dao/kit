@@ -10,7 +10,7 @@
         "code_hashes": {
             "0.1.0": ""
         },
-        "wit_version": 0,
+        "wit_version": 1,
         "dependencies": []
     },
     "external_url": "",

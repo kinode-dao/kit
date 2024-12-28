@@ -3,7 +3,7 @@ use kinode_process_lib::{await_message, call_init, println, Address, Message, Re
 
 wit_bindgen::generate!({
     path: "target/wit",
-    world: "process-v0",
+    world: "process-v1",
 });
 
 fn handle_message(message: &Message) -> anyhow::Result<()> {
