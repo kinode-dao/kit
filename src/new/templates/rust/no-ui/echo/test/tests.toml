@@ -2,6 +2,7 @@ runtime = { FetchVersion = "latest" }
 # runtime = { RepoPath = "~/git/kinode" }
 persist_home = false
 runtime_build_release = false
+always_print_node_output = false
 
 
 [[tests]]
