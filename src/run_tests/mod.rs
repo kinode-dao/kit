@@ -852,7 +852,7 @@ pub async fn execute(config_path: PathBuf) -> Result<()> {
             };
             let version = output
                 .split('\n')
-                .nth(1)
+                .nth(0)
                 .unwrap()
                 .split(' ')
                 .last()
