@@ -63,7 +63,7 @@ jobs:
       #      return asset.browser_download_url;
       #    result-encoding: string
       - name: Download Foundry
-        run: wget -q https://github.com/foundry-rs/foundry/releases/download/nightly-de596a4db781933f0c95805bd1c8c05e65f03d4f/foundry_nightly_linux_amd64.tar.gz -O foundry.tar.gz
+        run: wget -q https://github.com/foundry-rs/foundry/releases/download/nightly-c3069a50ba18cccfc4e7d5de9b9b388811d9cc7b/foundry_nightly_linux_amd64.tar.gz -O foundry.tar.gz
         #run: wget -q ${DOWNLOAD_URL} -O foundry.tar.gz
         #env:
         #  DOWNLOAD_URL: ${{ steps.get-latest-foundry-release.outputs.result }}
