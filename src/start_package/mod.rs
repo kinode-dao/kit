@@ -106,7 +106,9 @@ fn check_manifest(pkg_dir: &Path, manifest_file_name: &str) -> Result<()> {
                 )
             })?;
         if !is_kimap_safe(file_name, false) {
-            return Err(eyre!("{manifest_json} file name '{file_name}' must be Kimap safe (a-z, 0-9, - allowed)"));
+            return Err(eyre!(
+                "{manifest_json} file name '{file_name}' must be Kimap safe (a-z, 0-9, - allowed)"
+            ));
         }
         if !is_kimap_safe(file_path, false) {
             return Err(eyre!(
