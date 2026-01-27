@@ -1,7 +1,7 @@
 [package]
 name = "kit"
 authors = ["Sybil Technologies AG"]
-version = "3.2.1"
+version = "3.2.2"
 edition = "2021"
 description = "Development toolkit for Hyperware"
 homepage = "https://hyperware.ai"
