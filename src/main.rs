@@ -177,6 +177,11 @@ async fn execute(
     matches: Option<(&str, &clap::ArgMatches)>,
 ) -> Result<()> {
     match matches {
+        Some(("mdify", matches)) => {
+            let repo_path = matches.get_one::<String>("DIR").unwrap();
+            let output = matches.get_one::<String>("OUTPUT").unwrap();
+            mdify::execute(repo_path, output).await
+        }
         Some(("boot-fake-node", matches)) => {
             let runtime_path = matches
                 .get_one::<String>("PATH")
@@ -1306,6 +1311,21 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
         )
         .subcommand(Command::new("reset-cache")
             .about("Reset kit cache (Hyperdrive binaries, logs, etc.)")
+        )
+        .subcommand(Command::new("mdify")
+            .about("Generate markdown documentation from repository content")
+            .arg(Arg::new("DIR")
+                .action(ArgAction::Set)
+                .help("Path to the repository")
+                .required(true)
+            )
+            .arg(Arg::new("OUTPUT")
+                .action(ArgAction::Set)
+                .help("Output markdown file path")
+                .short('o')
+                .long("output")
+                .default_value("repo_content.md")
+            )
         )
         .subcommand(Command::new("run-tests")
             .about("Run Hyperware tests")
