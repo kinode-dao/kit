@@ -23,7 +23,7 @@ use tracing_subscriber::{
 };
 
 use kit::{
-    boot_fake_node, boot_real_node, build, build_start_package, chain, connect, dev_ui,
+    boot_fake_node, boot_real_node, build, build_start_package, chain, check, connect, dev_ui,
     inject_message, new, publish, remove_package, reset_cache, run_tests, setup, start_package,
     update, view_api, KIT_LOG_PATH_DEFAULT,
 };
@@ -245,6 +245,41 @@ async fn execute(
                 args,
             )
             .await
+        }
+        Some(("check", matches)) => {
+            let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
+            let release = matches.get_one::<bool>("RELEASE").unwrap();
+            let profile = matches.get_one::<String>("PROFILE");
+            let targets: Vec<String> = matches
+                .get_many::<String>("TARGET")
+                .unwrap_or_default()
+                .map(|s| s.to_string())
+                .collect();
+            let packages: Vec<String> = matches
+                .get_many::<String>("PACKAGE")
+                .unwrap_or_default()
+                .map(|s| s.to_string())
+                .collect();
+            let features: Vec<String> = matches
+                .get_many::<String>("FEATURES")
+                .unwrap_or_default()
+                .map(|s| s.to_string())
+                .collect();
+            let all_features = matches.get_one::<bool>("ALL_FEATURES").unwrap();
+            let no_default_features = matches.get_one::<bool>("NO_DEFAULT_FEATURES").unwrap();
+            let verbose = matches.get_one::<bool>("VERBOSE").unwrap();
+
+            check::execute(
+                &package_dir,
+                *release,
+                profile.map(|s| s.as_str()),
+                targets,
+                packages,
+                features,
+                *all_features,
+                *no_default_features,
+                *verbose,
+            )
         }
         Some(("build", matches)) => {
             let package_dir = PathBuf::from(matches.get_one::<String>("DIR").unwrap());
@@ -763,6 +798,76 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .help("Additional arguments to pass to the node (i.e. to Hyperdrive)")
                 .required(false)
             )
+        )
+        .subcommand(Command::new("check")
+            .about("Check a Kinode package for errors")
+            .arg(
+                Arg::new("DIR")
+                    .action(ArgAction::Set)
+                    .help("The package directory to check")
+                    .default_value(current_dir)
+                    .required(false),
+            )
+            .arg(
+                Arg::new("RELEASE")
+                    .action(ArgAction::SetTrue)
+                    .short('r')
+                    .long("release")
+                    .help("Check artifacts in release mode, with optimizations")
+                    .required(false),
+            )
+            .arg(
+                Arg::new("PROFILE")
+                    .action(ArgAction::Set)
+                    .long("profile")
+                    .help("Check artifacts with the specified profile")
+                    .required(false),
+            )
+            .arg(
+                Arg::new("TARGET")
+                    .action(ArgAction::Append)
+                    .long("target")
+                    .help("Check for the target triple (can specify multiple times)")
+                    .required(false),
+            )
+            .arg(
+                Arg::new("PACKAGE")
+                    .action(ArgAction::Append)
+                    .short('p')
+                    .long("package")
+                    .help("Package(s) to check (can specify multiple times)")
+                    .required(false),
+            )
+            .arg(
+                Arg::new("FEATURES")
+                    .action(ArgAction::Append)
+                    .short('F')
+                    .long("features")
+                    .help("Space or comma separated list of features to activate")
+                    .required(false),
+            )
+            .arg(
+                Arg::new("ALL_FEATURES")
+                    .action(ArgAction::SetTrue)
+                    .long("all-features")
+                    .help("Activate all available features")
+                    .required(false),
+            )
+            .arg(
+                Arg::new("NO_DEFAULT_FEATURES")
+                    .action(ArgAction::SetTrue)
+                    .long("no-default-features")
+                    .help("Do not activate the `default` feature")
+                    .required(false),
+            )
+            .arg(
+                Arg::new("VERBOSE")
+                    .action(ArgAction::SetTrue)
+                    .short('v')
+                    .long("verbose")
+                    .help("If set, output stdout and stderr")
+                    .required(false),
+            ),
         )
         .subcommand(Command::new("build")
             .about("Build a Hyperware package")

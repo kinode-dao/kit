@@ -3,6 +3,7 @@ pub mod boot_real_node;
 pub mod build;
 pub mod build_start_package;
 pub mod chain;
+pub mod check;
 pub mod connect;
 pub mod dev_ui;
 pub mod inject_message;
