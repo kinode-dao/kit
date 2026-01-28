@@ -451,6 +451,7 @@ pub async fn execute(
     release: bool,
     verbosity: u8,
     mut args: Vec<String>,
+    config_path: Option<PathBuf>,
 ) -> Result<()> {
     let detached = false; // TODO: to argument?
     let runtime_path = get_or_build_runtime_binary(&version, true, runtime_path, release).await?;
@@ -488,8 +489,14 @@ pub async fn execute(
     }
 
     // boot fakechain
-    let anvil_process =
-        chain::start_chain(fakechain_port, recv_kill_in_start_chain, false, false).await?;
+    let anvil_process = chain::start_chain(
+        fakechain_port,
+        recv_kill_in_start_chain,
+        false,
+        false,
+        config_path,
+    )
+    .await?;
 
     if let Some(rpc) = rpc {
         args.extend_from_slice(&["--rpc".into(), rpc.into()]);

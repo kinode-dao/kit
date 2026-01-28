@@ -347,6 +347,7 @@ async fn build_packages(
         recv_kill_in_start_chain,
         false,
         false,
+        None,
     )
     .await?;
 
@@ -755,6 +756,7 @@ async fn handle_test(
         recv_kill_in_start_chain,
         false,
         false,
+        None,
     )
     .await?;
 
