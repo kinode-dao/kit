@@ -86,6 +86,10 @@ const TRANSACTIONS: &[(&str, &str)] = &[
         CREATE2,
         include_str!("./bytecode/deploy-hyperaccount-9char-commit-minter.txt"),
     ),
+    (
+        CREATE2,
+        include_str!("./bytecode/deploy-hyperaccount-permissioned-minter-2.txt"),
+    ),
     // mint .os
     //  NOTE: the account implementation here is not
     //        HyperAccount9CharCommitMinter like on mainnet.
