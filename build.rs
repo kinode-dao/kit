@@ -6,7 +6,7 @@ const TEMPLATES_DIR: &str = "src/new/templates";
 const TARGET_DIR: &str = "target";
 const NEW_INCLUDES: &str = "new_includes.rs";
 
-/// create target/new_includes.rs to build templates into binary
+/// create <target/new_includes.rs> to build templates into binary
 fn make_new_includes() -> anyhow::Result<()> {
     let mut output_buffer = Vec::new();
     writeln!(
@@ -25,7 +25,7 @@ fn make_new_includes() -> anyhow::Result<()> {
 
     let target_dir = Path::new(TARGET_DIR);
     let new_output_path = target_dir.join(NEW_INCLUDES);
-    // create *_includes.rs if it does not exist
+    // create <*_includes.rs> if it does not exist
     if !target_dir.exists() {
         fs::create_dir_all(target_dir)?;
     }

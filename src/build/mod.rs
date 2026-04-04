@@ -38,6 +38,7 @@ mod wit_generator;
 
 // Default Rust toolchain to use for builds
 pub const DEFAULT_RUST_TOOLCHAIN: &str = "+1.85.1";
+pub const DEFAULT_WASI_VERSION: semver::Version = semver::Version::new(33, 0, 1);
 
 const PY_VENV_NAME: &str = "process_env";
 const JAVASCRIPT_SRC_PATH: &str = "src/lib.js";
@@ -47,7 +48,6 @@ const PACKAGE_JSON_NAME: &str = "package.json";
 const COMPONENTIZE_MJS_NAME: &str = "componentize.mjs";
 const HYPERWARE_WIT_1_0_0_URL: &str =
     "https://raw.githubusercontent.com/hyperware-ai/hyperware-wit/v1.0.0/hyperware.wit";
-const WASI_VERSION: &str = "33.0.0"; // TODO: un-hardcode
 const DEFAULT_WORLD_1_0_0: &str = "process-v1";
 const KINODE_PROCESS_LIB_CRATE_NAME: &str = "hyperware_process_lib";
 
@@ -956,6 +956,7 @@ async fn compile_rust_wasm_process(
     features: &str,
     verbose: bool,
     toolchain: &str,
+    wasi_version: semver::Version,
 ) -> Result<()> {
     let Some(package_dir) = process_dir.parent() else {
         return Err(eyre!(
@@ -977,10 +978,7 @@ async fn compile_rust_wasm_process(
     let wasi_snapshot_file = package_dir
         .join("target")
         .join("wasi_snapshot_preview1.wasm");
-    let wasi_snapshot_url = format!(
-        "https://github.com/bytecodealliance/wasmtime/releases/download/v{}/wasi_snapshot_preview1.reactor.wasm",
-        WASI_VERSION,
-    );
+    let wasi_snapshot_url = format!("https://github.com/bytecodealliance/wasmtime/releases/download/v{wasi_version}/wasi_snapshot_preview1.reactor.wasm");
     download_file(&wasi_snapshot_url, &wasi_snapshot_file).await?;
 
     // Copy wit directory to bindings
@@ -1163,9 +1161,10 @@ async fn compile_package_item(
     is_js_process: bool,
     verbose: bool,
     toolchain: String,
+    wasi_version: semver::Version,
 ) -> Result<()> {
     if is_rust_process {
-        compile_rust_wasm_process(&path, &features, verbose, &toolchain).await?;
+        compile_rust_wasm_process(&path, &features, verbose, &toolchain, wasi_version).await?;
     } else if is_py_process {
         let python = get_python_version(None, None)?
             .ok_or_else(|| eyre!("kit requires Python 3.10 or newer"))?;
@@ -1225,6 +1224,7 @@ async fn fetch_dependencies(
     force: bool,
     verbose: bool,
     toolchain: &str,
+    wasi_version: &semver::Version,
 ) -> Result<()> {
     if let Err(e) = Box::pin(execute(
         package_dir,
@@ -1246,6 +1246,7 @@ async fn fetch_dependencies(
         verbose,
         true,
         toolchain,
+        wasi_version,
     ))
     .await
     {
@@ -1285,6 +1286,7 @@ async fn fetch_dependencies(
             verbose,
             false,
             toolchain,
+            wasi_version,
         ))
         .await?;
         fetch_local_built_dependency(apis, wasm_paths, &local_dependency)?;
@@ -1563,8 +1565,8 @@ fn is_cluded(path: &Path, include: &HashSet<PathBuf>, exclude: &HashSet<PathBuf>
     (include.is_empty() || include.contains(path)) && !exclude.contains(path)
 }
 
-/// package dir looks like:
-///
+/// package dir looks like this
+/// ```text
 /// metadata.json
 /// api/                                  <- optional
 ///   my_package:publisher.os-v0.wit
@@ -1584,6 +1586,7 @@ fn is_cluded(path: &Path, include: &HashSet<PathBuf>, exclude: &HashSet<PathBuf>
 ///   target/                             <- built
 ///     api/
 ///     wit/
+/// ```
 #[instrument(level = "trace", skip_all)]
 async fn compile_package(
     package_dir: &Path,
@@ -1603,6 +1606,7 @@ async fn compile_package(
     hyperapp_processed_projects: Option<Vec<PathBuf>>,
     ignore_deps: bool, // for internal use; may cause problems when adding recursive deps
     toolchain: &str,
+    wasi_version: &semver::Version,
 ) -> Result<()> {
     let metadata = read_and_update_metadata(package_dir)?;
     let mut wasm_paths = HashSet::new();
@@ -1635,6 +1639,7 @@ async fn compile_package(
             force,
             verbose,
             toolchain,
+            &wasi_version,
         )
         .await?
     }
@@ -1692,6 +1697,7 @@ async fn compile_package(
             is_js_process,
             verbose.clone(),
             toolchain.to_string(),
+            wasi_version.clone(),
         ));
     }
     while let Some(res) = tasks.join_next().await {
@@ -1776,6 +1782,7 @@ pub async fn execute(
     verbose: bool,
     ignore_deps: bool, // for internal use; may cause problems when adding recursive deps
     toolchain: &str,
+    wasi_version: &semver::Version,
 ) -> Result<()> {
     debug!(
         "execute:
@@ -1915,6 +1922,7 @@ pub async fn execute(
             hyperapp_processed_projects,
             ignore_deps,
             toolchain,
+            wasi_version,
         )
         .await?;
     }

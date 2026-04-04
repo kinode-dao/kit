@@ -27,6 +27,7 @@ pub async fn execute(
     force: bool,
     verbose: bool,
     toolchain: &str,
+    wasi_version: &semver::Version,
 ) -> Result<()> {
     build::execute(
         package_dir,
@@ -48,6 +49,7 @@ pub async fn execute(
         verbose,
         false,
         toolchain,
+        &wasi_version,
     )
     .await?;
     start_package::execute(package_dir, url).await?;

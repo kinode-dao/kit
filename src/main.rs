@@ -64,19 +64,19 @@ fn parse_u128_with_underscores(s: &str) -> Result<u128, &'static str> {
 
 #[instrument(level = "trace", skip_all)]
 fn parse_rust_toolchain(s: &str) -> Result<String, &'static str> {
-    // Validate the format: must start with '+' followed by version or channel name
+    // Validate the format: must start with '+' followed by version or channel name.
     if !s.starts_with('+') {
         return Err("Rust toolchain must start with '+' (e.g., '+stable', '+1.85.1', '+nightly')");
     }
 
     let toolchain = &s[1..];
 
-    // Check if it's a valid channel name or version format
+    // Check if it's a valid channel name or version format.
     if toolchain.is_empty() {
         return Err("Rust toolchain cannot be empty after '+'");
     }
 
-    // Basic validation: alphanumeric, dots, dashes, and hyphens are allowed
+    // Basic validation: alphanumeric, dots, dashes, and hyphens are allowed.
     if !toolchain
         .chars()
         .all(|c| c.is_alphanumeric() || c == '.' || c == '-' || c == '_')
@@ -309,6 +309,9 @@ async fn execute(
                 *verbose,
                 false,
                 toolchain,
+                matches
+                    .get_one::<semver::Version>("WASI_VERSION")
+                    .expect("`default_value` has been set"),
             )
             .await
         }
@@ -375,6 +378,9 @@ async fn execute(
                 *force,
                 *verbose,
                 toolchain,
+                matches
+                    .get_one::<semver::Version>("WASI_VERSION")
+                    .expect("`default_value` has been set"),
             )
             .await
         }
@@ -574,6 +580,14 @@ async fn execute(
 
 #[instrument(level = "trace", skip_all)]
 async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
+    let wasi_version = Arg::new("WASI_VERSION")
+        .action(ArgAction::Set)
+        .long("wasi_version")
+        .help("[specify] Wasmtime version to download (default: \"{DEFAULT_WASI_VERSION}\")")
+        .default_value(build::DEFAULT_WASI_VERSION.to_string())
+        // `semver::VersionReq` would be more user-friendly, but current download link pattern requires precision
+        .value_parser(clap::builder::ValueParser::new(semver::Version::parse))
+        .required(false);
     Ok(command!()
         .name("kit")
         .version(env!("CARGO_PKG_VERSION"))
@@ -883,6 +897,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .value_parser(clap::builder::ValueParser::new(parse_rust_toolchain))
                 .required(false)
             )
+            .arg(wasi_version.clone())
         )
         .subcommand(Command::new("build-start-package")
             .about("Build and start a Hyperware package")
@@ -1003,7 +1018,7 @@ async fn make_app(current_dir: &std::ffi::OsString) -> Result<Command> {
                 .default_value(build::DEFAULT_RUST_TOOLCHAIN)
                 .value_parser(clap::builder::ValueParser::new(parse_rust_toolchain))
                 .required(false)
-            )
+            ).arg(wasi_version)
         )
         .subcommand(Command::new("chain")
             .about("Start a local chain for development")
