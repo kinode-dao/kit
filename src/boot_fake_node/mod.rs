@@ -153,14 +153,11 @@ pub fn get_platform_runtime_name(is_simulation_mode: bool) -> Result<String> {
         ("Linux", "aarch64") => "aarch64-unknown-linux-gnu",
         ("Darwin", "arm64") => "arm64-apple-darwin",
         ("Darwin", "x86_64") => "x86_64-apple-darwin",
-        _ => {
-            return Err(eyre!(
-                "OS/Architecture {}/{} not amongst pre-built [Linux/x86_64, Linux/aarch64, Apple/arm64, Apple/x86_64].",
-                os_name,
-                architecture_name,
-            ).with_suggestion(|| "Use the `--runtime-path` flag to build a local copy of the https://github.com/hyperware-ai/hyperdrive repo")
-            );
-        }
+        _ => return Err(eyre!(
+            "OS/Architecture {}/{} not amongst pre-built [Linux/x86_64, Linux/aarch64, Apple/arm64, Apple/x86_64].",
+            os_name,
+            architecture_name,
+        ).with_suggestion(|| "Use the `--runtime-path` flag to build a local copy of the <https://github.com/hyperware-ai/hyperdrive> repo"))
     };
     Ok(format!(
         "hyperdrive-{}{}.zip",
@@ -180,15 +177,9 @@ async fn get_runtime_binary(version: &str, is_simulation_mode: bool) -> Result<P
     let version = if version != "latest" {
         version.to_string()
     } else {
-        find_releases_with_asset_if_online(
-            Some(HYPERWARE_OWNER),
-            Some(HYPERDRIVE_REPO),
-            &get_platform_runtime_name(is_simulation_mode)?,
-        )
-        .await
-        .unwrap_or_default()
+        find_releases_with_asset_if_online(get_platform_runtime_name(is_simulation_mode)?).await?
         .first()
-        .ok_or_else(|| eyre!("No releases found"))?
+        .ok_or(eyre!("No releases found"))?
         .clone()
     };
 
@@ -308,54 +299,45 @@ pub async fn get_from_github(owner: &str, repo: &str, endpoint: &str) -> Result<
 #[instrument(level = "trace", skip_all)]
 pub async fn fetch_releases(owner: &str, repo: &str) -> Result<Vec<Release>> {
     let bytes = get_from_github(owner, repo, "releases").await?;
-    if bytes.is_empty() {
-        return Ok(vec![]);
-    }
-    Ok(serde_json::from_slice(&bytes)?)
+    Ok(
+        if bytes.is_empty() {vec![]}
+        else {serde_json::from_slice(&bytes)?}
+    )
 }
 
 #[instrument(level = "trace", skip_all)]
 pub async fn find_releases_with_asset(
     owner: Option<&str>,
     repo: Option<&str>,
-    asset_name: &str,
+    asset_name: String,
 ) -> Result<Vec<String>> {
     let owner = owner.unwrap_or(HYPERWARE_OWNER);
     let repo = repo.unwrap_or(HYPERDRIVE_REPO);
-    let Ok(releases) = fetch_releases(owner, repo).await else {
-        warn!("Failed to fetch releases from {owner}/{repo}. Using empty");
-        return Ok(vec![]);
-    };
-    let filtered_releases: Vec<String> = releases
-        .into_iter()
-        .filter(|release| release.assets.iter().any(|asset| asset.name == asset_name))
-        .map(|release| release.tag_name)
-        .collect();
-    Ok(filtered_releases)
+    let filtered_releases = fetch_releases(owner, repo).await.map(|releases| {
+        releases
+            .into_iter()
+            .filter(|release| release.assets.iter().any(|asset| asset.name == asset_name))
+            .map(|release| release.tag_name)
+            .collect()
+    });
+    if filtered_releases.is_err() {
+        warn!("Failed to fetch releases from {owner}/{repo}.")
+    } else {tracing::trace!("Found releases. {filtered_releases:?}")}
+    filtered_releases
 }
 
-pub async fn find_releases_with_asset_if_online(
-    owner: Option<&str>,
-    repo: Option<&str>,
-    asset_name: &str,
-) -> Result<Vec<String>> {
-    let remote_values = match find_releases_with_asset(owner, repo, asset_name).await {
-        Ok(v) => v,
-        Err(e) => match e.downcast_ref::<reqwest::Error>() {
-            None => return Err(e),
-            Some(ee) => {
-                if ee.is_connect() {
-                    get_local_versions_with_prefix(&format!("{}v", LOCAL_PREFIX))?
-                        .iter()
-                        .map(|v| format!("v{}", v))
-                        .collect()
-                } else {
-                    return Err(e);
-                }
-            }
-        },
-    };
-    Ok(remote_values)
+pub async fn find_releases_with_asset_if_online(asset_name: String) -> Result<Vec<String>> {
+    let values_remote = tokio::spawn(find_releases_with_asset(None, None, asset_name));
+    let values_local = get_local_versions_with_prefix(&format!("{}v", LOCAL_PREFIX));
+    tracing::trace!("Got local versions result. {values_local:?}");
+    let values_local = values_local.map(
+        |versions| versions.iter().map(|v| format!("v{}", v)).collect()
+    );
+    let values_remote = values_remote.await?;
+    if values_remote.iter().flatten().next().is_none() {
+        tracing::debug!("nothing useful from remote fetching, falling back to the local versions");
+        values_local
+    } else {values_remote}
 }
 
 #[instrument(level = "trace", skip_all)]
